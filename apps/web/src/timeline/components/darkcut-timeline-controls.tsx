@@ -5,14 +5,20 @@ import { Button } from "@/components/ui/button";
 import { useEditor } from "@/editor/use-editor";
 import { useElementSelection } from "@/timeline/hooks/element/use-element-selection";
 import {
+	DARKCUT_MOTIONS,
 	DARKCUT_TRANSITIONS,
 	applyFixedDuration,
+	applyMotionPreset,
+	applyRandomMotions,
+	autoEditWithNarration,
 	applyRandomTransitions,
 	applyTransitionPreset,
 	clearDarkCutTransitions,
 	syncVisualsToNarration,
 } from "@/timeline/darkcut-tools";
 import {
+	type DarkCutEffectIntensity,
+	type DarkCutMotionPreset,
 	type DarkCutTransitionPreset,
 	useTimelineStore,
 } from "@/timeline/timeline-store";
@@ -39,6 +45,23 @@ export function DarkCutTimelineControls() {
 		(state) => state.toggleDarkcutTransitionFavorite,
 	);
 	const isFavorite = favorites.includes(transitionPreset);
+	const motionPreset = useTimelineStore((state) => state.darkcutMotionPreset);
+	const setMotionPreset = useTimelineStore(
+		(state) => state.setDarkcutMotionPreset,
+	);
+	const motionFavorites = useTimelineStore(
+		(state) => state.darkcutMotionFavorites,
+	);
+	const toggleMotionFavorite = useTimelineStore(
+		(state) => state.toggleDarkcutMotionFavorite,
+	);
+	const effectIntensity = useTimelineStore(
+		(state) => state.darkcutEffectIntensity,
+	);
+	const setEffectIntensity = useTimelineStore(
+		(state) => state.setDarkcutEffectIntensity,
+	);
+	const isMotionFavorite = motionFavorites.includes(motionPreset);
 
 	const applyDuration = () => {
 		if (!Number.isFinite(durationSeconds) || durationSeconds <= 0) {
@@ -133,6 +156,68 @@ export function DarkCutTimelineControls() {
 						: "Usando todos os presets DarkCut.",
 			},
 		);
+	};
+
+	const applyMotion = () => {
+		const changed = applyMotionPreset({
+			editor,
+			refs: selectedElements,
+			preset: motionPreset,
+			intensity: effectIntensity,
+			fallbackToAll: false,
+		});
+		if (!changed) {
+			toast.error("Selecione uma ou mais imagens/vídeos para aplicar movimento.");
+			return;
+		}
+		const label =
+			DARKCUT_MOTIONS.find((item) => item.id === motionPreset)?.label ??
+			motionPreset;
+		toast.success(`${label} aplicado em ${changed} item(ns).`);
+	};
+
+	const randomizeMotions = () => {
+		const changed = applyRandomMotions({
+			editor,
+			refs: selectedElements,
+			presets: motionFavorites,
+			intensity: effectIntensity,
+		});
+		if (!changed) {
+			toast.error("Não há imagens ou vídeos na timeline.");
+			return;
+		}
+		toast.success(`Movimentos automáticos aplicados em ${changed} item(ns).`, {
+			description:
+				motionFavorites.length > 0
+					? "Usando apenas seus movimentos favoritos."
+					: "Usando todos os movimentos DarkCut.",
+		});
+	};
+
+	const autoEdit = () => {
+		const result = autoEditWithNarration({
+			editor,
+			refs: selectedElements,
+			motionPresets: motionFavorites,
+			transitionPresets: favorites,
+			intensity: effectIntensity,
+		});
+		if (!result.narrationSeconds) {
+			toast.error(
+				"Adicione a narração à timeline antes de usar o Auto Edit.",
+			);
+			return;
+		}
+		if (!result.changed) {
+			toast.error("Não encontrei imagens ou vídeos para editar.");
+			return;
+		}
+		toast.success(`DarkCut Auto Edit concluído em ${result.changed} item(ns).`, {
+			description: `Sincronizado com ${Math.round(
+				result.narrationSeconds,
+			)}s de narração + ${result.motions} movimentos + ${result.transitions} transições.`,
+		});
 	};
 
 	const clearTransitions = () => {
