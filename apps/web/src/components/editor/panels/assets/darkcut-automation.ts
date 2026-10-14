@@ -1,7 +1,7 @@
 import type { EditorCore } from "@/core";
 import { InsertElementCommand } from "@/commands/timeline";
 import { buildElementFromMedia, buildTextElement } from "@/timeline/element-utils";
-import { mediaTimeFromSeconds } from "@/wasm";
+import { mediaTimeFromSeconds, mediaTimeToSeconds } from "@/wasm";
 
 export type DarkCutScene = {
 	id: string;
@@ -154,7 +154,7 @@ export function assembleScenesOnTimeline({
 	addCaptions: boolean;
 }) {
 	const media = editor.media.getAssets();
-	let cursorSeconds = editor.timeline.getTotalDuration() / 1_000_000;
+	let cursorSeconds = mediaTimeToSeconds({ time: editor.timeline.getTotalDuration() });
 	let inserted = 0;
 
 	for (const scene of scenes) {
