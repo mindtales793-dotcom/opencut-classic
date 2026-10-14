@@ -16,6 +16,7 @@ import {
 import { HugeiconsIcon, type IconSvgElement } from "@hugeicons/react";
 
 export const TAB_KEYS = [
+	"production",
 	"media",
 	"sounds",
 	"text",
@@ -36,6 +37,10 @@ const createHugeiconsIcon =
 	);
 
 export const tabs = {
+	production: {
+		icon: createHugeiconsIcon({ icon: MagicWand05Icon }),
+		label: "Produção",
+	},
 	media: {
 		icon: createHugeiconsIcon({ icon: Folder03Icon }),
 		label: "Media",
@@ -99,7 +104,7 @@ interface AssetsPanelStore {
 export const useAssetsPanelStore = create<AssetsPanelStore>()(
 	persist(
 		(set) => ({
-			activeTab: "media",
+			activeTab: "production",
 			setActiveTab: (tab) => set({ activeTab: tab }),
 			highlightMediaId: null,
 			requestRevealMedia: (mediaId) =>
