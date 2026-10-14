@@ -49,6 +49,7 @@ import { OcRippleIcon } from "@/components/icons";
 import { GraphEditorPopover } from "./graph-editor/popover";
 import { PopoverTrigger } from "@/components/ui/popover";
 import { useGraphEditorController } from "./graph-editor/use-controller";
+import { DarkCutTimelineControls } from "./darkcut-timeline-controls";
 
 export function TimelineToolbar({
 	zoomLevel,
@@ -161,6 +162,8 @@ function ToolbarLeftSection() {
 						handleAction({ action: "split-right", event })
 					}
 				/>
+
+				<DarkCutTimelineControls />
 
 				<ToolbarButton
 					icon={
