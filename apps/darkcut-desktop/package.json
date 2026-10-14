@@ -1,0 +1,47 @@
+{
+  "name": "@darkcut/desktop",
+  "version": "0.1.0",
+  "private": true,
+  "description": "DarkCut Studio desktop app for Windows",
+  "main": "main.cjs",
+  "scripts": {
+    "stage": "node scripts/stage.mjs",
+    "dev": "electron .",
+    "dist:win": "electron-builder --win"
+  },
+  "devDependencies": {
+    "electron": "^38.0.0",
+    "electron-builder": "^26.0.12"
+  },
+  "build": {
+    "appId": "com.darkcut.studio",
+    "productName": "DarkCut Studio",
+    "artifactName": "DarkCut-Studio-${version}-${arch}.${ext}",
+    "directories": {
+      "output": "dist"
+    },
+    "files": [
+      "main.cjs",
+      "package.json"
+    ],
+    "extraResources": [
+      {
+        "from": "runtime",
+        "to": "runtime"
+      }
+    ],
+    "win": {
+      "target": [
+        "nsis",
+        "portable"
+      ]
+    },
+    "nsis": {
+      "oneClick": false,
+      "allowToChangeInstallationDirectory": true,
+      "createDesktopShortcut": true,
+      "createStartMenuShortcut": true,
+      "shortcutName": "DarkCut Studio"
+    }
+  }
+}
