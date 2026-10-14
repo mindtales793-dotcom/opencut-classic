@@ -12,7 +12,6 @@ import {
 	mediaTimeFromSeconds,
 	mediaTimeToSeconds,
 	roundMediaTime,
-	ZERO_MEDIA_TIME,
 } from "@/wasm";
 import { clampRetimeRate } from "@/retime/rate";
 
@@ -45,17 +44,17 @@ function getVisualTargets({
 }): VisualTarget[] {
 	const selected = editor.timeline
 		.getElementsWithTracks({ elements: refs })
-		.filter(
-			(item): item is {
-				track: (typeof item)["track"];
-				element: Extract<TimelineElement, { type: "image" | "video" }>;
-			} => item.element.type === "image" || item.element.type === "video",
-		)
-		.map(({ track, element }) => ({
-			trackId: track.id,
-			elementId: element.id,
-			element,
-		}));
+		.flatMap(({ track, element }) =>
+			element.type === "image" || element.type === "video"
+				? [
+						{
+							trackId: track.id,
+							elementId: element.id,
+							element,
+						},
+					]
+				: [],
+		);
 
 	if (selected.length > 0 || !fallbackToAll) {
 		return selected.sort((a, b) => a.element.startTime - b.element.startTime);
@@ -405,7 +404,8 @@ export function applyRandomTransitions({
 
 	editor.timeline.updateElements({
 		updates: targets.map((target, index) => {
-			const preset = pool[index % pool.length] ?? pool[0];
+			const preset =
+				pool[Math.floor(Math.random() * pool.length)] ?? pool[index % pool.length] ?? pool[0];
 			return {
 				trackId: target.trackId,
 				elementId: target.elementId,
