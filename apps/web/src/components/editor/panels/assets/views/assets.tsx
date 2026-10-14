@@ -1,7 +1,7 @@
 "use client";
 
 import Image from "next/image";
-import { useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { PanelView } from "@/components/editor/panels/assets/views/base-panel";
 import { MediaDragOverlay } from "@/components/editor/panels/assets/drag-overlay";
 import { DraggableItem } from "@/components/editor/panels/assets/draggable-item";
@@ -26,7 +26,7 @@ import {
 	TooltipTrigger,
 } from "@/components/ui/tooltip";
 import { DEFAULT_NEW_ELEMENT_DURATION } from "@/timeline/creation";
-import { mediaTimeFromSeconds, type MediaTime } from "@/wasm";
+import { addMediaTime, mediaTimeFromSeconds, type MediaTime } from "@/wasm";
 import { useEditor } from "@/editor/use-editor";
 import { useFileUpload } from "@/media/use-file-upload";
 import { invokeAction } from "@/actions";
@@ -46,6 +46,7 @@ import {
 	useAssetsPanelStore,
 } from "@/components/editor/panels/assets/assets-panel-store";
 import { MASKABLE_ELEMENT_TYPES } from "@/timeline";
+import { useTimelineStore } from "@/timeline/timeline-store";
 import type { MediaAsset } from "@/media/types";
 import { cn } from "@/utils/ui";
 import {
@@ -76,7 +77,11 @@ export function MediaView() {
 
 	const [isProcessing, setIsProcessing] = useState(false);
 	const [progress, setProgress] = useState(0);
+	const [batchSelectedIds, setBatchSelectedIds] = useState<string[]>([]);
 	const folderInputRef = useRef<HTMLInputElement>(null);
+	const imageDurationSeconds = useTimelineStore(
+		(state) => state.darkcutDurationSeconds,
+	);
 
 	const processFiles = async ({ files }: { files: File[] }) => {
 		if (!files || files.length === 0) return;
@@ -222,6 +227,90 @@ export function MediaView() {
 		return filteredMediaItems.map((item) => item.id);
 	}, [filteredMediaItems]);
 
+	const batchSelectableItems = useMemo(
+		() =>
+			filteredMediaItems.filter(
+				(item) => item.type === "image" || item.type === "video",
+			),
+		[filteredMediaItems],
+	);
+	const batchSelectableIds = useMemo(
+		() => batchSelectableItems.map((item) => item.id),
+		[batchSelectableItems],
+	);
+	const batchSelectedSet = useMemo(
+		() => new Set(batchSelectedIds),
+		[batchSelectedIds],
+	);
+	const allBatchSelected =
+		batchSelectableIds.length > 0 &&
+		batchSelectableIds.every((id) => batchSelectedSet.has(id));
+	const someBatchSelected = batchSelectedIds.length > 0;
+
+	useEffect(() => {
+		const available = new Set(batchSelectableIds);
+		setBatchSelectedIds((current) =>
+			current.filter((id) => available.has(id)),
+		);
+	}, [batchSelectableIds]);
+
+	const toggleBatchSelection = (id: string) => {
+		setBatchSelectedIds((current) =>
+			current.includes(id)
+				? current.filter((candidate) => candidate !== id)
+				: [...current, id],
+		);
+	};
+
+	const toggleSelectAll = () => {
+		setBatchSelectedIds(allBatchSelected ? [] : batchSelectableIds);
+	};
+
+	const addSelectedToTimeline = () => {
+		const selectedSet = new Set(batchSelectedIds);
+		const selectedItems = batchSelectableItems.filter((item) =>
+			selectedSet.has(item.id),
+		);
+		if (selectedItems.length === 0) {
+			toast.error("Selecione uma ou mais imagens/vídeos.");
+			return;
+		}
+
+		let cursor = editor.playback.getCurrentTime();
+		for (const asset of selectedItems) {
+			const duration =
+				asset.type === "image"
+					? mediaTimeFromSeconds({
+							seconds: Math.max(0.1, imageDurationSeconds),
+						})
+					: asset.duration != null
+						? mediaTimeFromSeconds({ seconds: asset.duration })
+						: DEFAULT_NEW_ELEMENT_DURATION;
+			const element = buildElementFromMedia({
+				mediaId: asset.id,
+				mediaType: asset.type,
+				name: asset.name,
+				duration,
+				startTime: cursor,
+			});
+			editor.timeline.insertElement({
+				element,
+				placement: { mode: "auto" },
+			});
+			cursor = addMediaTime({ a: cursor, b: duration });
+		}
+
+		toast.success(
+			`${selectedItems.length} item(ns) adicionados em sequência à timeline.`,
+			{
+				description: `Imagens usam ${Math.max(
+					0.1,
+					imageDurationSeconds,
+				).toFixed(1)}s por padrão.`,
+			},
+		);
+	};
+
 	return (
 		<>
 			<input {...fileInputProps} />
@@ -238,6 +327,11 @@ export function MediaView() {
 						onSort={handleSort}
 						onImport={openFilePicker}
 						onImportFolder={openFolderPicker}
+						selectedCount={batchSelectedIds.length}
+						allSelected={allBatchSelected}
+						someSelected={someBatchSelected}
+						onToggleSelectAll={toggleSelectAll}
+						onAddSelected={addSelectedToTimeline}
 					/>
 				}
 				className={cn(isDragOver && "bg-accent/30")}
@@ -263,6 +357,8 @@ export function MediaView() {
 							items={filteredMediaItems}
 							mode={mediaViewMode}
 							onRemove={handleRemove}
+							batchSelectedIds={batchSelectedIds}
+							onToggleBatchSelection={toggleBatchSelection}
 						/>
 					</SelectableSurface>
 				)}
@@ -378,6 +474,8 @@ function MediaItemList({
 	items,
 	mode,
 	onRemove,
+	batchSelectedIds,
+	onToggleBatchSelection,
 }: {
 	items: MediaAsset[];
 	mode: MediaViewMode;
@@ -388,6 +486,8 @@ function MediaItemList({
 		event: React.MouseEvent;
 		ids: string[];
 	}) => void;
+	batchSelectedIds: string[];
+	onToggleBatchSelection: (id: string) => void;
 }) {
 	const isGrid = mode === "grid";
 
@@ -401,6 +501,22 @@ function MediaItemList({
 			{items.map((item) => (
 				<MediaItemWithContextMenu item={item} onRemove={onRemove} key={item.id}>
 					<SelectableItem className={cn(!isGrid && "w-full")} id={item.id}>
+						{item.type === "image" || item.type === "video" ? (
+							<label
+								className="absolute top-1 left-1 z-20 flex size-6 cursor-pointer items-center justify-center rounded bg-background/90 shadow-sm backdrop-blur"
+								title="Selecionar para adicionar em lote"
+								onMouseDown={(event) => event.stopPropagation()}
+								onClick={(event) => event.stopPropagation()}
+							>
+								<input
+									type="checkbox"
+									checked={batchSelectedIds.includes(item.id)}
+									onChange={() => onToggleBatchSelection(item.id)}
+									className="size-4 accent-primary"
+									aria-label={`Selecionar ${item.name}`}
+								/>
+							</label>
+						) : null}
 						<MediaAssetDraggable
 							item={item}
 							preview={
@@ -550,6 +666,11 @@ function MediaActions({
 	onSort,
 	onImport,
 	onImportFolder,
+	selectedCount,
+	allSelected,
+	someSelected,
+	onToggleSelectAll,
+	onAddSelected,
 }: {
 	mediaViewMode: MediaViewMode;
 	setMediaViewMode: (mode: MediaViewMode) => void;
@@ -559,6 +680,11 @@ function MediaActions({
 	onSort: ({ key }: { key: MediaSortKey }) => void;
 	onImport: () => void;
 	onImportFolder: () => void;
+	selectedCount: number;
+	allSelected: boolean;
+	someSelected: boolean;
+	onToggleSelectAll: () => void;
+	onAddSelected: () => void;
 }) {
 	return (
 		<div className="flex gap-1.5">
@@ -642,6 +768,29 @@ function MediaActions({
 					</TooltipContent>
 				</Tooltip>
 			</TooltipProvider>
+			<label className="flex h-8 cursor-pointer items-center gap-1.5 rounded-md border px-2 text-xs">
+				<input
+					type="checkbox"
+					checked={allSelected}
+					ref={(input) => {
+						if (input) input.indeterminate = someSelected && !allSelected;
+					}}
+					onChange={onToggleSelectAll}
+					className="size-4 accent-primary"
+					aria-label="Selecionar todas as imagens e vídeos"
+				/>
+				Selecionar todas
+			</label>
+			<Button
+				variant={selectedCount > 0 ? "default" : "outline"}
+				onClick={onAddSelected}
+				disabled={isProcessing || selectedCount === 0}
+				size="sm"
+				className="items-center justify-center gap-1.5"
+				title="Adicionar selecionadas em sequência na timeline"
+			>
+				+ Timeline{selectedCount > 0 ? ` (${selectedCount})` : ""}
+			</Button>
 			<Button
 				variant="outline"
 				onClick={onImportFolder}
