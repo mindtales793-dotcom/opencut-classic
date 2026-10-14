@@ -20,6 +20,8 @@ import {
 	useDarkCutProductionStore,
 } from "../darkcut-production-store";
 
+const DARKCUT_SAMPLE_SCRIPT = `Você trabalhou meses para juntar dinheiro. Todo mundo dizia que a única saída era financiar um carro novo e assumir parcelas por anos. Mas você resolveu fazer o contrário. Em vez de correr atrás do carro mais caro, você começou a pesquisar, comparar preços e guardar cada real. Enquanto seus amigos trocavam de carro e aumentavam as dívidas, você continuou focado. Até que apareceu uma oportunidade: um carro simples, bem cuidado e que cabia no seu orçamento. Você pagou à vista. No começo, ninguém entendeu. Alguns até riram. Meses depois, enquanto eles ainda reclamavam das parcelas, seguro e juros, você percebeu que tinha comprado mais do que um carro. Tinha comprado tranquilidade. A escolha que parecia pequena mudou completamente a forma como você enxergava dinheiro.`;
+
 const modeCards: Array<{
 	key: DarkCutProductionMode;
 	title: string;
@@ -279,9 +281,9 @@ export function DarkCutProductionView() {
 			<section className="mt-3 space-y-3 rounded-md border bg-card p-3">
 				<div className="flex items-center justify-between gap-2">
 					<div>
-						<div className="text-sm font-medium">Narração · Fish Audio</div>
+						<div className="text-sm font-medium">Narrador · Fish Audio</div>
 						<div className="text-[0.7rem] text-muted-foreground">
-							S2.1 Pro Free · a chave fica somente no servidor
+							Escolha a voz; a geração usa o roteiro da seção abaixo.
 						</div>
 					</div>
 					<span className="rounded bg-primary/10 px-2 py-1 text-[0.65rem] font-medium text-primary">
@@ -355,7 +357,12 @@ export function DarkCutProductionView() {
 
 			<section className="mt-3 space-y-3 rounded-md border bg-card p-3">
 				<div className="flex items-center justify-between gap-2">
-					<div className="text-sm font-medium">Roteiro e cenas</div>
+					<div>
+					<div className="text-sm font-medium">Roteiro</div>
+					<div className="text-[0.7rem] text-muted-foreground">
+						O mesmo roteiro é usado para a narração e para criar as cenas.
+					</div>
+				</div>
 					<label className="flex items-center gap-2 text-xs text-muted-foreground">
 						<span>Duração</span>
 						<input
@@ -373,15 +380,33 @@ export function DarkCutProductionView() {
 						<span>s</span>
 					</label>
 				</div>
+				<div className="flex justify-end">
+					<Button
+						variant="secondary"
+						size="sm"
+						onClick={() => setScript(DARKCUT_SAMPLE_SCRIPT)}
+					>
+						Usar roteiro de teste
+					</Button>
+				</div>
 				<textarea
 					value={script}
 					onChange={(event) => setScript(event.target.value)}
-					placeholder="Cole aqui o roteiro completo..."
+					placeholder="Cole ou escreva aqui o roteiro completo que será narrado..."
 					className="min-h-36 w-full resize-y rounded-md border bg-background p-3 text-sm text-foreground outline-none focus:border-primary"
 				/>
-				<Button className="w-full" onClick={generateScenes}>
-					Gerar cenas e prompts
-				</Button>
+				<div className="grid grid-cols-2 gap-2">
+					<Button
+						variant="secondary"
+						disabled={isGeneratingNarration || !script.trim()}
+						onClick={generateNarration}
+					>
+						{isGeneratingNarration ? "Gerando..." : "🎙️ Gerar narração"}
+					</Button>
+					<Button onClick={generateScenes}>
+						Gerar cenas e prompts
+					</Button>
+				</div>
 				{scenes.length > 0 && (
 					<div className="grid grid-cols-4 gap-2 text-center text-[0.7rem]">
 						<div className="rounded-md border p-2">
