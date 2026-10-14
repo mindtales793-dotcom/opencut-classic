@@ -11,12 +11,14 @@ import { StickersView } from "@/stickers/components/assets-view";
 import { TextView } from "@/text/components/assets-view";
 import { EffectsView } from "@/effects/components/assets-view";
 import { DarkCutProductionView } from "./views/darkcut-production";
+import { DarkCutSyncView } from "./views/darkcut-sync";
 
 export function AssetsPanel() {
 	const { activeTab } = useAssetsPanelStore();
 
 	const viewMap: Record<Tab, React.ReactNode> = {
 		production: <DarkCutProductionView />,
+		sync: <DarkCutSyncView />,
 		media: <MediaView />,
 		sounds: <SoundsView />,
 		text: <TextView />,
