@@ -28,6 +28,10 @@
       {
         "from": "runtime",
         "to": "runtime"
+      },
+      {
+        "from": "tools",
+        "to": "tools"
       }
     ],
     "win": {
