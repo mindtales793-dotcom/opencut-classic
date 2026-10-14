@@ -1,0 +1,50 @@
+name: DarkCut Windows App
+
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - darkcut-studio
+    paths:
+      - "apps/web/**"
+      - "apps/darkcut-desktop/**"
+      - "package.json"
+      - "bun.lock"
+      - ".github/workflows/darkcut-windows.yml"
+
+jobs:
+  build-windows:
+    runs-on: windows-latest
+    timeout-minutes: 45
+    env:
+      CSC_IDENTITY_AUTO_DISCOVERY: "false"
+      NEXT_TELEMETRY_DISABLED: "1"
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Bun
+        uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: 1.2.18
+
+      - name: Install dependencies
+        run: bun install
+
+      - name: Build DarkCut web runtime
+        run: bun run build:web
+
+      - name: Stage desktop runtime
+        run: bun --cwd apps/darkcut-desktop run stage
+
+      - name: Build Windows EXE
+        run: bun --cwd apps/darkcut-desktop run dist:win
+
+      - name: Upload DarkCut Studio EXE
+        uses: actions/upload-artifact@v4
+        with:
+          name: DarkCut-Studio-Windows
+          path: |
+            apps/darkcut-desktop/dist/*.exe
+          if-no-files-found: error
