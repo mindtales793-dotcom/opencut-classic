@@ -19,6 +19,15 @@ jobs:
     env:
       CSC_IDENTITY_AUTO_DISCOVERY: "false"
       NEXT_TELEMETRY_DISABLED: "1"
+      NEXT_PUBLIC_SITE_URL: "http://127.0.0.1:3217"
+      NEXT_PUBLIC_MARBLE_API_URL: "http://127.0.0.1:3217"
+      DATABASE_URL: "postgresql://darkcut:darkcut@127.0.0.1:5432/darkcut"
+      BETTER_AUTH_SECRET: "darkcut-local-desktop-build-secret-2026"
+      UPSTASH_REDIS_REST_URL: "http://127.0.0.1:3217"
+      UPSTASH_REDIS_REST_TOKEN: "darkcut-local-disabled"
+      MARBLE_WORKSPACE_KEY: "darkcut-local-disabled"
+      FREESOUND_CLIENT_ID: "darkcut-local-disabled"
+      FREESOUND_API_KEY: "darkcut-local-disabled"
 
     steps:
       - name: Checkout
