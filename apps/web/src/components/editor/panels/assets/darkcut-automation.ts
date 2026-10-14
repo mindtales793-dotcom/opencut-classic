@@ -1,7 +1,7 @@
 import type { EditorCore } from "@/core";
 import { InsertElementCommand } from "@/commands/timeline";
 import { buildElementFromMedia, buildTextElement } from "@/timeline/element-utils";
-import { mediaTimeFromSeconds, mediaTimeToSeconds } from "@/wasm";
+import { mediaTimeFromSeconds, mediaTimeToSeconds, ZERO_MEDIA_TIME } from "@/wasm";
 
 export type DarkCutScene = {
 	id: string;
@@ -203,6 +203,37 @@ export function assembleScenesOnTimeline({
 	}
 
 	return inserted;
+}
+
+export function addNarrationAssetToTimeline({
+	mediaId,
+	editor,
+}: {
+	mediaId: string;
+	editor: EditorCore;
+}) {
+	const asset = editor.media.getAssets().find((item) => item.id === mediaId);
+	if (!asset || asset.type !== "audio") {
+		throw new Error("Narração não encontrada na biblioteca.");
+	}
+	if (!asset.duration || asset.duration <= 0) {
+		throw new Error("Não foi possível medir a duração da narração.");
+	}
+
+	editor.command.execute({
+		command: new InsertElementCommand({
+			element: buildElementFromMedia({
+				mediaId: asset.id,
+				mediaType: "audio",
+				name: asset.name,
+				duration: mediaTimeFromSeconds({ seconds: asset.duration }),
+				startTime: ZERO_MEDIA_TIME,
+			}),
+			placement: { mode: "auto", trackType: "audio" },
+		}),
+	});
+
+	return asset.duration;
 }
 
 export function downloadFlowZikaQueue(scenes: DarkCutScene[]) {
