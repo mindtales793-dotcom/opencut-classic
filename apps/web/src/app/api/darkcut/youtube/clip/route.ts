@@ -124,68 +124,118 @@ export async function POST(request: Request) {
 	}
 
 	let workDir = "";
+	const attemptedVideoIds: string[] = [];
+	let lastDownloadError: unknown = null;
+
 	try {
-		const candidate = await findCandidate({ query, excluded });
-		if (!candidate?.id) {
-			return NextResponse.json(
-				{
-					error: "Nenhum outro vídeo foi encontrado para esta busca.",
-					exhausted: true,
-				},
-				{ status: 404 },
-			);
+		for (let attempt = 0; attempt < 5; attempt += 1) {
+			const candidate = await findCandidate({ query, excluded });
+			if (!candidate?.id) {
+				return NextResponse.json(
+					{
+						error:
+							attemptedVideoIds.length > 0
+								? "Os resultados encontrados falharam e não há outro vídeo disponível para esta busca."
+								: "Nenhum outro vídeo foi encontrado para esta busca.",
+						exhausted: true,
+						attemptedVideoIds,
+					},
+					{ status: 404 },
+				);
+			}
+
+			excluded.add(candidate.id);
+			attemptedVideoIds.push(candidate.id);
+			const videoUrl =
+				typeof candidate.webpage_url === "string" && candidate.webpage_url
+					? candidate.webpage_url
+					: `https://www.youtube.com/watch?v=${candidate.id}`;
+
+			try {
+				workDir = await mkdtemp(join(tmpdir(), "darkcut-youtube-"));
+				const outputTemplate = join(workDir, "clip.%(ext)s");
+				await runYtDlp(
+					[
+						"--no-playlist",
+						"--no-warnings",
+						"--download-sections",
+						`*0-${durationSeconds}`,
+						"--force-keyframes-at-cuts",
+						"-f",
+						"best[ext=mp4]/best",
+						"--merge-output-format",
+						"mp4",
+						"-o",
+						outputTemplate,
+						videoUrl,
+					],
+					180_000,
+				);
+
+				const files = (await readdir(workDir)).filter((name) =>
+					name.startsWith("clip."),
+				);
+				const selected =
+					files.find((name) => name.endsWith(".mp4")) ?? files[0];
+				if (!selected) {
+					throw new Error(
+						"O download terminou sem gerar um arquivo de vídeo.",
+					);
+				}
+
+				const bytes = await readFile(join(workDir, selected));
+				const safeTitle =
+					(candidate.title || `YouTube ${candidate.id}`)
+						.replace(/[\r\n"]/g, " ")
+						.slice(0, 140) || `YouTube ${candidate.id}`;
+
+				return new Response(bytes, {
+					status: 200,
+					headers: {
+						"Content-Type": selected.endsWith(".mp4")
+							? "video/mp4"
+							: "application/octet-stream",
+						"Cache-Control": "no-store",
+						"X-DarkCut-Video-Id": candidate.id,
+						"X-DarkCut-Video-Title": encodeURIComponent(safeTitle),
+						"X-DarkCut-Tried-Ids": attemptedVideoIds.join(","),
+					},
+				});
+			} catch (error) {
+				lastDownloadError = error;
+				console.warn(
+					`DarkCut YouTube candidate ${candidate.id} failed; trying another result.`,
+					error,
+				);
+			} finally {
+				if (workDir) {
+					await rm(workDir, { recursive: true, force: true }).catch(
+						() => undefined,
+					);
+					workDir = "";
+				}
+			}
 		}
 
-		const videoUrl =
-			typeof candidate.webpage_url === "string" && candidate.webpage_url
-				? candidate.webpage_url
-				: `https://www.youtube.com/watch?v=${candidate.id}`;
-
-		workDir = await mkdtemp(join(tmpdir(), "darkcut-youtube-"));
-		const outputTemplate = join(workDir, "clip.%(ext)s");
-		await runYtDlp(
-			[
-				"--no-playlist",
-				"--no-warnings",
-				"--download-sections",
-				`*0-${durationSeconds}`,
-				"--force-keyframes-at-cuts",
-				"-f",
-				"best[ext=mp4]/best",
-				"--merge-output-format",
-				"mp4",
-				"-o",
-				outputTemplate,
-				videoUrl,
-			],
-			180_000,
-		);
-
-		const files = (await readdir(workDir)).filter((name) => name.startsWith("clip."));
-		const selected = files.find((name) => name.endsWith(".mp4")) ?? files[0];
-		if (!selected) {
-			throw new Error("O download terminou sem gerar um arquivo de vídeo.");
-		}
-
-		const bytes = await readFile(join(workDir, selected));
-		const safeTitle =
-			(candidate.title || `YouTube ${candidate.id}`)
-				.replace(/[\r\n"]/g, " ")
-				.slice(0, 140) || `YouTube ${candidate.id}`;
-
-		return new Response(bytes, {
-			status: 200,
-			headers: {
-				"Content-Type": selected.endsWith(".mp4") ? "video/mp4" : "application/octet-stream",
-				"Cache-Control": "no-store",
-				"X-DarkCut-Video-Id": candidate.id,
-				"X-DarkCut-Video-Title": encodeURIComponent(safeTitle),
+		const message =
+			lastDownloadError instanceof Error
+				? lastDownloadError.message
+				: "Os primeiros resultados falharam durante o download.";
+		return NextResponse.json(
+			{
+				error:
+					"Não consegui baixar os primeiros resultados automaticamente. Você pode tentar novamente ou alterar a palavra-chave.",
+				detail: message.slice(0, 500),
+				attemptedVideoIds,
 			},
-		});
+			{ status: 502 },
+		);
 	} catch (error) {
 		console.error("DarkCut YouTube clip error:", error);
 		const message =
-			error instanceof Error ? error.message : "Falha ao buscar ou baixar o vídeo.";
+			error instanceof Error
+				? error.message
+				: "Falha ao buscar ou baixar o vídeo.";
 		const missingDependency =
 			/ENOENT|not found|não foi possível encontrar/i.test(message);
 		return NextResponse.json(
@@ -193,12 +243,16 @@ export async function POST(request: Request) {
 				error: missingDependency
 					? "O mecanismo interno de vídeos (yt-dlp/FFmpeg) ainda não está disponível neste runtime."
 					: message,
+				attemptedVideoIds,
 			},
 			{ status: missingDependency ? 503 : 502 },
 		);
 	} finally {
 		if (workDir) {
-			await rm(workDir, { recursive: true, force: true }).catch(() => undefined);
+			await rm(workDir, { recursive: true, force: true }).catch(
+				() => undefined,
+			);
 		}
 	}
+
 }
