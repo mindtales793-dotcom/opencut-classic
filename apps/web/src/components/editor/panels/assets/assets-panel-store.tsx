@@ -17,6 +17,7 @@ import { HugeiconsIcon, type IconSvgElement } from "@hugeicons/react";
 
 export const TAB_KEYS = [
 	"production",
+	"sync",
 	"media",
 	"sounds",
 	"text",
@@ -39,7 +40,11 @@ const createHugeiconsIcon =
 export const tabs = {
 	production: {
 		icon: createHugeiconsIcon({ icon: MagicWand05Icon }),
-		label: "Produção",
+		label: "Roteiro",
+	},
+	sync: {
+		icon: createHugeiconsIcon({ icon: ArrowRightDoubleIcon }),
+		label: "Sincronização",
 	},
 	media: {
 		icon: createHugeiconsIcon({ icon: Folder03Icon }),
