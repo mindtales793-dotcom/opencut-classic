@@ -7,7 +7,11 @@ import type {
 	ElementRef,
 	TimelineElement,
 } from "@/timeline/types";
-import type { DarkCutTransitionPreset } from "@/timeline/timeline-store";
+import type {
+	DarkCutEffectIntensity,
+	DarkCutMotionPreset,
+	DarkCutTransitionPreset,
+} from "@/timeline/timeline-store";
 import {
 	mediaTimeFromSeconds,
 	mediaTimeToSeconds,
@@ -25,6 +29,22 @@ export const DARKCUT_TRANSITIONS: Array<{
 	{ id: "slide-right", label: "Deslizar direita" },
 	{ id: "ken-burns", label: "Ken Burns" },
 	{ id: "pop", label: "Pop cinematográfico" },
+];
+
+export const DARKCUT_MOTIONS: Array<{
+	id: DarkCutMotionPreset;
+	label: string;
+}> = [
+	{ id: "zoom-in", label: "Zoom lento in" },
+	{ id: "zoom-out", label: "Zoom lento out" },
+	{ id: "pan-left-right", label: "Pan esquerda → direita" },
+	{ id: "pan-right-left", label: "Pan direita → esquerda" },
+	{ id: "pan-up-down", label: "Pan cima → baixo" },
+	{ id: "pan-down-up", label: "Pan baixo → cima" },
+	{ id: "ken-burns", label: "Ken Burns suave" },
+	{ id: "push-in", label: "Push-in cinematográfico" },
+	{ id: "pull-out", label: "Pull-out suave" },
+	{ id: "documentary", label: "Câmera documental" },
 ];
 
 type VisualTarget = {
@@ -355,6 +375,216 @@ function transitionAnimations({
 	}
 }
 
+
+function intensityFactor(intensity: DarkCutEffectIntensity) {
+	switch (intensity) {
+		case "strong":
+			return 1.65;
+		case "normal":
+			return 1;
+		case "soft":
+		default:
+			return 0.6;
+	}
+}
+
+function motionAnimations({
+	element,
+	preset,
+	intensity,
+}: {
+	element: Extract<TimelineElement, { type: "image" | "video" }>;
+	preset: DarkCutMotionPreset;
+	intensity: DarkCutEffectIntensity;
+}): ElementAnimations {
+	const duration = Math.max(
+		0.2,
+		mediaTimeToSeconds({ time: element.duration }),
+	);
+	const factor = intensityFactor(intensity);
+	const baseX = Number(element.params["transform.positionX"] ?? 0);
+	const baseY = Number(element.params["transform.positionY"] ?? 0);
+	const baseScaleX = Number(element.params["transform.scaleX"] ?? 1);
+	const baseScaleY = Number(element.params["transform.scaleY"] ?? 1);
+	const scaleSmall = 0.055 * factor;
+	const scaleLarge = 0.095 * factor;
+	const travel = 90 * factor;
+	const existing = element.animations ?? {};
+
+	const scale = (from: number, to: number) => ({
+		"transform.scaleX": scalarChannel(element.id, "motion-scaleX", [
+			[0, baseScaleX * from],
+			[duration, baseScaleX * to],
+		]),
+		"transform.scaleY": scalarChannel(element.id, "motion-scaleY", [
+			[0, baseScaleY * from],
+			[duration, baseScaleY * to],
+		]),
+	});
+
+	switch (preset) {
+		case "zoom-out":
+			return {
+				...existing,
+				...scale(1 + scaleLarge, 1),
+			};
+		case "pan-left-right":
+			return {
+				...existing,
+				"transform.positionX": scalarChannel(element.id, "motion-x", [
+					[0, baseX - travel],
+					[duration, baseX + travel],
+				]),
+				...scale(1 + scaleSmall, 1 + scaleSmall),
+			};
+		case "pan-right-left":
+			return {
+				...existing,
+				"transform.positionX": scalarChannel(element.id, "motion-x", [
+					[0, baseX + travel],
+					[duration, baseX - travel],
+				]),
+				...scale(1 + scaleSmall, 1 + scaleSmall),
+			};
+		case "pan-up-down":
+			return {
+				...existing,
+				"transform.positionY": scalarChannel(element.id, "motion-y", [
+					[0, baseY - travel],
+					[duration, baseY + travel],
+				]),
+				...scale(1 + scaleSmall, 1 + scaleSmall),
+			};
+		case "pan-down-up":
+			return {
+				...existing,
+				"transform.positionY": scalarChannel(element.id, "motion-y", [
+					[0, baseY + travel],
+					[duration, baseY - travel],
+				]),
+				...scale(1 + scaleSmall, 1 + scaleSmall),
+			};
+		case "ken-burns":
+			return {
+				...existing,
+				...scale(1, 1 + scaleLarge),
+				"transform.positionX": scalarChannel(element.id, "motion-x", [
+					[0, baseX - travel * 0.35],
+					[duration, baseX + travel * 0.35],
+				]),
+				"transform.positionY": scalarChannel(element.id, "motion-y", [
+					[0, baseY + travel * 0.2],
+					[duration, baseY - travel * 0.2],
+				]),
+			};
+		case "push-in":
+			return {
+				...existing,
+				...scale(1, 1 + scaleLarge * 1.25),
+			};
+		case "pull-out":
+			return {
+				...existing,
+				...scale(1 + scaleLarge * 1.25, 1),
+			};
+		case "documentary":
+			return {
+				...existing,
+				...scale(1.01, 1 + scaleSmall),
+				"transform.positionX": scalarChannel(element.id, "motion-x", [
+					[0, baseX - travel * 0.18],
+					[duration, baseX + travel * 0.18],
+				]),
+			};
+		case "zoom-in":
+		default:
+			return {
+				...existing,
+				...scale(1, 1 + scaleLarge),
+			};
+	}
+}
+
+export function applyMotionPreset({
+	editor,
+	refs,
+	preset,
+	intensity,
+	fallbackToAll = false,
+}: {
+	editor: EditorCore;
+	refs: ElementRef[];
+	preset: DarkCutMotionPreset;
+	intensity: DarkCutEffectIntensity;
+	fallbackToAll?: boolean;
+}) {
+	const targets = getVisualTargets({ editor, refs, fallbackToAll });
+	if (targets.length === 0) return 0;
+
+	editor.timeline.updateElements({
+		updates: targets.map((target) => ({
+			trackId: target.trackId,
+			elementId: target.elementId,
+			patch: {
+				animations: motionAnimations({
+					element: target.element,
+					preset,
+					intensity,
+				}),
+			},
+		})),
+	});
+	return targets.length;
+}
+
+export function applyRandomMotions({
+	editor,
+	refs,
+	presets,
+	intensity,
+}: {
+	editor: EditorCore;
+	refs: ElementRef[];
+	presets: DarkCutMotionPreset[];
+	intensity: DarkCutEffectIntensity;
+}) {
+	const targets = getVisualTargets({
+		editor,
+		refs,
+		fallbackToAll: true,
+	});
+	const pool =
+		presets.length > 0 ? presets : DARKCUT_MOTIONS.map((item) => item.id);
+	if (targets.length === 0 || pool.length === 0) return 0;
+
+	let previous: DarkCutMotionPreset | null = null;
+	editor.timeline.updateElements({
+		updates: targets.map((target, index) => {
+			const candidates =
+				pool.length > 1 && previous
+					? pool.filter((preset) => preset !== previous)
+					: pool;
+			const preset =
+				candidates[Math.floor(Math.random() * candidates.length)] ??
+				pool[index % pool.length] ??
+				pool[0];
+			previous = preset;
+			return {
+				trackId: target.trackId,
+				elementId: target.elementId,
+				patch: {
+					animations: motionAnimations({
+						element: target.element,
+						preset,
+						intensity,
+					}),
+				},
+			};
+		}),
+	});
+	return targets.length;
+}
+
 export function applyTransitionPreset({
 	editor,
 	refs,
@@ -455,4 +685,46 @@ export function clearDarkCutTransitions({
 		})),
 	});
 	return targets.length;
+}
+
+
+export function autoEditWithNarration({
+	editor,
+	refs,
+	motionPresets,
+	transitionPresets,
+	intensity,
+}: {
+	editor: EditorCore;
+	refs: ElementRef[];
+	motionPresets: DarkCutMotionPreset[];
+	transitionPresets: DarkCutTransitionPreset[];
+	intensity: DarkCutEffectIntensity;
+}) {
+	const sync = syncVisualsToNarration({ editor, refs });
+	if (!sync.changed || !sync.narrationSeconds) {
+		return {
+			...sync,
+			motions: 0,
+			transitions: 0,
+		};
+	}
+
+	const motions = applyRandomMotions({
+		editor,
+		refs,
+		presets: motionPresets,
+		intensity,
+	});
+	const transitions = applyRandomTransitions({
+		editor,
+		refs,
+		presets: transitionPresets,
+	});
+
+	return {
+		...sync,
+		motions,
+		transitions,
+	};
 }
