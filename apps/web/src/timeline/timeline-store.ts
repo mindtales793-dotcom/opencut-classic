@@ -6,6 +6,14 @@
 import { create } from "zustand";
 import { persist } from "zustand/middleware";
 
+export type DarkCutTransitionPreset =
+	| "fade"
+	| "zoom"
+	| "slide-left"
+	| "slide-right"
+	| "ken-burns"
+	| "pop";
+
 interface TimelineStore {
 	snappingEnabled: boolean;
 	toggleSnapping: () => void;
@@ -13,6 +21,12 @@ interface TimelineStore {
 	toggleRippleEditing: () => void;
 	expandedElementIds: Set<string>;
 	toggleElementExpanded: (elementId: string) => void;
+	darkcutDurationSeconds: number;
+	setDarkcutDurationSeconds: (seconds: number) => void;
+	darkcutTransitionPreset: DarkCutTransitionPreset;
+	setDarkcutTransitionPreset: (preset: DarkCutTransitionPreset) => void;
+	darkcutTransitionFavorites: DarkCutTransitionPreset[];
+	toggleDarkcutTransitionFavorite: (preset: DarkCutTransitionPreset) => void;
 }
 
 export const useTimelineStore = create<TimelineStore>()(
@@ -25,6 +39,26 @@ export const useTimelineStore = create<TimelineStore>()(
 			},
 
 			rippleEditingEnabled: false,
+
+			darkcutDurationSeconds: 5,
+			setDarkcutDurationSeconds: (darkcutDurationSeconds) =>
+				set({ darkcutDurationSeconds }),
+
+			darkcutTransitionPreset: "fade",
+			setDarkcutTransitionPreset: (darkcutTransitionPreset) =>
+				set({ darkcutTransitionPreset }),
+
+			darkcutTransitionFavorites: ["fade", "zoom"],
+			toggleDarkcutTransitionFavorite: (preset) =>
+				set((state) => ({
+					darkcutTransitionFavorites: state.darkcutTransitionFavorites.includes(
+						preset,
+					)
+						? state.darkcutTransitionFavorites.filter(
+								(candidate) => candidate !== preset,
+							)
+						: [...state.darkcutTransitionFavorites, preset],
+				})),
 
 			toggleRippleEditing: () => {
 				set((state) => ({
@@ -51,6 +85,9 @@ export const useTimelineStore = create<TimelineStore>()(
 			partialize: (state) => ({
 				snappingEnabled: state.snappingEnabled,
 				rippleEditingEnabled: state.rippleEditingEnabled,
+				darkcutDurationSeconds: state.darkcutDurationSeconds,
+				darkcutTransitionPreset: state.darkcutTransitionPreset,
+				darkcutTransitionFavorites: state.darkcutTransitionFavorites,
 			}),
 		},
 	),
