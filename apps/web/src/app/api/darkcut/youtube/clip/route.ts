@@ -1,7 +1,7 @@
+import { spawn } from "node:child_process";
 import { mkdtemp, readFile, readdir, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { spawn } from "node:child_process";
 import { NextResponse } from "next/server";
 
 export const runtime = "nodejs";
@@ -11,14 +11,23 @@ type ClipRequest = {
 	query?: unknown;
 	durationSeconds?: unknown;
 	excludeVideoIds?: unknown;
+	youtubeApiKeys?: unknown;
 };
 
 type SearchEntry = {
-	id?: string;
-	title?: string;
-	webpage_url?: string;
-	url?: string;
-	duration?: number;
+	id: string;
+	title: string;
+};
+
+type YouTubeSearchResponse = {
+	items?: Array<{
+		id?: { videoId?: string };
+		snippet?: { title?: string };
+	}>;
+	error?: {
+		message?: string;
+		errors?: Array<{ reason?: string }>;
+	};
 };
 
 function runYtDlp(args: string[], timeoutMs = 120_000) {
@@ -55,7 +64,8 @@ function runYtDlp(args: string[], timeoutMs = 120_000) {
 			} else {
 				reject(
 					new Error(
-						stderr.trim() || `yt-dlp encerrou com código ${code ?? "desconhecido"}.`,
+						stderr.trim() ||
+							`yt-dlp encerrou com código ${code ?? "desconhecido"}.`,
 					),
 				);
 			}
@@ -63,29 +73,81 @@ function runYtDlp(args: string[], timeoutMs = 120_000) {
 	});
 }
 
-async function findCandidate({
+function normalizeApiKeys(value: unknown) {
+	if (!Array.isArray(value)) return [];
+	return Array.from(
+		new Set(
+			value
+				.filter((key): key is string => typeof key === "string")
+				.map((key) => key.trim())
+				.filter(Boolean)
+				.slice(0, 3),
+		),
+	);
+}
+
+async function searchWithYouTubeApi({
 	query,
+	apiKeys,
 	excluded,
 }: {
 	query: string;
+	apiKeys: string[];
 	excluded: Set<string>;
-}) {
-	const { stdout } = await runYtDlp([
-		"--dump-single-json",
-		"--flat-playlist",
-		"--no-warnings",
-		"--playlist-end",
-		"12",
-		`ytsearch12:${query}`,
-	]);
+}): Promise<{ entries: SearchEntry[]; keyIndex: number }> {
+	let lastError = "A busca do YouTube falhou.";
 
-	const parsed = JSON.parse(stdout) as { entries?: SearchEntry[] };
-	const entries = Array.isArray(parsed.entries) ? parsed.entries : [];
-	return (
-		entries.find((entry) => {
-			const id = typeof entry.id === "string" ? entry.id : "";
-			return id && !excluded.has(id);
-		}) ?? null
+	for (let keyIndex = 0; keyIndex < apiKeys.length; keyIndex += 1) {
+		const params = new URLSearchParams({
+			part: "snippet",
+			type: "video",
+			maxResults: "25",
+			q: query,
+			safeSearch: "moderate",
+			key: apiKeys[keyIndex],
+		});
+
+		try {
+			const response = await fetch(
+				`https://www.googleapis.com/youtube/v3/search?${params.toString()}`,
+				{ cache: "no-store" },
+			);
+			const data = (await response.json()) as YouTubeSearchResponse;
+
+			if (!response.ok) {
+				const reason = data.error?.errors?.[0]?.reason || "";
+				const message = data.error?.message || "Chave recusada pelo YouTube.";
+				lastError = message;
+
+				const shouldRotate =
+					response.status === 403 ||
+					response.status === 429 ||
+					/quota|limit|key|forbidden|rate/i.test(`${reason} ${message}`);
+				if (shouldRotate) continue;
+				continue;
+			}
+
+			const entries = (data.items || [])
+				.map((item) => ({
+					id: item.id?.videoId || "",
+					title: item.snippet?.title || "",
+				}))
+				.filter(
+					(entry) =>
+						entry.id &&
+						/^[a-zA-Z0-9_-]{3,32}$/.test(entry.id) &&
+						!excluded.has(entry.id),
+				);
+
+			return { entries, keyIndex };
+		} catch (error) {
+			lastError =
+				error instanceof Error ? error.message : "Falha ao acessar o YouTube.";
+		}
+	}
+
+	throw new Error(
+		`Nenhuma das chaves da YouTube Data API respondeu corretamente. ${lastError}`,
 	);
 }
 
@@ -101,11 +163,13 @@ export async function POST(request: Request) {
 	const requestedDuration =
 		typeof body.durationSeconds === "number" ? body.durationSeconds : 3;
 	const durationSeconds = Math.max(1, Math.min(15, requestedDuration));
+	const apiKeys = normalizeApiKeys(body.youtubeApiKeys);
 	const excluded = new Set(
 		Array.isArray(body.excludeVideoIds)
 			? body.excludeVideoIds.filter(
 					(value): value is string =>
-						typeof value === "string" && /^[a-zA-Z0-9_-]{3,32}$/.test(value),
+						typeof value === "string" &&
+						/^[a-zA-Z0-9_-]{3,32}$/.test(value),
 				)
 			: [],
 	);
@@ -122,34 +186,42 @@ export async function POST(request: Request) {
 			{ status: 400 },
 		);
 	}
+	if (!apiKeys.length) {
+		return NextResponse.json(
+			{
+				error:
+					"Cadastre pelo menos uma chave da YouTube Data API v3 na aba Vídeos com Vídeos.",
+			},
+			{ status: 400 },
+		);
+	}
 
 	let workDir = "";
 	const attemptedVideoIds: string[] = [];
 	let lastDownloadError: unknown = null;
 
 	try {
-		for (let attempt = 0; attempt < 5; attempt += 1) {
-			const candidate = await findCandidate({ query, excluded });
-			if (!candidate?.id) {
-				return NextResponse.json(
-					{
-						error:
-							attemptedVideoIds.length > 0
-								? "Os resultados encontrados falharam e não há outro vídeo disponível para esta busca."
-								: "Nenhum outro vídeo foi encontrado para esta busca.",
-						exhausted: true,
-						attemptedVideoIds,
-					},
-					{ status: 404 },
-				);
-			}
+		const { entries, keyIndex } = await searchWithYouTubeApi({
+			query,
+			apiKeys,
+			excluded,
+		});
 
+		if (!entries.length) {
+			return NextResponse.json(
+				{
+					error: "Nenhum outro vídeo foi encontrado para esta busca.",
+					exhausted: true,
+					attemptedVideoIds,
+				},
+				{ status: 404 },
+			);
+		}
+
+		for (const candidate of entries.slice(0, 5)) {
 			excluded.add(candidate.id);
 			attemptedVideoIds.push(candidate.id);
-			const videoUrl =
-				typeof candidate.webpage_url === "string" && candidate.webpage_url
-					? candidate.webpage_url
-					: `https://www.youtube.com/watch?v=${candidate.id}`;
+			const videoUrl = `https://www.youtube.com/watch?v=${candidate.id}`;
 
 			try {
 				workDir = await mkdtemp(join(tmpdir(), "darkcut-youtube-"));
@@ -199,6 +271,7 @@ export async function POST(request: Request) {
 						"X-DarkCut-Video-Id": candidate.id,
 						"X-DarkCut-Video-Title": encodeURIComponent(safeTitle),
 						"X-DarkCut-Tried-Ids": attemptedVideoIds.join(","),
+						"X-DarkCut-YouTube-Key": String(keyIndex + 1),
 					},
 				});
 			} catch (error) {
@@ -217,15 +290,15 @@ export async function POST(request: Request) {
 			}
 		}
 
-		const message =
+		const detail =
 			lastDownloadError instanceof Error
 				? lastDownloadError.message
 				: "Os primeiros resultados falharam durante o download.";
 		return NextResponse.json(
 			{
 				error:
-					"Não consegui baixar os primeiros resultados automaticamente. Você pode tentar novamente ou alterar a palavra-chave.",
-				detail: message.slice(0, 500),
+					"Não consegui baixar os primeiros resultados automaticamente. Tente novamente para buscar outros candidatos.",
+				detail: detail.slice(0, 500),
 				attemptedVideoIds,
 			},
 			{ status: 502 },
@@ -254,5 +327,4 @@ export async function POST(request: Request) {
 			);
 		}
 	}
-
 }
