@@ -38,6 +38,28 @@ jobs:
       - name: Stage desktop runtime
         run: bun --cwd apps/darkcut-desktop run stage
 
+      - name: Bundle automatic video tools
+        shell: pwsh
+        run: |
+          $tools = Join-Path $PWD "apps/darkcut-desktop/tools"
+          New-Item -ItemType Directory -Force -Path $tools | Out-Null
+
+          Invoke-WebRequest -Uri "https://github.com/yt-dlp/yt-dlp/releases/latest/download/yt-dlp.exe" -OutFile (Join-Path $tools "yt-dlp.exe")
+
+          $ffmpegZip = Join-Path $env:RUNNER_TEMP "ffmpeg.zip"
+          $ffmpegDir = Join-Path $env:RUNNER_TEMP "ffmpeg"
+          Invoke-WebRequest -Uri "https://www.gyan.dev/ffmpeg/builds/ffmpeg-release-essentials.zip" -OutFile $ffmpegZip
+          Expand-Archive -Path $ffmpegZip -DestinationPath $ffmpegDir -Force
+
+          $ffmpeg = Get-ChildItem $ffmpegDir -Recurse -Filter "ffmpeg.exe" | Select-Object -First 1
+          $ffprobe = Get-ChildItem $ffmpegDir -Recurse -Filter "ffprobe.exe" | Select-Object -First 1
+          if (-not $ffmpeg -or -not $ffprobe) { throw "FFmpeg/FFprobe not found in downloaded package." }
+          Copy-Item $ffmpeg.FullName (Join-Path $tools "ffmpeg.exe") -Force
+          Copy-Item $ffprobe.FullName (Join-Path $tools "ffprobe.exe") -Force
+
+          & (Join-Path $tools "yt-dlp.exe") --version
+          & (Join-Path $tools "ffmpeg.exe") -version | Select-Object -First 1
+
       - name: Build Windows EXE
         run: bun --cwd apps/darkcut-desktop run dist:win
 
