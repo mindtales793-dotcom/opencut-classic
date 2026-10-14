@@ -18,6 +18,7 @@ interface DarkCutProductionState {
 	narrationPath: string;
 	srtPath: string;
 	selectedNarratorId: string;
+	youtubeApiKeys: string[];
 	useFlowZika: boolean;
 	useYoutube: boolean;
 	useStock: boolean;
@@ -31,6 +32,7 @@ interface DarkCutProductionState {
 	setNarrationPath: (value: string) => void;
 	setSrtPath: (value: string) => void;
 	setSelectedNarratorId: (value: string) => void;
+	setYoutubeApiKey: (index: number, value: string) => void;
 	setSource: (
 		key: "useFlowZika" | "useYoutube" | "useStock" | "useLocal",
 		value: boolean,
@@ -49,6 +51,7 @@ export const useDarkCutProductionStore = create<DarkCutProductionState>()(
 			narrationPath: "",
 			srtPath: "",
 			selectedNarratorId: "04736e4d6a644abab81e601a7d2ae4b9",
+			youtubeApiKeys: ["", "", ""],
 			useFlowZika: true,
 			useYoutube: true,
 			useStock: true,
@@ -62,6 +65,17 @@ export const useDarkCutProductionStore = create<DarkCutProductionState>()(
 			setNarrationPath: (narrationPath) => set({ narrationPath }),
 			setSrtPath: (srtPath) => set({ srtPath }),
 			setSelectedNarratorId: (selectedNarratorId) => set({ selectedNarratorId }),
+			setYoutubeApiKey: (index, value) =>
+				set((state) => {
+					const youtubeApiKeys = [
+						...(state.youtubeApiKeys?.length
+							? state.youtubeApiKeys
+							: ["", "", ""]),
+					];
+					while (youtubeApiKeys.length < 3) youtubeApiKeys.push("");
+					youtubeApiKeys[index] = value;
+					return { youtubeApiKeys: youtubeApiKeys.slice(0, 3) };
+				}),
 			setSource: (key, value) => set({ [key]: value }),
 			setStage: (stage) => set({ stage }),
 		}),
