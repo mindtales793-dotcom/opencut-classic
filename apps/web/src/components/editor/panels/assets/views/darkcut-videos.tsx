@@ -85,22 +85,35 @@ export function DarkCutVideosView() {
 			if (!response.ok) {
 				let message = "Falha ao buscar vídeo.";
 				let exhausted = false;
+				let attemptedVideoIds: string[] = [];
 				try {
 					const data = (await response.json()) as {
 						error?: string;
 						exhausted?: boolean;
+						attemptedVideoIds?: string[];
 					};
 					if (data.error) message = data.error;
 					exhausted = Boolean(data.exhausted);
+					attemptedVideoIds = Array.isArray(data.attemptedVideoIds)
+						? data.attemptedVideoIds
+						: [];
 				} catch {}
 				updateBlock(block.id, {
 					statusLabel: exhausted ? "exhausted" : "error",
 					error: message,
+					triedVideoIds: Array.from(
+						new Set([...block.triedVideoIds, ...attemptedVideoIds]),
+					),
 				});
 				return false;
 			}
 
 			const videoId = response.headers.get("X-DarkCut-Video-Id") || "";
+			const triedHeader = response.headers.get("X-DarkCut-Tried-Ids") || "";
+			const autoTriedIds = triedHeader
+				.split(",")
+				.map((value) => value.trim())
+				.filter(Boolean);
 			const rawTitle = response.headers.get("X-DarkCut-Video-Title") || "";
 			const title = rawTitle ? decodeURIComponent(rawTitle) : `YouTube ${videoId}`;
 			const blob = await response.blob();
@@ -118,9 +131,13 @@ export function DarkCutVideosView() {
 			});
 			if (!asset) throw new Error("Não foi possível salvar o clipe na Mídia Local.");
 
-			const tried = videoId
-				? Array.from(new Set([...block.triedVideoIds, videoId]))
-				: block.triedVideoIds;
+			const tried = Array.from(
+				new Set([
+					...block.triedVideoIds,
+					...autoTriedIds,
+					...(videoId ? [videoId] : []),
+				]),
+			);
 
 			updateBlock(block.id, {
 				statusLabel: "ready",
