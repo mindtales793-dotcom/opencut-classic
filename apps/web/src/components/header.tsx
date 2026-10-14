@@ -16,7 +16,7 @@ import {
 } from "@hugeicons/core-free-icons";
 import { HugeiconsIcon } from "@hugeicons/react";
 import { cn } from "@/utils/ui";
-import { DEFAULT_LOGO_URL, SITE_URL } from "@/site/brand";
+import { SITE_URL } from "@/site/brand";
 import { SOCIAL_LINKS } from "@/site/social";
 import {
 	ContextMenu,
@@ -30,70 +30,20 @@ export function Header() {
 	const closeMenu = () => setIsMenuOpen(false);
 
 	const links = [
-		{
-			label: "Roadmap",
-			href: "/roadmap",
-		},
-		{
-			label: "Contributors",
-			href: "/contributors",
-		},
-		{
-			label: "Sponsors",
-			href: "/sponsors",
-		},
-		{
-			label: "Blog",
-			href: "/blog",
-		},
+		{ label: "Projetos", href: "/projects" },
+		{ label: "Produção", href: "/projects" },
 	];
 
 	return (
 		<header className="bg-background shadow-background/85 sticky top-0 z-10 shadow-[0_30px_35px_15px_rgba(0,0,0,1)]">
 			<div className="relative flex w-full items-center justify-between px-6 pt-4">
 				<div className="relative z-10 flex items-center gap-6">
-					<ContextMenu>
-						<ContextMenuTrigger asChild>
-							<Link href="/" className="flex items-center gap-3">
-								<Image
-									src={DEFAULT_LOGO_URL}
-									alt="OpenCut Logo"
-									className="invert dark:invert-0"
-									width={32}
-									height={32}
-								/>
-							</Link>
-						</ContextMenuTrigger>
-						<ContextMenuContent>
-							<ContextMenuItem
-								onClick={async () => {
-									const res = await fetch(DEFAULT_LOGO_URL);
-									const svg = await res.text();
-									await navigator.clipboard.writeText(svg);
-								}}
-							>
-								<HugeiconsIcon icon={Copy01Icon} />
-								Copy SVG
-							</ContextMenuItem>
-							<ContextMenuItem
-								onClick={() => {
-									const a = document.createElement("a");
-									a.href = DEFAULT_LOGO_URL;
-									a.download = "opencut-logo.svg";
-									a.click();
-								}}
-							>
-								<HugeiconsIcon icon={Download01Icon} />
-								Download SVG
-							</ContextMenuItem>
-							<Link href="/brand">
-								<ContextMenuItem>
-									<HugeiconsIcon icon={LinkSquare02Icon} />
-									Brand assets
-								</ContextMenuItem>
-							</Link>
-						</ContextMenuContent>
-					</ContextMenu>
+					<Link href="/" className="flex items-center gap-3">
+						<div className="flex size-9 items-center justify-center rounded-lg bg-primary text-sm font-black text-primary-foreground">
+							DC
+						</div>
+						<span className="hidden text-sm font-semibold sm:inline">DarkCut Studio</span>
+					</Link>
 
 					<nav className="hidden items-center gap-4 md:flex">
 						{links.map((link) => (
@@ -118,12 +68,6 @@ export function Header() {
 						</Button>
 					</div>
 					<div className="hidden items-center gap-3 md:flex">
-						<Link href={SOCIAL_LINKS.github}>
-							<Button className="bg-background text-sm" variant="outline">
-								<HugeiconsIcon icon={GithubIcon} className="size-4" />
-								40k+
-							</Button>
-						</Link>
 						<Link href="/projects">
 							<Button className="text-sm">
 								Projects
