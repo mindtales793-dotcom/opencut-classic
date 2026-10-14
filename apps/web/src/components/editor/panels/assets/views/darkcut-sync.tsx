@@ -64,7 +64,7 @@ export function DarkCutSyncView() {
 					.replace(/[^a-zA-Z0-9-_]+/g, "-")
 					.replace(/^-+|-+$/g, "")
 					.slice(0, 60) || "darkcut";
-			const fileName = `${cleanProject}-${selected?.name ?? "narracao"}.mp3`;
+			const fileName = `DARKCUT-NARRACAO-${cleanProject}-${selected?.name ?? "voz"}.mp3`;
 			const file = new File([blob], fileName, {
 				type: blob.type || "audio/mpeg",
 			});
