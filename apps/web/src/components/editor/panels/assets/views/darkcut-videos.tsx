@@ -141,17 +141,23 @@ export function DarkCutVideosView() {
 	};
 
 	const searchAll = async () => {
-		if (!blocks.length) {
-			analyze();
+		const currentBlocks = blocks.length
+			? blocks
+			: createVideoBlocks(script, sceneSeconds);
+		if (!currentBlocks.length) {
+			toast.error("Cole o roteiro na aba Roteiro antes de buscar vídeos.");
+			setActiveTab("production");
 			return;
 		}
+		if (!blocks.length) setBlocks(currentBlocks);
+
 		setIsRunning(true);
 		let success = 0;
 		try {
-			for (const block of blocks) {
+			for (const block of currentBlocks) {
 				if (await downloadForBlock(block)) success += 1;
 			}
-			toast.success(`${success} de ${blocks.length} blocos receberam vídeos.`);
+			toast.success(`${success} de ${currentBlocks.length} blocos receberam vídeos.`);
 		} finally {
 			setIsRunning(false);
 		}
@@ -239,7 +245,7 @@ export function DarkCutVideosView() {
 					<Button variant="secondary" onClick={analyze} disabled={!script.trim()}>
 						Separar em blocos
 					</Button>
-					<Button onClick={searchAll} disabled={isRunning || !blocks.length}>
+					<Button onClick={searchAll} disabled={isRunning || !script.trim()}>
 						{isRunning ? "Buscando e baixando..." : "▶ Buscar vídeos automático"}
 					</Button>
 				</div>
