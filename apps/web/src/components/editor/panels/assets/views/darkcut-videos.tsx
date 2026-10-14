@@ -34,13 +34,23 @@ function createVideoBlocks(script: string, sceneSeconds: number): VideoBlock[] {
 export function DarkCutVideosView() {
 	const editor = useEditor();
 	const setActiveTab = useAssetsPanelStore((state) => state.setActiveTab);
-	const { script, sceneSeconds, setSceneSeconds } = useDarkCutProductionStore();
+	const {
+		script,
+		sceneSeconds,
+		setSceneSeconds,
+		youtubeApiKeys,
+		setYoutubeApiKey,
+	} = useDarkCutProductionStore();
 	const [blocks, setBlocks] = useState<VideoBlock[]>([]);
 	const [isRunning, setIsRunning] = useState(false);
 
 	const readyCount = useMemo(
 		() => blocks.filter((block) => block.statusLabel === "ready").length,
 		[blocks],
+	);
+	const configuredApiKeys = useMemo(
+		() => youtubeApiKeys.filter((key) => key.trim()).length,
+		[youtubeApiKeys],
 	);
 
 	const analyze = () => {
@@ -69,6 +79,14 @@ export function DarkCutVideosView() {
 			});
 			return false;
 		}
+		if (!configuredApiKeys) {
+			updateBlock(block.id, {
+				statusLabel: "error",
+				error: "Cadastre pelo menos uma chave da YouTube Data API v3.",
+			});
+			toast.error("Cadastre pelo menos uma chave do YouTube antes de buscar.");
+			return false;
+		}
 
 		updateBlock(block.id, { statusLabel: "searching", error: undefined });
 		try {
@@ -79,6 +97,7 @@ export function DarkCutVideosView() {
 					query,
 					durationSeconds: block.durationSeconds,
 					excludeVideoIds: block.triedVideoIds,
+					youtubeApiKeys,
 				}),
 			});
 
@@ -158,6 +177,10 @@ export function DarkCutVideosView() {
 	};
 
 	const searchAll = async () => {
+		if (!configuredApiKeys) {
+			toast.error("Cadastre pelo menos uma chave da YouTube Data API v3.");
+			return;
+		}
 		const currentBlocks = blocks.length
 			? blocks
 			: createVideoBlocks(script, sceneSeconds);
@@ -224,9 +247,58 @@ export function DarkCutVideosView() {
 				</p>
 				<h2 className="mt-1 text-lg font-semibold">Vídeos com Vídeos</h2>
 				<p className="mt-1 text-xs text-muted-foreground">
-					Roteiro → blocos → busca → download → Mídia Local → timeline.
+					Roteiro → blocos → YouTube API → download → Mídia Local → timeline.
 				</p>
 			</div>
+
+			<section className="mb-3 space-y-3 rounded-md border bg-card p-3">
+				<div className="flex items-center justify-between gap-2">
+					<div>
+						<div className="text-sm font-medium">YouTube Data API v3</div>
+						<div className="text-[0.7rem] text-muted-foreground">
+							Até três chaves. O DarkCut salva neste dispositivo e alterna
+							automaticamente quando uma chave falhar ou atingir limite.
+						</div>
+					</div>
+					<span className="rounded bg-primary/10 px-2 py-1 text-[0.65rem] text-primary">
+						{configuredApiKeys}/3 configuradas
+					</span>
+				</div>
+
+				<div className="space-y-2">
+					{[0, 1, 2].map((index) => (
+						<label key={index} className="block">
+							<span className="mb-1 block text-[0.68rem] text-muted-foreground">
+								Chave YouTube {index + 1}
+							</span>
+							<input
+								type="password"
+								autoComplete="off"
+								value={youtubeApiKeys[index] || ""}
+								onChange={(event) =>
+									setYoutubeApiKey(index, event.target.value)
+								}
+								className="h-9 w-full rounded-md border bg-background px-2 text-xs outline-none focus:border-primary"
+								placeholder="Cole sua chave aqui"
+							/>
+						</label>
+					))}
+				</div>
+
+				<div className="flex items-center justify-between text-[0.65rem] text-muted-foreground">
+					<span>✓ Salvamento automático</span>
+					<button
+						type="button"
+						className="hover:text-foreground"
+						onClick={() => {
+							[0, 1, 2].forEach((index) => setYoutubeApiKey(index, ""));
+							toast.success("Chaves do YouTube removidas deste dispositivo.");
+						}}
+					>
+						Limpar chaves
+					</button>
+				</div>
+			</section>
 
 			<section className="space-y-3 rounded-md border bg-card p-3">
 				<div className="flex items-center justify-between gap-2">
@@ -262,7 +334,10 @@ export function DarkCutVideosView() {
 					<Button variant="secondary" onClick={analyze} disabled={!script.trim()}>
 						Separar em blocos
 					</Button>
-					<Button onClick={searchAll} disabled={isRunning || !script.trim()}>
+					<Button
+						onClick={searchAll}
+						disabled={isRunning || !script.trim() || !configuredApiKeys}
+					>
 						{isRunning ? "Buscando e baixando..." : "▶ Buscar vídeos automático"}
 					</Button>
 				</div>
@@ -380,7 +455,8 @@ export function DarkCutVideosView() {
 					+ Adicionar vídeos prontos à timeline ({readyCount})
 				</Button>
 				<p className="mt-2 text-[0.68rem] text-muted-foreground">
-					Os clipes baixados ficam salvos na Mídia Local do projeto antes de entrar na timeline.
+					Os clipes baixados ficam salvos na Mídia Local do projeto antes de entrar
+					na timeline.
 				</p>
 			</section>
 		</div>
