@@ -334,6 +334,76 @@ export function DarkCutTimelineControls() {
 			>
 				Limpar
 			</Button>
+
+			<div className="bg-border mx-1 h-6 w-px" />
+
+			<select
+				value={motionPreset}
+				onChange={(event) =>
+					setMotionPreset(event.target.value as DarkCutMotionPreset)
+				}
+				className="h-8 max-w-36 rounded-md border bg-background px-2 text-xs outline-none"
+				aria-label="Movimento DarkCut"
+				title="Escolher movimento/efeito"
+			>
+				{DARKCUT_MOTIONS.map((motion) => (
+					<option key={motion.id} value={motion.id}>
+						{motion.label}
+					</option>
+				))}
+			</select>
+			<Button
+				variant={isMotionFavorite ? "secondary" : "text"}
+				size="icon"
+				className="size-8 text-base"
+				onClick={() => toggleMotionFavorite(motionPreset)}
+				title={
+					isMotionFavorite
+						? "Remover movimento dos favoritos"
+						: "Favoritar movimento"
+				}
+			>
+				{isMotionFavorite ? "★" : "☆"}
+			</Button>
+			<select
+				value={effectIntensity}
+				onChange={(event) =>
+					setEffectIntensity(event.target.value as DarkCutEffectIntensity)
+				}
+				className="h-8 rounded-md border bg-background px-2 text-xs outline-none"
+				aria-label="Intensidade do efeito"
+				title="Intensidade dos movimentos"
+			>
+				<option value="soft">Suave</option>
+				<option value="normal">Normal</option>
+				<option value="strong">Forte</option>
+			</select>
+			<Button
+				variant="secondary"
+				size="sm"
+				className="h-8 px-2 text-xs"
+				onClick={applyMotion}
+				title="Aplicar movimento aos itens selecionados"
+			>
+				Movimento
+			</Button>
+			<Button
+				variant="outline"
+				size="sm"
+				className="h-8 px-2 text-xs"
+				onClick={randomizeMotions}
+				title="Aplicar movimentos aleatórios sem repetir consecutivamente"
+			>
+				FX aleatório
+			</Button>
+			<Button
+				size="sm"
+				className="h-8 px-3 text-xs font-semibold"
+				onClick={autoEdit}
+				title="Sincronizar com narração e aplicar movimentos e transições"
+			>
+				✨ Auto Edit
+			</Button>
 		</div>
 	);
 }
