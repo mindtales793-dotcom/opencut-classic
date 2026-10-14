@@ -3,27 +3,12 @@
 import { useState } from "react";
 import Link from "next/link";
 import { motion } from "motion/react";
-import { Button } from "./ui/button";
 import { ArrowRight } from "lucide-react";
-import Image from "next/image";
-import { ThemeToggle } from "./theme-toggle";
-import {
-	Copy01Icon,
-	Download01Icon,
-	GithubIcon,
-	LinkSquare02Icon,
-	Menu02Icon,
-} from "@hugeicons/core-free-icons";
+import { Menu02Icon } from "@hugeicons/core-free-icons";
 import { HugeiconsIcon } from "@hugeicons/react";
+import { Button } from "./ui/button";
+import { ThemeToggle } from "./theme-toggle";
 import { cn } from "@/utils/ui";
-import { SITE_URL } from "@/site/brand";
-import { SOCIAL_LINKS } from "@/site/social";
-import {
-	ContextMenu,
-	ContextMenuContent,
-	ContextMenuItem,
-	ContextMenuTrigger,
-} from "./ui/context-menu";
 
 export function Header() {
 	const [isMenuOpen, setIsMenuOpen] = useState(false);
@@ -42,12 +27,14 @@ export function Header() {
 						<div className="flex size-9 items-center justify-center rounded-lg bg-primary text-sm font-black text-primary-foreground">
 							DC
 						</div>
-						<span className="hidden text-sm font-semibold sm:inline">DarkCut Studio</span>
+						<span className="hidden text-sm font-semibold sm:inline">
+							DarkCut Studio
+						</span>
 					</Link>
 
 					<nav className="hidden items-center gap-4 md:flex">
 						{links.map((link) => (
-							<Link key={link.href} href={link.href}>
+							<Link key={link.label} href={link.href}>
 								<Button variant="text" className="p-0 text-sm">
 									{link.label}
 								</Button>
@@ -70,13 +57,14 @@ export function Header() {
 					<div className="hidden items-center gap-3 md:flex">
 						<Link href="/projects">
 							<Button className="text-sm">
-								Projects
+								Abrir editor
 								<ArrowRight className="size-4" />
 							</Button>
 						</Link>
 						<ThemeToggle />
 					</div>
 				</div>
+
 				<div
 					className={cn(
 						"bg-background/20 pointer-events-none fixed inset-0 opacity-0 backdrop-blur-3xl",
@@ -87,24 +75,14 @@ export function Header() {
 					<div className="relative h-full">
 						<button
 							type="button"
-							aria-label="Close menu"
+							aria-label="Fechar menu"
 							className="absolute inset-0"
 							onClick={closeMenu}
-							onKeyDown={(event) => {
-								if (
-									event.key === "Enter" ||
-									event.key === " " ||
-									event.key === "Escape"
-								) {
-									event.preventDefault();
-									closeMenu();
-								}
-							}}
 						/>
 						<nav className="flex flex-col gap-3 px-6 pt-[5rem]">
 							{links.map((link, index) => (
 								<motion.div
-									key={link.href}
+									key={link.label}
 									initial={{ scale: 0.98, opacity: 0 }}
 									animate={{
 										scale: isMenuOpen ? 1 : 0.98,
@@ -119,7 +97,7 @@ export function Header() {
 									<Link
 										href={link.href}
 										className="text-2xl font-semibold"
-										onClick={() => setIsMenuOpen(false)}
+										onClick={closeMenu}
 									>
 										{link.label}
 									</Link>
@@ -129,10 +107,6 @@ export function Header() {
 						<ThemeToggle
 							className="absolute right-8 bottom-8 size-10"
 							iconClassName="!size-[1.2rem]"
-							onToggle={(e) => {
-								e.preventDefault();
-								e.stopPropagation();
-							}}
 						/>
 					</div>
 				</div>
