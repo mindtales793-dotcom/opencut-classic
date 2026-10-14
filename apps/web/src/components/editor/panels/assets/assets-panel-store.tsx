@@ -11,13 +11,14 @@ import {
 	TextIcon,
 	Settings01Icon,
 	SlidersHorizontalIcon,
-	ColorsIcon,
+	Video01Icon,
 } from "@hugeicons/core-free-icons";
 import { HugeiconsIcon, type IconSvgElement } from "@hugeicons/react";
 
 export const TAB_KEYS = [
 	"production",
 	"sync",
+	"videos",
 	"media",
 	"sounds",
 	"text",
@@ -45,6 +46,10 @@ export const tabs = {
 	sync: {
 		icon: createHugeiconsIcon({ icon: ArrowRightDoubleIcon }),
 		label: "Sincronização",
+	},
+	videos: {
+		icon: createHugeiconsIcon({ icon: Video01Icon }),
+		label: "Vídeos",
 	},
 	media: {
 		icon: createHugeiconsIcon({ icon: Folder03Icon }),
