@@ -60,6 +60,14 @@ function startServer() {
 
   const cwd = path.dirname(serverFile);
   const executable = process.execPath;
+  const toolsDir = app.isPackaged
+    ? path.join(process.resourcesPath, "tools")
+    : path.join(__dirname, "tools");
+  const inheritedPath = process.env.PATH || process.env.Path || "";
+  const toolsPath = fs.existsSync(toolsDir)
+    ? toolsDir + path.delimiter + inheritedPath
+    : inheritedPath;
+
   serverProcess = spawn(executable, [serverFile], {
     cwd,
     windowsHide: true,
@@ -69,6 +77,9 @@ function startServer() {
       NODE_ENV: "production",
       HOSTNAME: HOST,
       PORT: String(PORT),
+      PATH: toolsPath,
+      Path: toolsPath,
+      DARKCUT_VIDEO_TOOLS: toolsDir,
     },
     stdio: ["ignore", "pipe", "pipe"],
   });
