@@ -12,6 +12,7 @@ import { TextView } from "@/text/components/assets-view";
 import { EffectsView } from "@/effects/components/assets-view";
 import { DarkCutProductionView } from "./views/darkcut-production";
 import { DarkCutSyncView } from "./views/darkcut-sync";
+import { DarkCutVideosView } from "./views/darkcut-videos";
 
 export function AssetsPanel() {
 	const { activeTab } = useAssetsPanelStore();
@@ -19,6 +20,7 @@ export function AssetsPanel() {
 	const viewMap: Record<Tab, React.ReactNode> = {
 		production: <DarkCutProductionView />,
 		sync: <DarkCutSyncView />,
+		videos: <DarkCutVideosView />,
 		media: <MediaView />,
 		sounds: <SoundsView />,
 		text: <TextView />,
