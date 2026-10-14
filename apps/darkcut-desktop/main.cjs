@@ -80,6 +80,26 @@ function startServer() {
       PATH: toolsPath,
       Path: toolsPath,
       DARKCUT_VIDEO_TOOLS: toolsDir,
+      NEXT_PUBLIC_SITE_URL:
+        process.env.NEXT_PUBLIC_SITE_URL || `http://${HOST}:${PORT}`,
+      NEXT_PUBLIC_MARBLE_API_URL:
+        process.env.NEXT_PUBLIC_MARBLE_API_URL || `http://${HOST}:${PORT}`,
+      DATABASE_URL:
+        process.env.DATABASE_URL ||
+        "postgresql://darkcut:darkcut@127.0.0.1:5432/darkcut",
+      BETTER_AUTH_SECRET:
+        process.env.BETTER_AUTH_SECRET ||
+        "darkcut-local-desktop-runtime-secret-2026",
+      UPSTASH_REDIS_REST_URL:
+        process.env.UPSTASH_REDIS_REST_URL || `http://${HOST}:${PORT}`,
+      UPSTASH_REDIS_REST_TOKEN:
+        process.env.UPSTASH_REDIS_REST_TOKEN || "darkcut-local-disabled",
+      MARBLE_WORKSPACE_KEY:
+        process.env.MARBLE_WORKSPACE_KEY || "darkcut-local-disabled",
+      FREESOUND_CLIENT_ID:
+        process.env.FREESOUND_CLIENT_ID || "darkcut-local-disabled",
+      FREESOUND_API_KEY:
+        process.env.FREESOUND_API_KEY || "darkcut-local-disabled",
     },
     stdio: ["ignore", "pipe", "pipe"],
   });
