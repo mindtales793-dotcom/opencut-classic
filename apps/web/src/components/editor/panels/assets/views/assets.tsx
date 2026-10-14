@@ -1,7 +1,7 @@
 "use client";
 
 import Image from "next/image";
-import { useMemo, useState } from "react";
+import { useMemo, useRef, useState } from "react";
 import { PanelView } from "@/components/editor/panels/assets/views/base-panel";
 import { MediaDragOverlay } from "@/components/editor/panels/assets/drag-overlay";
 import { DraggableItem } from "@/components/editor/panels/assets/draggable-item";
@@ -76,6 +76,7 @@ export function MediaView() {
 
 	const [isProcessing, setIsProcessing] = useState(false);
 	const [progress, setProgress] = useState(0);
+	const folderInputRef = useRef<HTMLInputElement>(null);
 
 	const processFiles = async ({ files }: { files: File[] }) => {
 		if (!files || files.length === 0) return;
@@ -121,6 +122,40 @@ export function MediaView() {
 			multiple: true,
 			onFilesSelected: (files) => processFiles({ files }),
 		});
+
+	const openFolderPicker = () => {
+		const input = folderInputRef.current;
+		if (!input) return;
+		input.setAttribute("webkitdirectory", "");
+		input.setAttribute("directory", "");
+		input.click();
+	};
+
+	const handleFolderChange = (event: React.ChangeEvent<HTMLInputElement>) => {
+		const allFiles = Array.from(event.target.files ?? []);
+		const mediaFiles = allFiles.filter((file) => {
+			const type = file.type.toLowerCase();
+			if (
+				type.startsWith("image/") ||
+				type.startsWith("video/") ||
+				type.startsWith("audio/")
+			) {
+				return true;
+			}
+
+			return /\.(png|jpe?g|webp|gif|bmp|mp4|mov|webm|mkv|avi|mp3|wav|m4a|aac|ogg)$/i.test(
+				file.name,
+			);
+		});
+
+		if (mediaFiles.length === 0) {
+			toast.error("Essa pasta não possui imagens, vídeos ou áudios compatíveis.");
+		} else {
+			processFiles({ files: mediaFiles });
+		}
+
+		event.target.value = "";
+	};
 
 	const handleRemove = ({
 		event,
@@ -202,6 +237,7 @@ export function MediaView() {
 						sortOrder={mediaSortOrder}
 						onSort={handleSort}
 						onImport={openFilePicker}
+						onImportFolder={openFolderPicker}
 					/>
 				}
 				className={cn(isDragOver && "bg-accent/30")}
@@ -513,6 +549,7 @@ function MediaActions({
 	sortOrder,
 	onSort,
 	onImport,
+	onImportFolder,
 }: {
 	mediaViewMode: MediaViewMode;
 	setMediaViewMode: (mode: MediaViewMode) => void;
@@ -521,6 +558,7 @@ function MediaActions({
 	sortOrder: MediaSortOrder;
 	onSort: ({ key }: { key: MediaSortKey }) => void;
 	onImport: () => void;
+	onImportFolder: () => void;
 }) {
 	return (
 		<div className="flex gap-1.5">
@@ -606,13 +644,22 @@ function MediaActions({
 			</TooltipProvider>
 			<Button
 				variant="outline"
+				onClick={onImportFolder}
+				disabled={isProcessing}
+				size="sm"
+				className="items-center justify-center gap-1.5"
+			>
+				Pasta
+			</Button>
+			<Button
+				variant="outline"
 				onClick={onImport}
 				disabled={isProcessing}
 				size="sm"
 				className="items-center justify-center gap-1.5"
 			>
 				<HugeiconsIcon icon={CloudUploadIcon} />
-				Import
+				Arquivos
 			</Button>
 		</div>
 	);
