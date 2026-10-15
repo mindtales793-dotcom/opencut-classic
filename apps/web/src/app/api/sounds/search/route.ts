@@ -212,12 +212,25 @@ export async function GET(request: NextRequest) {
 		} = validationResult.data;
 
 		const baseUrl = "https://freesound.org/apiv2/search/text/";
+		const configuredApiKey =
+			request.headers.get("x-darkcut-freesound-key")?.trim() ||
+			webEnv.FREESOUND_API_KEY;
+
+		if (!configuredApiKey) {
+			return NextResponse.json(
+				{
+					error:
+						"Cadastre a chave do Freesound em Configurações > APIs.",
+				},
+				{ status: 503 },
+			);
+		}
 
 		const sortParam = buildSortParameter({ query, sort });
 
 		const params = new URLSearchParams({
 			query: query || (type === "songs" ? "instrumental background music" : ""),
-			token: webEnv.FREESOUND_API_KEY,
+			token: configuredApiKey,
 			page: page.toString(),
 			page_size: pageSize.toString(),
 			sort: sortParam,
