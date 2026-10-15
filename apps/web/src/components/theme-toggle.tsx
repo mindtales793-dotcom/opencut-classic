@@ -17,7 +17,7 @@ export function ThemeToggle({
 	iconClassName,
 	onToggle,
 }: ThemeToggleProps) {
-	const { theme, setTheme } = useTheme();
+	const { resolvedTheme, setTheme } = useTheme();
 
 	return (
 		<Button
@@ -25,17 +25,17 @@ export function ThemeToggle({
 			variant="ghost"
 			className={cn("size-8", className)}
 			onClick={(e) => {
-				setTheme(theme === "dark" ? "light" : "dark");
+				setTheme(resolvedTheme === "dark" ? "light" : "dark");
 				onToggle?.(e);
 			}}
+			aria-label="Alternar tema"
+			title="Alternar tema"
 		>
 			<HugeiconsIcon
 				icon={Sun03Icon}
 				className={cn("!size-[1.1rem]", iconClassName)}
 			/>
-			<span className="sr-only">
-				{mounted ? (isDark ? "Tema claro" : "Tema escuro") : "Alternar tema"}
-			</span>
+			<span className="sr-only">Alternar tema</span>
 		</Button>
 	);
 }
