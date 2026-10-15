@@ -26,6 +26,9 @@ import {
 	TooltipTrigger,
 } from "@/components/ui/tooltip";
 import { DEFAULT_NEW_ELEMENT_DURATION } from "@/timeline/creation";
+import { TracksSnapshotCommand } from "@/commands/timeline";
+import { generateUUID } from "@/utils/id";
+import type { TimelineElement } from "@/timeline/types";
 import { addMediaTime, mediaTimeFromSeconds, type MediaTime } from "@/wasm";
 import { useEditor } from "@/editor/use-editor";
 import { useFileUpload } from "@/media/use-file-upload";
@@ -78,6 +81,7 @@ export function MediaView() {
 	const [isProcessing, setIsProcessing] = useState(false);
 	const [progress, setProgress] = useState(0);
 	const [batchSelectedIds, setBatchSelectedIds] = useState<string[]>([]);
+	const [isAddingBatch, setIsAddingBatch] = useState(false);
 	const folderInputRef = useRef<HTMLInputElement>(null);
 	const imageDurationSeconds = useTimelineStore(
 		(state) => state.darkcutDurationSeconds,
@@ -266,7 +270,9 @@ export function MediaView() {
 		setBatchSelectedIds(allBatchSelected ? [] : batchSelectableIds);
 	};
 
-	const addSelectedToTimeline = () => {
+	const addSelectedToTimeline = async () => {
+		if (isAddingBatch) return;
+
 		const selectedSet = new Set(batchSelectedIds);
 		const selectedItems = batchSelectableItems.filter((item) =>
 			selectedSet.has(item.id),
@@ -276,39 +282,110 @@ export function MediaView() {
 			return;
 		}
 
-		let cursor = editor.playback.getCurrentTime();
-		for (const asset of selectedItems) {
-			const duration =
-				asset.type === "image"
-					? mediaTimeFromSeconds({
-							seconds: Math.max(0.1, imageDurationSeconds),
-						})
-					: asset.duration != null
-						? mediaTimeFromSeconds({ seconds: asset.duration })
-						: DEFAULT_NEW_ELEMENT_DURATION;
-			const element = buildElementFromMedia({
-				mediaId: asset.id,
-				mediaType: asset.type,
-				name: asset.name,
-				duration,
-				startTime: cursor,
-			});
-			editor.timeline.insertElement({
-				element,
-				placement: { mode: "auto" },
-			});
-			cursor = addMediaTime({ a: cursor, b: duration });
+		const scene = editor.scenes.getActiveSceneOrNull();
+		if (!scene) {
+			toast.error("Nenhuma cena ativa.");
+			return;
 		}
 
-		toast.success(
-			`${selectedItems.length} item(ns) adicionados em sequência à timeline.`,
-			{
-				description: `Imagens usam ${Math.max(
-					0.1,
-					imageDurationSeconds,
-				).toFixed(1)}s por padrão.`,
-			},
+		setIsAddingBatch(true);
+		const toastId = `darkcut-batch-${Date.now()}`;
+		toast.loading(
+			`Preparando ${selectedItems.length} mídia(s) para a timeline...`,
+			{ id: toastId },
 		);
+
+		try {
+			// Deixa o navegador pintar o feedback antes do lote pesado.
+			await new Promise<void>((resolve) => requestAnimationFrame(() => resolve()));
+
+			const beforeTracks = scene.tracks;
+			const mainTrack = beforeTracks.main;
+			const hadVisuals = mainTrack.elements.length > 0;
+			let cursor = mainTrack.elements.reduce(
+				(max, element) =>
+					Math.max(max, addMediaTime({ a: element.startTime, b: element.duration })),
+				0,
+			);
+			const batchStart = cursor;
+			const newElements: TimelineElement[] = [];
+
+			for (const asset of selectedItems) {
+				const duration =
+					asset.type === "image"
+						? mediaTimeFromSeconds({
+								seconds: Math.max(0.1, imageDurationSeconds),
+							})
+						: asset.duration != null
+							? mediaTimeFromSeconds({ seconds: asset.duration })
+							: DEFAULT_NEW_ELEMENT_DURATION;
+
+				const element = buildElementFromMedia({
+					mediaId: asset.id,
+					mediaType: asset.type,
+					name: asset.name,
+					duration,
+					startTime: cursor,
+				});
+
+				newElements.push({
+					...element,
+					id: generateUUID(),
+				} as TimelineElement);
+
+				cursor = addMediaTime({ a: cursor, b: duration });
+			}
+
+			const afterTracks = {
+				...beforeTracks,
+				main: {
+					...mainTrack,
+					elements: [...mainTrack.elements, ...newElements],
+				},
+			};
+
+			editor.command.execute({
+				command: new TracksSnapshotCommand({
+					before: beforeTracks,
+					after: afterTracks,
+				}),
+			});
+
+			// Em lotes grandes, mostrar imediatamente o começo do material inserido.
+			if (!hadVisuals) {
+				const viewState = editor.project.getTimelineViewState();
+				editor.project.setTimelineViewState({
+					viewState: {
+						...viewState,
+						zoomLevel: 1,
+						scrollLeft: 0,
+						playheadTime: batchStart,
+					},
+				});
+			}
+			editor.playback.seek({ time: batchStart });
+			setBatchSelectedIds([]);
+
+			toast.success(
+				`${selectedItems.length} mídia(s) adicionadas à V1.`,
+				{
+					id: toastId,
+					description: `Inserção em lote concluída. Imagens: ${Math.max(
+						0.1,
+						imageDurationSeconds,
+					).toFixed(1)}s cada.`,
+				},
+			);
+		} catch (error) {
+			console.error("Falha ao adicionar lote à timeline:", error);
+			toast.error("Não foi possível adicionar as mídias à timeline.", {
+				id: toastId,
+				description:
+					error instanceof Error ? error.message : "Erro desconhecido.",
+			});
+		} finally {
+			setIsAddingBatch(false);
+		}
 	};
 
 	return (
@@ -321,7 +398,7 @@ export function MediaView() {
 					<MediaActions
 						mediaViewMode={mediaViewMode}
 						setMediaViewMode={setMediaViewMode}
-						isProcessing={isProcessing}
+						isProcessing={isProcessing || isAddingBatch}
 						sortBy={mediaSortBy}
 						sortOrder={mediaSortOrder}
 						onSort={handleSort}
@@ -331,7 +408,7 @@ export function MediaView() {
 						allSelected={allBatchSelected}
 						someSelected={someBatchSelected}
 						onToggleSelectAll={toggleSelectAll}
-						onAddSelected={addSelectedToTimeline}
+						onAddSelected={() => void addSelectedToTimeline()}
 					/>
 				}
 				className={cn(isDragOver && "bg-accent/30")}
