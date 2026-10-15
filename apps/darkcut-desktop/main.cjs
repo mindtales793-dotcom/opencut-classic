@@ -200,7 +200,9 @@ if (hasLock) app.whenReady().then(async () => {
     await win.loadURL(`http://${HOST}:${PORT}/projects`);
     if (smokeTest) {
       await require("./smoke.cjs").run(win);
-      app.quit();
+      // The test creates a dirty project; bypass its beforeunload prompt only in CI.
+      stopServer();
+      app.exit(0);
     }
   } catch (error) {
     fail(error);
