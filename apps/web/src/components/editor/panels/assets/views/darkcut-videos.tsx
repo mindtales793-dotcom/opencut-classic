@@ -1,6 +1,8 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useProjectDraft } from "@/darkcut/project-draft";
+import { useDarkCutTasks } from "@/darkcut/tasks";
+import { useMemo, useRef, useState } from "react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/utils/ui";
@@ -41,8 +43,25 @@ export function DarkCutVideosView() {
 		youtubeApiKeys,
 		setYoutubeApiKey,
 	} = useDarkCutProductionStore();
-	const [blocks, setBlocks] = useState<VideoBlock[]>([]);
+	const [blocks, setBlocks] = useProjectDraft<VideoBlock[]>("video-blocks", []);
 	const [isRunning, setIsRunning] = useState(false);
+	const pause = useRef(false);
+	const usedVideoIds = useRef(new Set<string>());
+	const task = (
+		status: "running" | "paused" | "done",
+		done: number,
+		total: number,
+	) =>
+		useDarkCutTasks
+			.getState()
+			.set("videos", {
+				projectId: editor.project.getActive().metadata.id,
+				label: "Vídeos",
+				tab: "videos",
+				status,
+				done,
+				total,
+			});
 
 	const readyCount = useMemo(
 		() => blocks.filter((block) => block.statusLabel === "ready").length,
@@ -66,7 +85,9 @@ export function DarkCutVideosView() {
 
 	const updateBlock = (id: string, patch: Partial<VideoBlock>) => {
 		setBlocks((current) =>
-			current.map((block) => (block.id === id ? { ...block, ...patch } : block)),
+			current.map((block) =>
+				block.id === id ? { ...block, ...patch } : block,
+			),
 		);
 	};
 
@@ -96,7 +117,13 @@ export function DarkCutVideosView() {
 				body: JSON.stringify({
 					query,
 					durationSeconds: block.durationSeconds,
-					excludeVideoIds: block.triedVideoIds,
+					excludeVideoIds: Array.from(
+						new Set([
+							...block.triedVideoIds,
+							...usedVideoIds.current,
+							...blocks.flatMap((b) => (b.lastVideoId ? [b.lastVideoId] : [])),
+						]),
+					),
 					youtubeApiKeys,
 				}),
 			});
@@ -128,27 +155,32 @@ export function DarkCutVideosView() {
 			}
 
 			const videoId = response.headers.get("X-DarkCut-Video-Id") || "";
+			if (videoId) usedVideoIds.current.add(videoId);
 			const triedHeader = response.headers.get("X-DarkCut-Tried-Ids") || "";
 			const autoTriedIds = triedHeader
 				.split(",")
 				.map((value) => value.trim())
 				.filter(Boolean);
 			const rawTitle = response.headers.get("X-DarkCut-Video-Title") || "";
-			const title = rawTitle ? decodeURIComponent(rawTitle) : `YouTube ${videoId}`;
+			const title = rawTitle
+				? decodeURIComponent(rawTitle)
+				: `YouTube ${videoId}`;
 			const blob = await response.blob();
 			const fileName = `DARKCUT-BLOCO-${block.index}-${videoId || Date.now()}.mp4`;
 			const file = new File([blob], fileName, {
 				type: blob.type || "video/mp4",
 			});
 			const [processed] = await processMediaAssets({ files: [file] });
-			if (!processed) throw new Error("Não foi possível preparar o clipe baixado.");
+			if (!processed)
+				throw new Error("Não foi possível preparar o clipe baixado.");
 
 			const activeProject = editor.project.getActive();
 			const asset = await editor.media.addMediaAsset({
 				projectId: activeProject.metadata.id,
 				asset: processed,
 			});
-			if (!asset) throw new Error("Não foi possível salvar o clipe na Mídia Local.");
+			if (!asset)
+				throw new Error("Não foi possível salvar o clipe na Mídia Local.");
 
 			const tried = Array.from(
 				new Set([
@@ -191,13 +223,24 @@ export function DarkCutVideosView() {
 		}
 		if (!blocks.length) setBlocks(currentBlocks);
 
+		if (isRunning) return;
+		pause.current = false;
 		setIsRunning(true);
-		let success = 0;
+		let success = currentBlocks.filter(
+			(b) => b.statusLabel === "ready" && b.mediaId,
+		).length;
+		task("running", success, currentBlocks.length);
 		try {
 			for (const block of currentBlocks) {
+				if (pause.current) break;
+				if (block.statusLabel === "ready" && block.mediaId) continue;
 				if (await downloadForBlock(block)) success += 1;
+				task("running", success, currentBlocks.length);
 			}
-			toast.success(`${success} de ${currentBlocks.length} blocos receberam vídeos.`);
+			task(pause.current ? "paused" : "done", success, currentBlocks.length);
+			toast.success(
+				`${success} de ${currentBlocks.length} blocos receberam vídeos.`,
+			);
 		} finally {
 			setIsRunning(false);
 		}
@@ -246,6 +289,20 @@ export function DarkCutVideosView() {
 					DarkCut Studio
 				</p>
 				<h2 className="mt-1 text-lg font-semibold">Vídeos com Vídeos</h2>
+				{isRunning && (
+					<Button
+						variant="secondary"
+						onClick={() => {
+							pause.current = true;
+						}}
+					>
+						Pausar após este clipe
+					</Button>
+				)}
+				<p className="text-xs text-muted-foreground">
+					Blocos salvos por projeto. Ao buscar novamente, os clipes concluídos
+					são preservados e os pendentes são retomados.
+				</p>
 				<p className="mt-1 text-xs text-muted-foreground">
 					Roteiro → blocos → YouTube API → download → Mídia Local → timeline.
 				</p>
@@ -331,14 +388,20 @@ export function DarkCutVideosView() {
 				</div>
 
 				<div className="grid grid-cols-2 gap-2">
-					<Button variant="secondary" onClick={analyze} disabled={!script.trim()}>
+					<Button
+						variant="secondary"
+						onClick={analyze}
+						disabled={!script.trim()}
+					>
 						Separar em blocos
 					</Button>
 					<Button
 						onClick={searchAll}
 						disabled={isRunning || !script.trim() || !configuredApiKeys}
 					>
-						{isRunning ? "Buscando e baixando..." : "▶ Buscar vídeos automático"}
+						{isRunning
+							? "Buscando e baixando..."
+							: "▶ Buscar vídeos automático"}
 					</Button>
 				</div>
 			</section>
@@ -354,7 +417,10 @@ export function DarkCutVideosView() {
 
 					<div className="max-h-[30rem] space-y-2 overflow-y-auto pr-1">
 						{blocks.map((block) => (
-							<div key={block.id} className="rounded-md border bg-background p-2">
+							<div
+								key={block.id}
+								className="rounded-md border bg-background p-2"
+							>
 								<div className="flex items-center justify-between gap-2 text-xs">
 									<span className="font-medium">Bloco {block.index}</span>
 									<span
@@ -391,9 +457,7 @@ export function DarkCutVideosView() {
 										updateBlock(block.id, {
 											searchQuery: event.target.value,
 											statusLabel:
-												block.statusLabel === "ready"
-													? "ready"
-													: "idle",
+												block.statusLabel === "ready" ? "ready" : "idle",
 										})
 									}
 									className="mt-2 h-8 w-full rounded-md border bg-card px-2 text-xs outline-none focus:border-primary"
@@ -455,8 +519,8 @@ export function DarkCutVideosView() {
 					+ Adicionar vídeos prontos à timeline ({readyCount})
 				</Button>
 				<p className="mt-2 text-[0.68rem] text-muted-foreground">
-					Os clipes baixados ficam salvos na Mídia Local do projeto antes de entrar
-					na timeline.
+					Os clipes baixados ficam salvos na Mídia Local do projeto antes de
+					entrar na timeline.
 				</p>
 			</section>
 		</div>

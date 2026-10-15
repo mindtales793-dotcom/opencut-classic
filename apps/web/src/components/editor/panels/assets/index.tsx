@@ -1,7 +1,11 @@
 "use client";
 
+import { useEffect, useState } from "react";
 import { Separator } from "@/components/ui/separator";
-import { type Tab, useAssetsPanelStore } from "@/components/editor/panels/assets/assets-panel-store";
+import {
+	type Tab,
+	useAssetsPanelStore,
+} from "@/components/editor/panels/assets/assets-panel-store";
 import { TabBar } from "./tabbar";
 import { Captions } from "@/subtitles/components/assets-view";
 import { MediaView } from "./views/assets";
@@ -17,6 +21,10 @@ import { DarkCutTemplatesView } from "./views/darkcut-templates";
 
 export function AssetsPanel() {
 	const { activeTab } = useAssetsPanelStore();
+	const [visited, setVisited] = useState<Tab[]>([activeTab]);
+	useEffect(() => {
+		setVisited((old) => (old.includes(activeTab) ? old : [...old, activeTab]));
+	}, [activeTab]);
 
 	const viewMap: Record<Tab, React.ReactNode> = {
 		production: <DarkCutProductionView />,
@@ -46,7 +54,13 @@ export function AssetsPanel() {
 		<div className="panel bg-background flex h-full rounded-sm border overflow-hidden">
 			<TabBar />
 			<Separator orientation="vertical" />
-			<div className="flex-1 overflow-hidden">{viewMap[activeTab]}</div>
+			<div className="flex-1 overflow-hidden">
+				{Array.from(new Set([...visited, activeTab])).map((tab) => (
+					<div key={tab} hidden={tab !== activeTab} className="h-full">
+						{viewMap[tab]}
+					</div>
+				))}
+			</div>
 		</div>
 	);
 }

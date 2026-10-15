@@ -1,5 +1,6 @@
 "use client";
 
+import { DarkCutTaskBar } from "@/darkcut/tasks";
 import { useParams } from "next/navigation";
 import {
 	ResizablePanelGroup,
@@ -45,6 +46,7 @@ export default function Editor() {
 				<div className="bg-background flex h-screen w-screen flex-col overflow-hidden">
 					<DegradedRendererBanner />
 					<EditorHeader />
+					<DarkCutTaskBar />
 					<div className="min-h-0 min-w-0 flex-1">
 						<EditorLayout />
 					</div>

@@ -1,5 +1,7 @@
 "use client";
 
+import { ChannelPanel } from "@/darkcut/channel-panel";
+import { useProjectDraft } from "@/darkcut/project-draft";
 import { useMemo, useState } from "react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
@@ -70,7 +72,7 @@ export function DarkCutProductionView() {
 		setSource,
 	} = useDarkCutProductionStore();
 
-	const [scenes, setScenes] = useState<DarkCutScene[]>([]);
+	const [scenes, setScenes] = useProjectDraft<DarkCutScene[]>("scenes", []);
 	const [addCaptions, setAddCaptions] = useState(true);
 
 	const stats = useMemo(() => {
@@ -143,6 +145,7 @@ export function DarkCutProductionView() {
 				</p>
 			</div>
 
+			<ChannelPanel />
 			<section className="space-y-3 rounded-md border bg-card p-3">
 				<div className="text-sm font-medium">Projeto</div>
 				<label className="block text-xs text-muted-foreground">

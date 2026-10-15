@@ -378,9 +378,13 @@ export function TimelineElement({
 				<ContextMenuTrigger asChild>
 					<div
 						className="absolute top-0 select-none"
+						data-timeline-element-id={element.id}
+						data-start-time={element.startTime}
+						data-duration={element.duration}
+						data-track-type={track.type}
 						style={{
 							left: `${elementLeft}px`,
-							width: `${elementWidth}px`,
+							width: `${Math.max(2, elementWidth)}px`,
 							height:
 								expandedRows.length > 0
 									? `${baseTrackHeight + expansionHeight}px`

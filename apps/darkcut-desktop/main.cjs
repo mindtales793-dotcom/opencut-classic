@@ -1,4 +1,4 @@
-const { app, BrowserWindow, dialog, shell } = require("electron");
+const { app, BrowserWindow, dialog, shell, Tray, Menu, nativeImage } = require("electron");
 const path = require("node:path");
 const fs = require("node:fs");
 const http = require("node:http");
@@ -8,6 +8,7 @@ let serverProcess = null;
 let mainWindow = null;
 let serverFailure = null;
 let quitting = false;
+let taskTray = null;
 const smokeTest = process.argv.includes("--smoke-test");
 if (smokeTest && process.env.DARKCUT_SMOKE_PROFILE) {
   app.setPath("userData", process.env.DARKCUT_SMOKE_PROFILE);
@@ -117,6 +118,7 @@ function startServer() {
       HOSTNAME: HOST,
       PORT: String(PORT),
       PATH: toolsPath,
+      DARKCUT_DATA_DIR: app.getPath("userData"),
       Path: toolsPath,
       DARKCUT_VIDEO_TOOLS: toolsDir,
       NEXT_PUBLIC_SITE_URL:
@@ -168,10 +170,36 @@ async function createWindow() {
       contextIsolation: true,
       nodeIntegration: false,
       sandbox: true,
+      backgroundThrottling: false,
     },
   });
 
   mainWindow = win;
+  let checkingClose = false;
+  let allowClose = false;
+  win.on("close", event => {
+    if (quitting || allowClose || smokeTest) return;
+    event.preventDefault();
+    if (checkingClose) return;
+    checkingClose = true;
+    win.webContents.executeJavaScript(`document.querySelector('[data-darkcut-running="true"]') !== null`).then(active => {
+      if (active) {
+        if (!taskTray) {
+          const icon = nativeImage.createFromPath(path.join(path.dirname(findServer()), "public", "icons", "favicon-16x16.png"));
+          taskTray = new Tray(icon);
+          taskTray.setToolTip("DarkCut Studio — tarefas em segundo plano");
+          const show = () => { win.show(); win.focus(); };
+          taskTray.on("click", show);
+          taskTray.setContextMenu(Menu.buildFromTemplate([
+            {label:"Abrir DarkCut Studio",click:show},
+            {label:"Encerrar e interromper tarefas",click:()=>{stopServer();app.exit(0);}},
+          ]));
+        }
+        win.hide();
+        taskTray.displayBalloon({title:"DarkCut continua trabalhando",content:"As tarefas continuam em segundo plano. Clique no ícone perto do relógio para voltar."});
+      } else { allowClose=true;win.close();allowClose=false; }
+    }).catch(() => {allowClose=true;win.close();allowClose=false;}).finally(()=>{checkingClose=false;});
+  });
   win.maximize();
   win.webContents.on("render-process-gone", (_event, details) => fail(new Error(`A janela do editor encerrou: ${details.reason}`)));
   win.webContents.on("console-message", (_event, level, message) => {

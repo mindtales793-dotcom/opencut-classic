@@ -1,5 +1,9 @@
 "use client";
 
+import { useProjectDraft } from "@/darkcut/project-draft";
+import { useDarkCutTasks } from "@/darkcut/tasks";
+import { MusicPanel } from "@/darkcut/music-panel";
+import { SilencePanel } from "@/darkcut/silence-panel";
 import { useEffect, useState } from "react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
@@ -25,11 +29,24 @@ export function DarkCutSyncView() {
 	const [isGenerating, setIsGenerating] = useState(false);
 	const [isPreviewingVoice, setIsPreviewingVoice] = useState(false);
 	const [voicePreviewUrl, setVoicePreviewUrl] = useState<string | null>(null);
-	const [narrationAssetId, setNarrationAssetId] = useState<string | null>(null);
+	const [narrationAssetId, setNarrationAssetId] = useProjectDraft<
+		string | null
+	>("narration-asset", null);
 	const [narrationUrl, setNarrationUrl] = useState<string | null>(null);
-	const [narrationFileName, setNarrationFileName] =
-		useState("darkcut-narracao.mp3");
+	const [jobId, setJobId] = useProjectDraft<string | null>(
+		"narration-job",
+		null,
+	);
+	const [narrationFileName, setNarrationFileName] = useProjectDraft(
+		"narration-filename",
+		"darkcut-narracao.mp3",
+	);
 
+	const mediaAssets = useEditor((e) => e.media.getAssets());
+	useEffect(() => {
+		const asset = mediaAssets.find((a) => a.id === narrationAssetId);
+		if (asset?.url) setNarrationUrl(asset.url);
+	}, [mediaAssets, narrationAssetId]);
 	const selectedNarrator = FISH_NARRATORS.find(
 		(item) => item.id === selectedNarratorId,
 	);
@@ -100,17 +117,50 @@ export function DarkCutSyncView() {
 			return;
 		}
 
+		const projectId = editor.project.getActive().metadata.id;
+		const task = (status: "running" | "done" | "error") =>
+			useDarkCutTasks
+				.getState()
+				.set("narration", {
+					projectId,
+					label: "Narração",
+					tab: "sync",
+					status,
+				});
 		setIsGenerating(true);
+		task("running");
 		try {
-			const response = await fetch("/api/darkcut/fish/tts", {
+			const creation = await fetch("/api/darkcut/narration-jobs", {
 				method: "POST",
 				headers: { "Content-Type": "application/json" },
 				body: JSON.stringify({
+					id: jobId,
 					text,
 					referenceId: selectedNarratorId,
 					fishApiKeys,
 				}),
 			});
+
+			const job = await creation.json();
+			if (!creation.ok) throw new Error(job.error || "Falha ao criar tarefa.");
+			setJobId(job.id);
+			while (true) {
+				const check = await fetch(`/api/darkcut/narration-jobs?id=${job.id}`);
+				const state = await check.json();
+				if (
+					!check.ok ||
+					state.status === "error" ||
+					state.status === "interrupted"
+				)
+					throw new Error(
+						state.error || "Tarefa interrompida. Clique em Retomar narração.",
+					);
+				if (state.status === "ready") break;
+				await new Promise((resolve) => setTimeout(resolve, 1500));
+			}
+			const response = await fetch(
+				`/api/darkcut/narration-jobs?id=${job.id}&audio=1`,
+			);
 
 			if (!response.ok) {
 				let message = "Falha ao gerar narração no Fish Audio.";
@@ -142,6 +192,10 @@ export function DarkCutSyncView() {
 			}
 
 			const activeProject = editor.project.getActive();
+			if (activeProject.metadata.id !== projectId)
+				throw new Error(
+					"Narração pronta. Reabra o projeto de origem e clique em Retomar narração.",
+				);
 			const asset = await editor.media.addMediaAsset({
 				projectId: activeProject.metadata.id,
 				asset: processed,
@@ -151,10 +205,13 @@ export function DarkCutSyncView() {
 			}
 
 			setNarrationAssetId(asset.id);
+			setJobId(null);
+			task("done");
 			setNarrationUrl(asset.url ?? URL.createObjectURL(blob));
 			setNarrationFileName(fileName);
 			toast.success(`Narração gerada com ${selected?.name ?? "Fish Audio"}.`);
 		} catch (error) {
+			task("error");
 			console.error(error);
 			toast.error(
 				error instanceof Error
@@ -207,7 +264,8 @@ export function DarkCutSyncView() {
 				</p>
 				<h2 className="mt-1 text-lg font-semibold">Sincronização e Narração</h2>
 				<p className="mt-1 text-xs text-muted-foreground">
-					Primeiro o roteiro. Depois a voz. Em seguida, a narração entra na timeline.
+					Primeiro o roteiro. Depois a voz. Em seguida, a narração entra na
+					timeline.
 				</p>
 			</div>
 
@@ -228,7 +286,8 @@ export function DarkCutSyncView() {
 					</Button>
 				</div>
 				<div className="mt-3 max-h-28 overflow-y-auto rounded-md border bg-background p-2 text-xs text-muted-foreground">
-					{script.trim() || "Volte para a aba Roteiro e cole o texto que será narrado."}
+					{script.trim() ||
+						"Volte para a aba Roteiro e cole o texto que será narrado."}
 				</div>
 			</section>
 
@@ -277,7 +336,8 @@ export function DarkCutSyncView() {
 									{selectedNarrator?.name ?? "Narrador"}
 								</div>
 								<div className="text-[0.65rem] text-muted-foreground">
-									{selectedNarrator?.language.toUpperCase() ?? "—"} · prévia curta
+									{selectedNarrator?.language.toUpperCase() ?? "—"} · prévia
+									curta
 								</div>
 							</div>
 							<Button
@@ -338,12 +398,26 @@ export function DarkCutSyncView() {
 					disabled={isGenerating || !script.trim()}
 					onClick={generateNarration}
 				>
-					{isGenerating ? "Gerando narração..." : "🎙️ Gerar narração"}
+					{isGenerating
+						? "Gerando narração..."
+						: jobId
+							? "Retomar narração"
+							: "🎙️ Gerar narração"}
 				</Button>
 
+				<p className="text-xs text-muted-foreground">
+					Pode trocar de aba durante a geração. Se fechar o aplicativo, use
+					Retomar narração ao reabrir; resultados concluídos são recuperados sem
+					gerar novamente.
+				</p>
 				{narrationUrl && (
 					<div className="space-y-2 rounded-md border bg-background p-2">
-						<audio className="w-full" controls preload="metadata" src={narrationUrl} />
+						<audio
+							className="w-full"
+							controls
+							preload="metadata"
+							src={narrationUrl}
+						/>
 						<div className="grid grid-cols-2 gap-2">
 							<Button variant="secondary" onClick={downloadNarration}>
 								↓ Baixar
@@ -356,6 +430,8 @@ export function DarkCutSyncView() {
 				)}
 			</section>
 
+			<SilencePanel />
+			<MusicPanel />
 			<section className="mt-3 rounded-md border bg-card p-3">
 				<div className="text-sm font-medium">Fluxo DarkCut</div>
 				<div className="mt-2 grid gap-2 text-xs text-muted-foreground">
@@ -363,7 +439,9 @@ export function DarkCutSyncView() {
 					<div className="rounded-md border border-primary/40 bg-primary/5 p-2 text-foreground">
 						2. Narração
 					</div>
-					<div className="rounded-md border bg-background p-2">3. Cenas e mídias</div>
+					<div className="rounded-md border bg-background p-2">
+						3. Cenas e mídias
+					</div>
 					<div className="rounded-md border bg-background p-2">4. Timeline</div>
 				</div>
 			</section>
