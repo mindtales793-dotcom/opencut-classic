@@ -7,11 +7,11 @@
   "scripts": {
     "stage": "node scripts/stage.mjs",
     "dev": "electron .",
-    "dist:win": "electron-builder --win"
+    "dist:win": "electron-builder --win --x64 --publish never"
   },
   "devDependencies": {
-    "electron": "^38.0.0",
-    "electron-builder": "^26.0.12"
+    "electron": "38.0.0",
+    "electron-builder": "26.15.3"
   },
   "build": {
     "appId": "com.darkcut.studio",
@@ -45,7 +45,12 @@
       "allowToChangeInstallationDirectory": true,
       "createDesktopShortcut": true,
       "createStartMenuShortcut": true,
-      "shortcutName": "DarkCut Studio"
+      "shortcutName": "DarkCut Studio",
+      "artifactName": "DarkCut-Studio-Setup-${version}-${arch}.${ext}"
+    },
+    "electronVersion": "38.0.0",
+    "portable": {
+      "artifactName": "DarkCut-Studio-Portable-${version}-${arch}.${ext}"
     }
   }
 }
