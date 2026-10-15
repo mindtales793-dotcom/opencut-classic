@@ -136,8 +136,11 @@ export function Timeline() {
 	);
 	const mainTrackId = scene?.tracks.main.id ?? null;
 
+	const initializedScenes = useRef(new Set<string>());
 	useEffect(() => {
-		if (!scene?.isMain) return;
+		if (!scene?.isMain || initializedScenes.current.has(scene.id)) return;
+		// Initialize once; deleting or undoing a lane must not recreate it.
+		initializedScenes.current.add(scene.id);
 
 		const allTracks = [
 			...scene.tracks.overlay,

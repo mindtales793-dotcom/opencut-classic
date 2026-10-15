@@ -18,10 +18,15 @@ async function run(win) {
   await until(win, `Array.from(document.querySelectorAll('button')).some(b => b.textContent.includes('Create your first project'))`);
   await win.webContents.executeJavaScript(`Array.from(document.querySelectorAll('button')).find(b => b.textContent.includes('Create your first project')).click()`);
   await until(win, `location.pathname.startsWith('/editor/') && document.body.innerText.includes('Roteiro') && !document.body.innerText.includes('Loading project...')`);
+  await until(win, `document.body.innerText.includes('A1 • Narração') && document.body.innerText.includes('G1 • Stickers / Gráficos')`);
+  await win.webContents.executeJavaScript(`document.querySelector('button[title="Adicionar faixa visual"]').click()`);
+  await until(win, `document.body.innerText.includes('V3 • Vídeo / Imagem')`);
+  await win.webContents.executeJavaScript(`document.querySelector('button[title="Adicionar faixa de áudio"]').click()`);
+  await until(win, `document.body.innerText.includes('A4 • Áudio')`);
   // Check that the event loop remains responsive after hydration and project creation.
   await win.webContents.executeJavaScript(`new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve)))`);
   const screenshot = await win.webContents.capturePage();
   if (process.env.DARKCUT_SMOKE_REPORT) fs.writeFileSync(process.env.DARKCUT_SMOKE_REPORT + '.png', screenshot.toPNG());
-  report({ ok: true, checks: ['packaged server started', 'projects hydrated', 'project created', 'editor loaded', 'animation frames responsive'] });
+  report({ ok: true, checks: ['packaged server started', 'projects hydrated', 'project created', 'editor loaded', 'default lanes preserved', 'video and audio lanes added', 'animation frames responsive'] });
 }
 module.exports = { report, run };
