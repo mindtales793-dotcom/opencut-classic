@@ -24,6 +24,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { useInfiniteScroll } from "@/hooks/use-infinite-scroll";
 import { useSoundSearch } from "@/sounds/use-sound-search";
 import { useSoundsStore } from "@/sounds/sounds-store";
+import { useDarkCutProductionStore } from "@/components/editor/panels/assets/darkcut-production-store";
 import type { SavedSound, SoundEffect } from "@/sounds/types";
 import { cn } from "@/utils/ui";
 import {
@@ -71,7 +72,9 @@ function MusicLibraryView() {
 	const [isLoading, setIsLoading] = useState(false);
 	const [playingId, setPlayingId] = useState<number | null>(null);
 	const [audioElement, setAudioElement] = useState<HTMLAudioElement | null>(null);
-	const [commercialOnly, setCommercialOnly] = useState(true);
+	const jamendoClientId = useDarkCutProductionStore(
+		(state) => state.jamendoClientId,
+	);
 
 	const categories = [
 		{ label: "Documental", query: "documentary instrumental" },
@@ -93,25 +96,31 @@ function MusicLibraryView() {
 	}) => {
 		setIsLoading(true);
 		try {
-			const params = new URLSearchParams({
-				type: "songs",
-				page: String(nextPage),
-				page_size: "30",
-				sort: search.trim() ? "score" : "downloads",
-				commercial_only: String(commercialOnly),
-			});
-			if (search.trim()) params.set("q", search.trim());
-
-			const response = await fetch(`/api/sounds/search?${params.toString()}`);
-			if (!response.ok) {
-				throw new Error(`Falha ao carregar músicas: ${response.status}`);
+			if (!jamendoClientId.trim()) {
+				setSounds([]);
+				setHasMore(false);
+				return;
 			}
+
+			const response = await fetch("/api/darkcut/music/search", {
+				method: "POST",
+				headers: { "Content-Type": "application/json" },
+				body: JSON.stringify({
+					clientId: jamendoClientId,
+					query: search,
+					page: nextPage,
+					limit: 30,
+				}),
+			});
 			const data = await response.json();
+			if (!response.ok) {
+				throw new Error(data.error || `Falha ao carregar músicas: ${response.status}`);
+			}
 			setSounds((current) =>
 				append ? [...current, ...(data.results ?? [])] : data.results ?? [],
 			);
 			setPage(nextPage);
-			setHasMore(Boolean(data.next));
+			setHasMore(Boolean(data.hasMore));
 		} catch (error) {
 			console.error("Failed to load background music:", error);
 			setSounds((current) => (append ? current : []));
@@ -125,7 +134,7 @@ function MusicLibraryView() {
 			void fetchMusic({ search: query, nextPage: 1 });
 		}, query.trim() ? 350 : 0);
 		return () => clearTimeout(timeout);
-	}, [query, commercialOnly]);
+	}, [query, jamendoClientId]);
 
 	useEffect(() => {
 		return () => {
@@ -170,15 +179,12 @@ function MusicLibraryView() {
 					showClearIcon
 					onClear={() => setQuery("")}
 				/>
-				<Button
-					variant={commercialOnly ? "secondary" : "text"}
-					size="sm"
-					className="h-9 shrink-0 px-2 text-[0.67rem]"
-					onClick={() => setCommercialOnly((value) => !value)}
-					title="Preferir músicas com licença indicada para uso comercial"
+				<span
+					className="shrink-0 rounded-md border px-2 py-2 text-[0.65rem] text-muted-foreground"
+					title="Fonte da biblioteca"
 				>
-					{commercialOnly ? "Comercial ✓" : "Todas"}
-				</Button>
+					Jamendo
+				</span>
 			</div>
 
 			<div className="flex gap-1 overflow-x-auto pb-1 scrollbar-thin">
@@ -204,7 +210,13 @@ function MusicLibraryView() {
 							</div>
 						)}
 
-						{!isLoading && sounds.length === 0 && (
+						{!jamendoClientId.trim() && (
+							<div className="rounded-md border border-primary/30 bg-primary/5 p-3 text-xs text-muted-foreground">
+								Configure o Jamendo Client ID em Configurações &gt; APIs para carregar as músicas.
+							</div>
+						)}
+
+						{jamendoClientId.trim() && !isLoading && sounds.length === 0 && (
 							<div className="rounded-md border bg-background p-3 text-xs text-muted-foreground">
 								Nenhuma música encontrada. Tente outro estilo ou termo.
 							</div>
