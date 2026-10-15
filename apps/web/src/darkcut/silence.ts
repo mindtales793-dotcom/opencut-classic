@@ -115,11 +115,15 @@ export async function analyzeSilence(
 	});
 }
 
-export function findMainTrackGaps(
+export function findTrackGaps(
 	scene: TScene,
+	trackId: string,
 	minimumGapSeconds = 0.03,
 ): SilenceCut[] {
-	const elements = [...scene.tracks.main.elements].sort(
+	const track = allTracks(scene.tracks).find((candidate) => candidate.id === trackId);
+	if (!track) return [];
+
+	const elements = [...track.elements].sort(
 		(a, b) => a.startTime - b.startTime,
 	);
 	if (elements.length === 0) return [];
@@ -141,6 +145,13 @@ export function findMainTrackGaps(
 	}
 
 	return cuts;
+}
+
+export function findMainTrackGaps(
+	scene: TScene,
+	minimumGapSeconds = 0.03,
+): SilenceCut[] {
+	return findTrackGaps(scene, scene.tracks.main.id, minimumGapSeconds);
 }
 
 const allTracks = (tracks: SceneTracks) => [
