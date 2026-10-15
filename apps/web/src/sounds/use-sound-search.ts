@@ -9,6 +9,10 @@ export function useSoundSearch({
 	query: string;
 	commercialOnly: boolean;
 }) {
+	const freesoundApiKey = useDarkCutProductionStore(
+		(state) => state.freesoundApiKey,
+	);
+
 	const {
 		searchResults,
 		isSearching,
@@ -31,6 +35,10 @@ export function useSoundSearch({
 		resetPagination,
 	} = useSoundsStore();
 
+	const requestHeaders = freesoundApiKey.trim()
+		? { "x-darkcut-freesound-key": freesoundApiKey.trim() }
+		: undefined;
+
 	const loadMore = async () => {
 		if (isLoadingMore || !hasNextPage) return;
 
@@ -41,29 +49,30 @@ export function useSoundSearch({
 			const searchParams = new URLSearchParams({
 				page: nextPage.toString(),
 				type: "effects",
+				commercial_only: commercialOnly.toString(),
 			});
 
 			if (query.trim()) {
 				searchParams.set("q", query);
 			}
 
-			searchParams.set("commercial_only", commercialOnly.toString());
 			const response = await fetch(
 				`/api/sounds/search?${searchParams.toString()}`,
+				{ headers: requestHeaders },
 			);
 
 			if (response.ok) {
 				const data = await response.json();
 
 				if (query.trim()) {
-					appendSearchResults(data.results);
+					appendSearchResults({ results: data.results });
 				} else {
-					appendTopSounds(data.results);
+					appendTopSounds({ results: data.results });
 				}
 
 				setCurrentPage({ page: nextPage });
 				setHasNextPage({ hasNext: !!data.next });
-				setTotalCount(data.count);
+				setTotalCount({ count: data.count });
 			} else {
 				setSearchError({ error: `Load more failed: ${response.status}` });
 			}
@@ -96,15 +105,23 @@ export function useSoundSearch({
 				setSearchError({ error: null });
 				resetPagination();
 
+				const params = new URLSearchParams({
+					q: query,
+					type: "effects",
+					page: "1",
+					commercial_only: commercialOnly.toString(),
+				});
+
 				const response = await fetch(
-					`/api/sounds/search?q=${encodeURIComponent(query)}&type=effects&page=1`,
+					`/api/sounds/search?${params.toString()}`,
+					{ headers: requestHeaders },
 				);
 
 				if (!ignore) {
 					if (response.ok) {
 						const data = await response.json();
 						setSearchResults({ results: data.results });
-						setLastSearchQuery({ query: query });
+						setLastSearchQuery({ query });
 						setHasNextPage({ hasNext: !!data.next });
 						setTotalCount({ count: data.count });
 						setCurrentPage({ page: 1 });
@@ -131,6 +148,8 @@ export function useSoundSearch({
 		};
 	}, [
 		query,
+		commercialOnly,
+		freesoundApiKey,
 		lastSearchQuery,
 		searchResults.length,
 		setSearchResults,
