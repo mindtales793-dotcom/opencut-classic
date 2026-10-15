@@ -39,14 +39,21 @@ import { HugeiconsIcon } from "@hugeicons/react";
 export function SoundsView() {
 	return (
 		<div className="flex h-full flex-col">
-			<Tabs defaultValue="sound-effects" className="flex h-full flex-col">
+			<Tabs defaultValue="music" className="flex h-full flex-col">
 				<div className="px-3 pt-4 pb-0">
-					<TabsList>
-						<TabsTrigger value="sound-effects">Sound effects</TabsTrigger>
-						<TabsTrigger value="saved">Saved</TabsTrigger>
+					<TabsList className="w-full">
+						<TabsTrigger value="music">Músicas</TabsTrigger>
+						<TabsTrigger value="sound-effects">Efeitos</TabsTrigger>
+						<TabsTrigger value="saved">Favoritos</TabsTrigger>
 					</TabsList>
 				</div>
 				<Separator className="my-4" />
+				<TabsContent
+					value="music"
+					className="mt-0 flex min-h-0 flex-1 flex-col p-5 pt-0"
+				>
+					<MusicLibraryView />
+				</TabsContent>
 				<TabsContent
 					value="sound-effects"
 					className="mt-0 flex min-h-0 flex-1 flex-col p-5 pt-0"
