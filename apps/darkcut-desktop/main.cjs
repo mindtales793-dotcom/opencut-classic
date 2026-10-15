@@ -1,10 +1,43 @@
-const { app, BrowserWindow, dialog } = require("electron");
+const { app, BrowserWindow, dialog, shell } = require("electron");
 const path = require("node:path");
 const fs = require("node:fs");
 const http = require("node:http");
 const { spawn } = require("node:child_process");
 
 let serverProcess = null;
+let mainWindow = null;
+let serverFailure = null;
+let quitting = false;
+const smokeTest = process.argv.includes("--smoke-test");
+if (smokeTest && process.env.DARKCUT_SMOKE_PROFILE) {
+  app.setPath("userData", process.env.DARKCUT_SMOKE_PROFILE);
+}
+const logFile = path.join(app.getPath("userData"), "startup.log");
+fs.mkdirSync(path.dirname(logFile), { recursive: true });
+fs.writeFileSync(logFile, `DarkCut ${app.getVersion()} - ${new Date().toISOString()}\n`);
+function log(message) {
+  fs.appendFileSync(logFile, `${new Date().toISOString()} ${message}\n`);
+}
+function fail(error) {
+  const message = error instanceof Error ? error.message : String(error);
+  log(message);
+  if (smokeTest) {
+    require("./smoke.cjs").report({ ok: false, error: message });
+  } else {
+    dialog.showErrorBox("DarkCut Studio — não foi possível iniciar", `${message}\n\nDetalhes: ${logFile}`);
+  }
+  stopServer();
+  app.exit(1);
+}
+const hasLock = app.requestSingleInstanceLock();
+if (!hasLock) app.quit();
+app.on("second-instance", () => {
+  if (mainWindow) {
+    if (mainWindow.isMinimized()) mainWindow.restore();
+    mainWindow.show();
+    mainWindow.focus();
+  }
+});
 const PORT = 3217;
 const HOST = "127.0.0.1";
 
@@ -26,28 +59,34 @@ function findServer() {
   return null;
 }
 
-function waitForServer(timeoutMs = 60000) {
-  const started = Date.now();
-  return new Promise((resolve, reject) => {
-    const check = () => {
-      const req = http.get(
-        { host: HOST, port: PORT, path: "/", timeout: 1500 },
-        (res) => {
-          res.resume();
-          resolve();
-        },
-      );
-      req.on("error", () => {
-        if (Date.now() - started > timeoutMs) {
-          reject(new Error("DarkCut local server did not start in time."));
-          return;
-        }
-        setTimeout(check, 500);
-      });
-      req.on("timeout", () => req.destroy());
-    };
-    check();
+async function ensurePortAvailable() {
+  const net = require("node:net");
+  await new Promise((resolve, reject) => {
+    const probe = net.createServer();
+    probe.once("error", () => reject(new Error(`A porta ${PORT} está ocupada. Feche outra versão do DarkCut e tente novamente.`)));
+    probe.listen(PORT, HOST, () => probe.close(resolve));
   });
+}
+
+async function waitForServer(timeoutMs = 60000) {
+  const started = Date.now();
+  while (Date.now() - started < timeoutMs) {
+    if (serverFailure) throw serverFailure;
+    const ready = await new Promise((resolve) => {
+      const req = http.get({ host: HOST, port: PORT, path: "/api/health", timeout: 1500 }, (res) => {
+        let body = "";
+        res.on("data", (chunk) => { body += chunk; });
+        res.on("end", () => resolve(res.statusCode === 200 && body === "OK"));
+        res.on("error", () => resolve(false));
+      });
+      req.on("error", () => resolve(false));
+      req.on("timeout", () => req.destroy());
+    });
+    if (serverFailure) throw serverFailure;
+    if (ready) return;
+    await new Promise((resolve) => setTimeout(resolve, 250));
+  }
+  throw new Error("O servidor local não respondeu em 60 segundos. Consulte startup.log.");
 }
 
 function startServer() {
@@ -104,16 +143,14 @@ function startServer() {
     stdio: ["ignore", "pipe", "pipe"],
   });
 
-  serverProcess.stdout?.on("data", (data) =>
-    console.log("[darkcut-server]", data.toString().trim()),
-  );
-  serverProcess.stderr?.on("data", (data) =>
-    console.error("[darkcut-server]", data.toString().trim()),
-  );
-  serverProcess.on("exit", (code) => {
-    if (code && code !== 0) {
-      console.error("DarkCut server exited with code", code);
-    }
+  serverProcess.stdout?.on("data", (data) => log(data.toString().trim()));
+  serverProcess.stderr?.on("data", (data) => log(data.toString().trim()));
+  serverProcess.on("error", (error) => { serverFailure = error; log(error.message); });
+  serverProcess.on("exit", (code, signal) => {
+    if (quitting) return;
+    serverFailure = new Error(`O servidor do DarkCut encerrou (código ${code}, sinal ${signal}). Consulte startup.log.`);
+    log(serverFailure.message);
+    if (mainWindow && mainWindow.webContents.getURL().startsWith(`http://${HOST}:${PORT}`)) fail(serverFailure);
   });
 }
 
@@ -123,7 +160,8 @@ async function createWindow() {
     height: 920,
     minWidth: 1100,
     minHeight: 700,
-    show: false,
+    show: true,
+    title: "DarkCut Studio",
     backgroundColor: "#0b0b0c",
     autoHideMenuBar: true,
     webPreferences: {
@@ -133,38 +171,47 @@ async function createWindow() {
     },
   });
 
-  win.once("ready-to-show", () => {
-    win.maximize();
-    win.show();
+  mainWindow = win;
+  win.maximize();
+  win.webContents.on("render-process-gone", (_event, details) => fail(new Error(`A janela do editor encerrou: ${details.reason}`)));
+  win.webContents.on("console-message", (_event, level, message) => {
+    if (level >= 2) log(`[renderer] ${message}`);
   });
-
-  await win.loadURL(`http://${HOST}:${PORT}`);
+  win.webContents.setWindowOpenHandler(({ url }) => {
+    if (/^https?:/.test(url)) shell.openExternal(url);
+    return { action: "deny" };
+  });
+  win.webContents.on("will-navigate", (event, url) => {
+    if (new URL(url).origin !== `http://${HOST}:${PORT}`) {
+      event.preventDefault();
+      if (/^https?:/.test(url)) shell.openExternal(url);
+    }
+  });
+  await win.loadURL("data:text/html;charset=utf-8," + encodeURIComponent('<html lang="pt-BR"><body style="background:#0b0b0c;color:white;font:20px system-ui;display:grid;place-content:center;height:95vh"><h1>DarkCut Studio</h1><p>Iniciando o editor…</p></body></html>'));
+  return win;
 }
 
-app.whenReady().then(async () => {
+if (hasLock) app.whenReady().then(async () => {
   try {
+    const win = await createWindow();
+    await ensurePortAvailable();
     startServer();
     await waitForServer();
-    await createWindow();
+    await win.loadURL(`http://${HOST}:${PORT}/projects`);
+    if (smokeTest) {
+      await require("./smoke.cjs").run(win);
+      app.quit();
+    }
   } catch (error) {
-    console.error(error);
-    dialog.showErrorBox(
-      "DarkCut Studio",
-      error instanceof Error ? error.message : String(error),
-    );
-    app.quit();
+    fail(error);
   }
 });
 
-app.on("window-all-closed", () => {
-  if (serverProcess && !serverProcess.killed) {
-    serverProcess.kill();
-  }
-  if (process.platform !== "darwin") app.quit();
-});
-
-app.on("before-quit", () => {
-  if (serverProcess && !serverProcess.killed) {
-    serverProcess.kill();
-  }
-});
+function stopServer() {
+  quitting = true;
+  if (serverProcess && !serverProcess.killed) serverProcess.kill();
+}
+app.on("window-all-closed", () => app.quit());
+app.on("before-quit", stopServer);
+app.on("will-quit", stopServer);
+process.on("exit", stopServer);

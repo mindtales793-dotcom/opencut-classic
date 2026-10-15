@@ -17,7 +17,8 @@ if (!fs.existsSync(standaloneDir)) {
 
 fs.rmSync(runtimeDir, { recursive: true, force: true });
 fs.mkdirSync(runtimeDir, { recursive: true });
-fs.cpSync(standaloneDir, runtimeDir, { recursive: true });
+// Materialize workspace links: build-machine absolute symlinks cannot ship to users.
+fs.cpSync(standaloneDir, runtimeDir, { recursive: true, dereference: true });
 
 const candidateAppRoots = [
   runtimeDir,

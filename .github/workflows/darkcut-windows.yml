@@ -88,6 +88,32 @@ jobs:
           $exe = $files | Where-Object { $_.Extension -eq ".exe" }
           if (-not $exe) { throw "DarkCut Studio EXE was not generated." }
 
+      - name: Open packaged app and create a project
+        shell: pwsh
+        run: |
+          $env:DARKCUT_SMOKE_PROFILE = Join-Path $env:RUNNER_TEMP "darkcut-smoke-profile"
+          $env:DARKCUT_SMOKE_REPORT = Join-Path $env:RUNNER_TEMP "darkcut-smoke.json"
+          $exe = (Resolve-Path "apps/darkcut-desktop/dist/win-unpacked/DarkCut Studio.exe").Path
+          $app = Start-Process -FilePath $exe -ArgumentList "--smoke-test" -PassThru
+          if (-not $app.WaitForExit(180000)) {
+            Stop-Process -Id $app.Id -Force -ErrorAction SilentlyContinue
+            throw "Packaged app did not finish the startup test."
+          }
+          if (-not (Test-Path $env:DARKCUT_SMOKE_REPORT)) { throw "No startup test report was produced." }
+          $report = Get-Content $env:DARKCUT_SMOKE_REPORT -Raw | ConvertFrom-Json
+          if (-not $report.ok) { throw "Startup test failed: $($report.error)" }
+          Get-Content $env:DARKCUT_SMOKE_REPORT
+
+      - name: Upload startup diagnostics
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: DarkCut-Windows-Diagnostics
+          path: |
+            ${{ runner.temp }}/darkcut-smoke.json*
+            ${{ runner.temp }}/darkcut-smoke-profile/startup.log
+          if-no-files-found: ignore
+
       - name: Upload DarkCut Studio EXE
         uses: actions/upload-artifact@v4
         with:
