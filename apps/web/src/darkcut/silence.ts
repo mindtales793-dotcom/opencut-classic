@@ -4,7 +4,11 @@ import { DeleteElementsCommand } from "@/commands/timeline/element/delete-elemen
 import { UpdateElementsCommand } from "@/commands/timeline/element/update-elements";
 import type { EditorCore } from "@/core";
 import type { TScene, SceneTracks } from "@/timeline";
-import { mediaTimeFromSeconds, type MediaTime } from "@/wasm";
+import {
+	mediaTimeFromSeconds,
+	mediaTimeToSeconds,
+	type MediaTime,
+} from "@/wasm";
 
 export type SilenceCut = [number, number];
 export type AudioCore = {
@@ -109,6 +113,34 @@ export async function analyzeSilence(
 			channels.map((c) => c.buffer),
 		);
 	});
+}
+
+export function findMainTrackGaps(
+	scene: TScene,
+	minimumGapSeconds = 0.03,
+): SilenceCut[] {
+	const elements = [...scene.tracks.main.elements].sort(
+		(a, b) => a.startTime - b.startTime,
+	);
+	if (elements.length === 0) return [];
+
+	const cuts: SilenceCut[] = [];
+	let cursor = 0 as MediaTime;
+
+	for (const element of elements) {
+		if (element.startTime > cursor) {
+			const start = mediaTimeToSeconds({ time: cursor });
+			const end = mediaTimeToSeconds({ time: element.startTime });
+			if (end - start >= minimumGapSeconds) {
+				cuts.push([start, end]);
+			}
+		}
+
+		const elementEnd = (element.startTime + element.duration) as MediaTime;
+		if (elementEnd > cursor) cursor = elementEnd;
+	}
+
+	return cuts;
 }
 
 const allTracks = (tracks: SceneTracks) => [
