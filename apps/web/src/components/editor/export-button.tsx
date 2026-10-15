@@ -20,7 +20,7 @@ import {
 	getExportFileExtension,
 	downloadBuffer,
 } from "@/export";
-import { Check, Copiar, Download, RotateCcw } from "lucide-react";
+import { Check, Copy, Download, RotateCcw } from "lucide-react";
 import {
 	EXPORT_FORMAT_VALUES,
 	EXPORT_QUALITY_VALUES,
@@ -48,7 +48,9 @@ export function ExportButton() {
 	const [isExportPopoverOpen, setIsExportPopoverOpen] = useState(false);
 	const editor = useEditor();
 	const activeProject = useEditor((e) => e.project.getActiveOrNull());
+	const timelineDuration = useEditor((e) => e.timeline.getTotalDuration());
 	const hasProject = !!activeProject;
+	const hasTimelineContent = timelineDuration > 0;
 
 	const handlePopoverOpenChange = ({ open }: { open: boolean }) => {
 		if (!open) {
@@ -56,6 +58,18 @@ export function ExportButton() {
 			editor.project.clearExportState();
 		}
 		setIsExportPopoverOpen(open);
+	};
+
+	const openExport = () => {
+		if (!hasProject) return;
+		if (!hasTimelineContent) {
+			toast.error("A timeline está vazia.", {
+				description:
+					"Adicione imagens, vídeos ou áudio à linha do tempo antes de exportar.",
+			});
+			return;
+		}
+		setIsExportPopoverOpen(true);
 	};
 
 	return (
@@ -70,12 +84,12 @@ export function ExportButton() {
 						"flex items-center gap-1.5 rounded-md bg-[#38BDF8] px-[0.12rem] py-[0.12rem] text-white",
 						hasProject ? "cursor-pointer" : "cursor-not-allowed opacity-50",
 					)}
-					onClick={hasProject ? () => setIsExportPopoverOpen(true) : undefined}
+					onClick={openExport}
 					disabled={!hasProject}
 					onKeyDown={(event) => {
 						if (hasProject && (event.key === "Enter" || event.key === " ")) {
 							event.preventDefault();
-							setIsExportPopoverOpen(true);
+							openExport();
 						}
 					}}
 				>
@@ -83,12 +97,15 @@ export function ExportButton() {
 						<HugeiconsIcon icon={TransitionTopIcon} className="z-50 size-3.5" />
 						<span className="z-50 text-[0.875rem]">Exportar</span>
 						<div className="absolute top-0 left-0 z-10 flex size-full items-center justify-center rounded-[0.6rem] bg-linear-to-t from-white/0 to-white/50">
-							<div className="absolute top-[0.08rem] z-50 h-[calc(100%-2px)] w-[calc(100%-2px)] rounded-[0.6rem] bg-linear-270 from-[#2567EC] to-[#37B6F7]"></div>
+							<div className="absolute top-[0.08rem] z-50 h-[calc(100%-2px)] w-[calc(100%-2px)] rounded-[0.6rem] bg-linear-270 from-[#2567EC] to-[#37B6F7]" />
 						</div>
 					</div>
 				</button>
 			</PopoverTrigger>
-			{hasProject && <ExportPopover onOpenChange={setIsExportPopoverOpen} />}
+
+			{hasProject && (
+				<ExportPopover onOpenChange={setIsExportPopoverOpen} />
+			)}
 		</Popover>
 	);
 }
@@ -141,7 +158,7 @@ function ExportPopover({
 		}
 	};
 
-	const handleCancelar = () => {
+	const handleCancel = () => {
 		editor.project.cancelExport();
 	};
 
@@ -149,13 +166,13 @@ function ExportPopover({
 		<PopoverContent className="bg-background mr-4 flex w-80 flex-col p-0">
 			{exportResult && !exportResult.success ? (
 				<ExportError
-					error={exportResult.error || "Unknown error occurred"}
-					onTentar novamente={handleExport}
+					error={exportResult.error || "Ocorreu um erro desconhecido."}
+					onRetry={handleExport}
 				/>
 			) : (
 				<>
-					<div className="flex items-center justify-between p-3 border-b">
-						<h3 className="font-medium text-sm">
+					<div className="flex items-center justify-between border-b p-3">
+						<h3 className="text-sm font-medium">
 							{isExporting ? "Exportando projeto" : "Exportar projeto"}
 						</h3>
 					</div>
@@ -176,9 +193,7 @@ function ExportPopover({
 											<RadioGroup
 												value={format}
 												onValueChange={(value) => {
-													if (isExportFormat(value)) {
-														setFormat(value);
-													}
+													if (isExportFormat(value)) setFormat(value);
 												}}
 											>
 												<div className="flex items-center space-x-2">
@@ -205,9 +220,7 @@ function ExportPopover({
 											<RadioGroup
 												value={quality}
 												onValueChange={(value) => {
-													if (isExportQuality(value)) {
-														setQuality(value);
-													}
+													if (isExportQuality(value)) setQuality(value);
 												}}
 											>
 												<div className="flex items-center space-x-2">
@@ -256,7 +269,7 @@ function ExportPopover({
 								<div className="p-3 pt-0">
 									<Button onClick={handleExport} className="w-full gap-2">
 										<Download className="size-4" />
-										Export
+										Exportar vídeo
 									</Button>
 								</div>
 							</>
@@ -279,7 +292,7 @@ function ExportPopover({
 									className="w-full rounded-md"
 									onClick={handleCancel}
 								>
-									Cancel
+									Cancelar
 								</Button>
 							</div>
 						)}
@@ -308,7 +321,9 @@ function ExportError({
 	return (
 		<div className="space-y-4 p-3">
 			<div className="flex flex-col gap-1.5">
-				<p className="text-destructive text-sm font-medium">Falha na exportação</p>
+				<p className="text-destructive text-sm font-medium">
+					Falha na exportação
+				</p>
 				<p className="text-muted-foreground text-xs">{error}</p>
 			</div>
 
@@ -320,7 +335,7 @@ function ExportError({
 					onClick={handleCopy}
 				>
 					{copied ? <Check className="text-constructive" /> : <Copy />}
-					Copy
+					Copiar
 				</Button>
 				<Button
 					variant="outline"
@@ -329,7 +344,7 @@ function ExportError({
 					onClick={onRetry}
 				>
 					<RotateCcw />
-					Retry
+					Tentar novamente
 				</Button>
 			</div>
 		</div>
