@@ -87,6 +87,12 @@ import { DragLine } from "./drag-line";
 import { invokeAction } from "@/actions";
 import { resolveTimelineElementIntersections } from "./selection-hit-testing";
 import { cn } from "@/utils/ui";
+import { toast } from "sonner";
+import {
+	ApplySilenceCuts,
+	findTrackGaps,
+	loadAudioCore,
+} from "@/darkcut/silence";
 
 const TRACKS_CONTAINER_MAX_HEIGHT = 800;
 const FALLBACK_CONTAINER_WIDTH = 1000;
@@ -836,7 +842,8 @@ function TimelineTrackRows({
 	isDragOver: boolean;
 	dropTarget: DropTarget | null;
 }) {
-	const timeline = useEditor((e) => e.timeline);
+	const editor = useEditor();
+	const timeline = editor.timeline;
 	const scene = useEditor((e) => e.scenes.getActiveSceneOrNull());
 	const tracks = useMemo<TimelineTrack[]>(
 		() =>
@@ -869,6 +876,46 @@ function TimelineTrackRows({
 			: (null as ReadonlyMap<string, MediaTime> | null),
 		[dragView],
 	);
+	const removeSpacesFromTrack = async (track: TimelineTrack) => {
+		if (!scene) return;
+
+		const gaps = findTrackGaps(scene, track.id);
+		if (!gaps.length) {
+			toast.info(`Não encontrei espaços vazios em ${track.name}.`);
+			return;
+		}
+
+		const toastId = `remove-gaps-${track.id}`;
+		toast.loading("Fechando espaços vazios...", { id: toastId });
+		try {
+			const core = await loadAudioCore();
+			editor.playback.pause();
+			const previousRipple = editor.command.isRippleEnabled;
+			try {
+				editor.command.isRippleEnabled = false;
+				editor.command.execute({
+					command: new ApplySilenceCuts(editor, scene, gaps, core),
+				});
+			} finally {
+				editor.command.isRippleEnabled = previousRipple;
+			}
+
+			const removedSeconds = gaps.reduce((sum, [start, end]) => sum + end - start, 0);
+			toast.success(`${gaps.length} espaço(s) removido(s).`, {
+				id: toastId,
+				description: `${removedSeconds.toFixed(
+					2,
+				)}s fechados em todas as faixas para manter a sincronização. Ctrl+Z desfaz.`,
+			});
+		} catch (error) {
+			toast.error("Falha ao remover espaços.", {
+				id: toastId,
+				description:
+					error instanceof Error ? error.message : "Erro desconhecido.",
+			});
+		}
+	};
+
 	const sortedTracks = useMemo(() => {
 		if (!draggingElementIds)
 			return tracks.map((track, index) => ({ track, index }));
@@ -929,6 +976,15 @@ function TimelineTrackRows({
 							}}
 						>
 							Paste elements
+						</ContextMenuItem>
+						<ContextMenuItem
+							icon={<HugeiconsIcon icon={MagicWand05Icon} />}
+							onClick={(event: React.MouseEvent) => {
+								event.stopPropagation();
+								void removeSpacesFromTrack(track);
+							}}
+						>
+							🧲 Remover espaços vazios
 						</ContextMenuItem>
 						<ContextMenuItem
 							icon={<HugeiconsIcon icon={VolumeHighIcon} />}
