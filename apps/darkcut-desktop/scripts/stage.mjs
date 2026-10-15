@@ -18,7 +18,7 @@ if (!fs.existsSync(standaloneDir)) {
 fs.rmSync(runtimeDir, { recursive: true, force: true });
 fs.mkdirSync(runtimeDir, { recursive: true });
 // Materialize workspace links: build-machine absolute symlinks cannot ship to users.
-fs.cpSync(standaloneDir, runtimeDir, { recursive: true, dereference: true });
+copyRuntime(standaloneDir, runtimeDir);
 
 const candidateAppRoots = [
   runtimeDir,
@@ -47,3 +47,19 @@ if (fs.existsSync(publicSource)) {
 }
 
 console.log("DarkCut desktop runtime staged at:", runtimeDir);
+
+// Copy real files explicitly so absolute workspace links never enter the package.
+function copyRuntime(source, destination, parents = new Set()) {
+  const real = fs.realpathSync(source);
+  if (parents.has(real)) throw new Error(`Circular runtime link: ${source}`);
+  if (fs.statSync(real).isDirectory()) {
+    fs.mkdirSync(destination, { recursive: true });
+    const next = new Set(parents);
+    next.add(real);
+    for (const entry of fs.readdirSync(real)) {
+      copyRuntime(path.join(real, entry), path.join(destination, entry), next);
+    }
+  } else {
+    fs.copyFileSync(real, destination);
+  }
+}
