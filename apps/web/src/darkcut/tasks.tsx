@@ -21,6 +21,7 @@ export const useDarkCutTasks = create<{
 	set: (id, value) => set((s) => ({ tasks: { ...s.tasks, [id]: value } })),
 }));
 export function DarkCutTaskBar() {
+	const editor = useEditor();
 	const tasks = useDarkCutTasks((s) => s.tasks);
 	const id = useEditor((e) => e.project.getActive()?.metadata.id);
 	const exp = useEditor((e) => e.project.getExportState());
@@ -76,7 +77,7 @@ export function DarkCutTaskBar() {
 					<button
 						type="button"
 						className="rounded border px-2 py-0.5 text-[0.68rem] hover:bg-background"
-						onClick={() => useEditor.getState?.()?.project.cancelExport?.()}
+						onClick={() => editor.project.cancelExport()}
 					>
 						Cancelar
 					</button>
