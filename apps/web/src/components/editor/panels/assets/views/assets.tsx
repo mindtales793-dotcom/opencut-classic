@@ -29,7 +29,12 @@ import { DEFAULT_NEW_ELEMENT_DURATION } from "@/timeline/creation";
 import { TracksSnapshotCommand } from "@/commands/timeline";
 import { generateUUID } from "@/utils/id";
 import type { TimelineElement } from "@/timeline/types";
-import { addMediaTime, mediaTimeFromSeconds, type MediaTime } from "@/wasm";
+import {
+	addMediaTime,
+	mediaTimeFromSeconds,
+	ZERO_MEDIA_TIME,
+	type MediaTime,
+} from "@/wasm";
 import { useEditor } from "@/editor/use-editor";
 import { useFileUpload } from "@/media/use-file-upload";
 import { invokeAction } from "@/actions";
@@ -302,11 +307,13 @@ export function MediaView() {
 			const beforeTracks = scene.tracks;
 			const mainTrack = beforeTracks.main;
 			const hadVisuals = mainTrack.elements.length > 0;
-			let cursor = mainTrack.elements.reduce(
-				(max, element) =>
-					Math.max(max, addMediaTime({ a: element.startTime, b: element.duration })),
-				0,
-			);
+			let cursor = mainTrack.elements.reduce<MediaTime>((max, element) => {
+				const elementEnd = addMediaTime({
+					a: element.startTime,
+					b: element.duration,
+				});
+				return elementEnd > max ? elementEnd : max;
+			}, ZERO_MEDIA_TIME);
 			const batchStart = cursor;
 			const newElements: TimelineElement[] = [];
 
