@@ -1,3 +1,4 @@
+import { useRef } from "react";
 import { useEditor } from "@/editor/use-editor";
 import { useElementSelection } from "@/timeline/hooks/element/use-element-selection";
 import {
@@ -60,6 +61,8 @@ export function TimelineToolbar({
 	minZoom: number;
 	setZoomLevel: ({ zoom }: { zoom: number }) => void;
 }) {
+	const toolbarScrollRef = useRef<HTMLDivElement>(null);
+
 	const handleZoom = ({ direction }: { direction: "in" | "out" }) => {
 		const newZoomLevel =
 			direction === "in"
@@ -68,13 +71,29 @@ export function TimelineToolbar({
 		setZoomLevel({ zoom: newZoomLevel });
 	};
 
+	const handleToolbarWheel = (event: React.WheelEvent<HTMLDivElement>) => {
+		if (event.ctrlKey || Math.abs(event.deltaX) > Math.abs(event.deltaY)) return;
+		const target = toolbarScrollRef.current;
+		if (!target || target.scrollWidth <= target.clientWidth) return;
+		target.scrollLeft += event.deltaY;
+		event.preventDefault();
+	};
+
 	return (
-		<ScrollArea className="scrollbar-hidden">
-			<div className="flex h-10 items-center justify-between border-b px-2 py-1">
-				<ToolbarLeftSection />
+		<div className="flex h-12 min-w-0 items-stretch border-b bg-background">
+			<ScrollArea
+				ref={toolbarScrollRef}
+				className="min-w-0 flex-1 overflow-x-auto overflow-y-hidden"
+				onWheel={handleToolbarWheel}
+				title="Role a rodinha do mouse para navegar pelas ferramentas"
+			>
+				<div className="flex h-11 min-w-max items-center gap-3 px-2 py-1 pb-2">
+					<ToolbarLeftSection />
+					<SceneSelector />
+				</div>
+			</ScrollArea>
 
-				<SceneSelector />
-
+			<div className="z-10 flex shrink-0 items-center border-l bg-background px-2 shadow-[-8px_0_14px_-14px_rgba(0,0,0,0.7)]">
 				<ToolbarRightSection
 					zoomLevel={zoomLevel}
 					minZoom={minZoom}
@@ -82,7 +101,7 @@ export function TimelineToolbar({
 					onZoom={handleZoom}
 				/>
 			</div>
-		</ScrollArea>
+		</div>
 	);
 }
 
@@ -303,16 +322,22 @@ function ToolbarRightSection({
 
 			<div className="bg-border mx-1 h-6 w-px" />
 
-			<div className="flex items-center gap-1">
+			<div
+				className="flex items-center gap-1 rounded-md border bg-card px-1"
+				title="Zoom da linha do tempo"
+			>
 				<Button
 					variant="text"
 					size="icon"
+					className="size-8"
 					onClick={() => onZoom({ direction: "out" })}
+					title="Afastar timeline"
+					aria-label="Afastar timeline"
 				>
 					<HugeiconsIcon icon={SearchMinusIcon} />
 				</Button>
 				<Slider
-					className="w-28"
+					className="w-32"
 					value={[zoomToSlider({ zoomLevel, minZoom })]}
 					onValueChange={(values) =>
 						onZoomChange(sliderToZoom({ sliderPosition: values[0], minZoom }))
@@ -320,13 +345,39 @@ function ToolbarRightSection({
 					min={0}
 					max={1}
 					step={0.005}
+					aria-label="Zoom da linha do tempo"
 				/>
 				<Button
 					variant="text"
 					size="icon"
+					className="size-8"
 					onClick={() => onZoom({ direction: "in" })}
+					title="Aproximar timeline"
+					aria-label="Aproximar timeline"
 				>
 					<HugeiconsIcon icon={SearchAddIcon} />
+				</Button>
+				<Button
+					variant="outline"
+					size="sm"
+					className="h-8 px-2 text-[0.68rem]"
+					onClick={() => onZoomChange(minZoom)}
+					title="Mostrar todo o projeto na largura disponível"
+				>
+					Ajustar
+				</Button>
+				<Button
+					variant="text"
+					size="sm"
+					className="h-8 min-w-14 px-2 text-[0.68rem] tabular-nums"
+					onClick={() =>
+						onZoomChange(
+							Math.min(TIMELINE_ZOOM_MAX, Math.max(minZoom, 1)),
+						)
+					}
+					title="Voltar para zoom normal"
+				>
+					{Math.round(zoomLevel * 100)}%
 				</Button>
 			</div>
 		</div>
