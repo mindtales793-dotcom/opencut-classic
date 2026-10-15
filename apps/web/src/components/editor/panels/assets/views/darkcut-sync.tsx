@@ -1,8 +1,9 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
+import { cn } from "@/utils/ui";
 import { useEditor } from "@/editor/use-editor";
 import { processMediaAssets } from "@/media/processing";
 import { FISH_NARRATORS } from "@/darkcut/fish-narrators";
@@ -21,10 +22,73 @@ export function DarkCutSyncView() {
 	} = useDarkCutProductionStore();
 
 	const [isGenerating, setIsGenerating] = useState(false);
+	const [isPreviewingVoice, setIsPreviewingVoice] = useState(false);
+	const [voicePreviewUrl, setVoicePreviewUrl] = useState<string | null>(null);
 	const [narrationAssetId, setNarrationAssetId] = useState<string | null>(null);
 	const [narrationUrl, setNarrationUrl] = useState<string | null>(null);
 	const [narrationFileName, setNarrationFileName] =
 		useState("darkcut-narracao.mp3");
+
+	const selectedNarrator = FISH_NARRATORS.find(
+		(item) => item.id === selectedNarratorId,
+	);
+
+	useEffect(() => {
+		return () => {
+			if (voicePreviewUrl?.startsWith("blob:")) {
+				URL.revokeObjectURL(voicePreviewUrl);
+			}
+		};
+	}, [voicePreviewUrl]);
+
+	const previewSelectedVoice = async () => {
+		if (!selectedNarrator) {
+			toast.error("Selecione um narrador.");
+			return;
+		}
+
+		setIsPreviewingVoice(true);
+		try {
+			const previewText =
+				selectedNarrator.language === "en"
+					? "Hello. This is a quick DarkCut voice preview so you can choose your narrator."
+					: "Olá. Este é um teste rápido de voz do DarkCut para você escolher seu narrador.";
+
+			const response = await fetch("/api/darkcut/fish/tts", {
+				method: "POST",
+				headers: { "Content-Type": "application/json" },
+				body: JSON.stringify({
+					text: previewText,
+					referenceId: selectedNarrator.id,
+				}),
+			});
+
+			if (!response.ok) {
+				let message = "Falha ao carregar a prévia da voz.";
+				try {
+					const body = (await response.json()) as { error?: string };
+					if (body.error) message = body.error;
+				} catch {}
+				throw new Error(message);
+			}
+
+			const blob = await response.blob();
+			if (voicePreviewUrl?.startsWith("blob:")) {
+				URL.revokeObjectURL(voicePreviewUrl);
+			}
+			const url = URL.createObjectURL(blob);
+			setVoicePreviewUrl(url);
+			toast.success(`Prévia pronta: ${selectedNarrator.name}.`);
+		} catch (error) {
+			toast.error(
+				error instanceof Error
+					? error.message
+					: "Falha ao carregar a prévia da voz.",
+			);
+		} finally {
+			setIsPreviewingVoice(false);
+		}
+	};
 
 	const generateNarration = async () => {
 		const text = script.trim();
@@ -178,20 +242,90 @@ export function DarkCutSyncView() {
 					</span>
 				</div>
 
-				<label className="block text-xs text-muted-foreground">
-					Narrador
-					<select
-						value={selectedNarratorId}
-						onChange={(event) => setSelectedNarratorId(event.target.value)}
-						className="mt-1 h-9 w-full rounded-md border bg-background px-3 text-sm text-foreground outline-none focus:border-primary"
-					>
-						{FISH_NARRATORS.map((voice) => (
-							<option key={voice.id} value={voice.id}>
-								{voice.name} · {voice.language.toUpperCase()}
-							</option>
-						))}
-					</select>
-				</label>
+				<div className="space-y-2">
+					<label className="block text-xs text-muted-foreground">
+						Narrador
+						<select
+							value={selectedNarratorId}
+							onChange={(event) => {
+								setSelectedNarratorId(event.target.value);
+								if (voicePreviewUrl?.startsWith("blob:")) {
+									URL.revokeObjectURL(voicePreviewUrl);
+								}
+								setVoicePreviewUrl(null);
+							}}
+							className="mt-1 h-9 w-full rounded-md border bg-background px-3 text-sm text-foreground outline-none focus:border-primary"
+						>
+							{FISH_NARRATORS.map((voice) => (
+								<option key={voice.id} value={voice.id}>
+									{voice.name} · {voice.language.toUpperCase()}
+								</option>
+							))}
+						</select>
+					</label>
+
+					<div className="rounded-md border bg-background p-2">
+						<div className="flex items-center justify-between gap-2">
+							<div className="min-w-0">
+								<div className="truncate text-xs font-medium text-foreground">
+									{selectedNarrator?.name ?? "Narrador"}
+								</div>
+								<div className="text-[0.65rem] text-muted-foreground">
+									{selectedNarrator?.language.toUpperCase() ?? "—"} · prévia curta
+								</div>
+							</div>
+							<Button
+								variant="secondary"
+								size="sm"
+								className="h-8 shrink-0 px-2 text-xs"
+								disabled={isPreviewingVoice}
+								onClick={previewSelectedVoice}
+							>
+								{isPreviewingVoice ? "Carregando..." : "▶ Ouvir voz"}
+							</Button>
+						</div>
+
+						{voicePreviewUrl && (
+							<audio
+								className="mt-2 h-8 w-full"
+								controls
+								autoPlay
+								preload="metadata"
+								src={voicePreviewUrl}
+							/>
+						)}
+					</div>
+
+					<div className="max-h-40 space-y-1 overflow-y-auto rounded-md border bg-background p-1">
+						{FISH_NARRATORS.map((voice) => {
+							const isSelected = voice.id === selectedNarratorId;
+							return (
+								<button
+									key={voice.id}
+									type="button"
+									onClick={() => {
+										setSelectedNarratorId(voice.id);
+										if (voicePreviewUrl?.startsWith("blob:")) {
+											URL.revokeObjectURL(voicePreviewUrl);
+										}
+										setVoicePreviewUrl(null);
+									}}
+									className={cn(
+										"flex w-full items-center justify-between rounded px-2 py-1.5 text-left text-xs transition-colors",
+										isSelected
+											? "bg-primary/10 text-primary"
+											: "text-foreground hover:bg-accent",
+									)}
+								>
+									<span className="truncate">{voice.name}</span>
+									<span className="ml-2 shrink-0 text-[0.62rem] text-muted-foreground">
+										{voice.language.toUpperCase()}
+									</span>
+								</button>
+							);
+						})}
+					</div>
+				</div>
 
 				<Button
 					className="w-full"
