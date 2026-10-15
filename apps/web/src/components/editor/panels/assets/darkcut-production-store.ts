@@ -19,6 +19,9 @@ interface DarkCutProductionState {
 	srtPath: string;
 	selectedNarratorId: string;
 	youtubeApiKeys: string[];
+	fishApiKeys: string[];
+	jamendoClientId: string;
+	freesoundApiKey: string;
 	useFlowZika: boolean;
 	useYoutube: boolean;
 	useStock: boolean;
@@ -33,6 +36,9 @@ interface DarkCutProductionState {
 	setSrtPath: (value: string) => void;
 	setSelectedNarratorId: (value: string) => void;
 	setYoutubeApiKey: (index: number, value: string) => void;
+	setFishApiKey: (index: number, value: string) => void;
+	setJamendoClientId: (value: string) => void;
+	setFreesoundApiKey: (value: string) => void;
 	setSource: (
 		key: "useFlowZika" | "useYoutube" | "useStock" | "useLocal",
 		value: boolean,
@@ -52,6 +58,9 @@ export const useDarkCutProductionStore = create<DarkCutProductionState>()(
 			srtPath: "",
 			selectedNarratorId: "04736e4d6a644abab81e601a7d2ae4b9",
 			youtubeApiKeys: ["", "", ""],
+			fishApiKeys: ["", "", ""],
+			jamendoClientId: "",
+			freesoundApiKey: "",
 			useFlowZika: true,
 			useYoutube: true,
 			useStock: true,
@@ -76,6 +85,19 @@ export const useDarkCutProductionStore = create<DarkCutProductionState>()(
 					youtubeApiKeys[index] = value;
 					return { youtubeApiKeys: youtubeApiKeys.slice(0, 3) };
 				}),
+			setFishApiKey: (index, value) =>
+				set((state) => {
+					const fishApiKeys = [
+						...(state.fishApiKeys?.length
+							? state.fishApiKeys
+							: ["", "", ""]),
+					];
+					while (fishApiKeys.length < 3) fishApiKeys.push("");
+					fishApiKeys[index] = value;
+					return { fishApiKeys: fishApiKeys.slice(0, 3) };
+				}),
+			setJamendoClientId: (jamendoClientId) => set({ jamendoClientId }),
+			setFreesoundApiKey: (freesoundApiKey) => set({ freesoundApiKey }),
 			setSource: (key, value) => set({ [key]: value }),
 			setStage: (stage) => set({ stage }),
 		}),
