@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from "react";
+import { toast } from "sonner";
 import { PanelView } from "@/components/editor/panels/assets/views/base-panel";
 import {
 	Select,
@@ -21,6 +22,7 @@ import {
 import { BackgroundContent } from "./background";
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
 import { NumberField } from "@/components/ui/number-field";
 import { useEditorStore } from "@/editor/editor-store";
 import { usePropertyDraft } from "@/components/editor/panels/properties/hooks/use-property-draft";
@@ -31,11 +33,12 @@ import { dimensionToAspectRatio } from "@/utils/geometry";
 import { formatNumberForDisplay } from "@/utils/math";
 import { OcSquarePlusIcon } from "@/components/icons";
 import type { TCanvasSize } from "@/project/types";
+import { useDarkCutProductionStore } from "@/components/editor/panels/assets/darkcut-production-store";
 
-type SettingsView = "project-info" | "background";
+type SettingsView = "project-info" | "background" | "apis";
 
 function isSettingsView(value: string): value is SettingsView {
-	return value === "project-info" || value === "background";
+	return value === "project-info" || value === "background" || value === "apis";
 }
 
 const PRESET_LABELS: Record<string, string> = {
@@ -222,8 +225,9 @@ export function SettingsView() {
 					}}
 				>
 					<TabsList>
-						<TabsTrigger value="project-info">Project info</TabsTrigger>
-						<TabsTrigger value="background">Background</TabsTrigger>
+						<TabsTrigger value="project-info">Projeto</TabsTrigger>
+						<TabsTrigger value="background">Fundo</TabsTrigger>
+						<TabsTrigger value="apis">APIs</TabsTrigger>
 					</TabsList>
 				</Tabs>
 			}
@@ -317,7 +321,141 @@ export function SettingsView() {
 				</div>
 			)}
 			{view === "background" && <BackgroundContent />}
+			{view === "apis" && <ApiSettingsContent />}
 		</PanelView>
+	);
+}
+
+
+function ApiSettingsContent() {
+	const {
+		youtubeApiKeys,
+		setYoutubeApiKey,
+		fishApiKeys,
+		setFishApiKey,
+		jamendoClientId,
+		setJamendoClientId,
+		freesoundApiKey,
+		setFreesoundApiKey,
+	} = useDarkCutProductionStore();
+
+	const youtubeCount = youtubeApiKeys.filter((key) => key.trim()).length;
+	const fishCount = fishApiKeys.filter((key) => key.trim()).length;
+
+	const clearAll = () => {
+		for (let index = 0; index < 3; index += 1) {
+			setYoutubeApiKey(index, "");
+			setFishApiKey(index, "");
+		}
+		setJamendoClientId("");
+		setFreesoundApiKey("");
+		toast.success("APIs removidas deste dispositivo.");
+	};
+
+	return (
+		<div className="space-y-4 p-4">
+			<div>
+				<h3 className="text-sm font-semibold">APIs do DarkCut</h3>
+				<p className="mt-1 text-xs text-muted-foreground">
+					As chaves ficam salvas neste navegador/aplicativo e são reutilizadas automaticamente.
+				</p>
+			</div>
+
+			<section className="space-y-2 rounded-md border bg-card p-3">
+				<div className="flex items-center justify-between">
+					<div>
+						<div className="text-sm font-medium">YouTube Data API v3</div>
+						<div className="text-[0.68rem] text-muted-foreground">
+							Busca de vídeos · até três chaves
+						</div>
+					</div>
+					<span className="text-[0.68rem] text-muted-foreground">{youtubeCount}/3</span>
+				</div>
+				{[0, 1, 2].map((index) => (
+					<Input
+						key={`youtube-${index}`}
+						type="password"
+						value={youtubeApiKeys[index] ?? ""}
+						onChange={(event) => setYoutubeApiKey(index, event.target.value)}
+						placeholder={`Chave YouTube ${index + 1}`}
+						autoComplete="off"
+					/>
+				))}
+			</section>
+
+			<section className="space-y-2 rounded-md border bg-card p-3">
+				<div className="flex items-center justify-between">
+					<div>
+						<div className="text-sm font-medium">Fish Audio</div>
+						<div className="text-[0.68rem] text-muted-foreground">
+							Narração e prévia das vozes · até três chaves
+						</div>
+					</div>
+					<span className="text-[0.68rem] text-muted-foreground">{fishCount}/3</span>
+				</div>
+				{[0, 1, 2].map((index) => (
+					<Input
+						key={`fish-${index}`}
+						type="password"
+						value={fishApiKeys[index] ?? ""}
+						onChange={(event) => setFishApiKey(index, event.target.value)}
+						placeholder={`Chave Fish Audio ${index + 1}`}
+						autoComplete="off"
+					/>
+				))}
+			</section>
+
+			<section className="space-y-2 rounded-md border bg-card p-3">
+				<div>
+					<div className="text-sm font-medium">Jamendo</div>
+					<div className="text-[0.68rem] text-muted-foreground">
+						Biblioteca de músicas de fundo
+					</div>
+				</div>
+				<Input
+					type="password"
+					value={jamendoClientId}
+					onChange={(event) => setJamendoClientId(event.target.value)}
+					placeholder="Jamendo Client ID"
+					autoComplete="off"
+				/>
+			</section>
+
+			<section className="space-y-2 rounded-md border bg-card p-3">
+				<div>
+					<div className="text-sm font-medium">Freesound</div>
+					<div className="text-[0.68rem] text-muted-foreground">
+						Efeitos sonoros e ambientes
+					</div>
+				</div>
+				<Input
+					type="password"
+					value={freesoundApiKey}
+					onChange={(event) => setFreesoundApiKey(event.target.value)}
+					placeholder="Freesound API Key"
+					autoComplete="off"
+				/>
+			</section>
+
+			<div className="grid grid-cols-2 gap-2">
+				<Button
+					onClick={() =>
+						toast.success("APIs salvas.", {
+							description: "O DarkCut vai reutilizar essas chaves automaticamente.",
+						})
+					}
+				>
+					Salvar APIs
+				</Button>
+				<Button variant="outline" onClick={clearAll}>
+					Limpar
+				</Button>
+			</div>
+
+			<p className="text-[0.66rem] leading-relaxed text-muted-foreground">
+				No app atual, essas credenciais ficam persistidas localmente. Não coloque suas chaves em prints ou mensagens.
+			</p>
+		</div>
 	);
 }
 
