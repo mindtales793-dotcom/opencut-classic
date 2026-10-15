@@ -220,6 +220,17 @@ export function addNarrationAssetToTimeline({
 		throw new Error("Não foi possível medir a duração da narração.");
 	}
 
+	const scene = editor.scenes.getActiveScene();
+	const narrationTrack =
+		scene.tracks.audio.find((track) => track.name === "A1 • Narração") ??
+		null;
+	const narrationTrackId =
+		narrationTrack?.id ??
+		editor.timeline.addTrack({
+			type: "audio",
+			name: "A1 • Narração",
+		});
+
 	editor.command.execute({
 		command: new InsertElementCommand({
 			element: buildElementFromMedia({
@@ -229,7 +240,7 @@ export function addNarrationAssetToTimeline({
 				duration: mediaTimeFromSeconds({ seconds: asset.duration }),
 				startTime: ZERO_MEDIA_TIME,
 			}),
-			placement: { mode: "auto", trackType: "audio" },
+			placement: { mode: "explicit", trackId: narrationTrackId },
 		}),
 	});
 
