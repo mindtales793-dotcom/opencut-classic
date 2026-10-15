@@ -63,6 +63,187 @@ export function SoundsView() {
 	);
 }
 
+function MusicLibraryView() {
+	const [query, setQuery] = useState("");
+	const [sounds, setSounds] = useState<SoundEffect[]>([]);
+	const [page, setPage] = useState(1);
+	const [hasMore, setHasMore] = useState(false);
+	const [isLoading, setIsLoading] = useState(false);
+	const [playingId, setPlayingId] = useState<number | null>(null);
+	const [audioElement, setAudioElement] = useState<HTMLAudioElement | null>(null);
+	const [commercialOnly, setCommercialOnly] = useState(true);
+
+	const categories = [
+		{ label: "Documental", query: "documentary instrumental" },
+		{ label: "Calma", query: "calm ambient instrumental" },
+		{ label: "Esperança", query: "hopeful inspirational instrumental" },
+		{ label: "Cinemática", query: "cinematic instrumental" },
+		{ label: "Lo-fi", query: "lofi background music" },
+		{ label: "Tecnologia", query: "technology corporate instrumental" },
+	];
+
+	const fetchMusic = async ({
+		search,
+		nextPage = 1,
+		append = false,
+	}: {
+		search: string;
+		nextPage?: number;
+		append?: boolean;
+	}) => {
+		setIsLoading(true);
+		try {
+			const params = new URLSearchParams({
+				type: "songs",
+				page: String(nextPage),
+				page_size: "30",
+				sort: search.trim() ? "score" : "downloads",
+				commercial_only: String(commercialOnly),
+			});
+			if (search.trim()) params.set("q", search.trim());
+
+			const response = await fetch(`/api/sounds/search?${params.toString()}`);
+			if (!response.ok) {
+				throw new Error(`Falha ao carregar músicas: ${response.status}`);
+			}
+			const data = await response.json();
+			setSounds((current) =>
+				append ? [...current, ...(data.results ?? [])] : data.results ?? [],
+			);
+			setPage(nextPage);
+			setHasMore(Boolean(data.next));
+		} catch (error) {
+			console.error("Failed to load background music:", error);
+			setSounds((current) => (append ? current : []));
+		} finally {
+			setIsLoading(false);
+		}
+	};
+
+	useEffect(() => {
+		const timeout = setTimeout(() => {
+			void fetchMusic({ search: query, nextPage: 1 });
+		}, query.trim() ? 350 : 0);
+		return () => clearTimeout(timeout);
+	}, [query, commercialOnly]);
+
+	useEffect(() => {
+		return () => {
+			audioElement?.pause();
+		};
+	}, [audioElement]);
+
+	const playSound = ({ sound }: { sound: SoundEffect }) => {
+		if (playingId === sound.id) {
+			audioElement?.pause();
+			setPlayingId(null);
+			return;
+		}
+
+		audioElement?.pause();
+		if (!sound.previewUrl) return;
+
+		const audio = new Audio(sound.previewUrl);
+		audio.addEventListener("ended", () => setPlayingId(null));
+		audio.addEventListener("error", () => setPlayingId(null));
+		audio.play().catch(() => setPlayingId(null));
+		setAudioElement(audio);
+		setPlayingId(sound.id);
+	};
+
+	return (
+		<div className="mt-1 flex h-full min-h-0 flex-col gap-3">
+			<div>
+				<h3 className="text-sm font-semibold">Músicas de fundo</h3>
+				<p className="mt-1 text-[0.68rem] text-muted-foreground">
+					Ouça uma prévia e adicione a música em uma faixa de áudio da timeline.
+				</p>
+			</div>
+
+			<div className="flex items-center gap-2">
+				<Input
+					placeholder="Buscar: calma, documental, lo-fi..."
+					className="w-full"
+					containerClassName="w-full"
+					value={query}
+					onChange={({ currentTarget }) => setQuery(currentTarget.value)}
+					showClearIcon
+					onClear={() => setQuery("")}
+				/>
+				<Button
+					variant={commercialOnly ? "secondary" : "text"}
+					size="sm"
+					className="h-9 shrink-0 px-2 text-[0.67rem]"
+					onClick={() => setCommercialOnly((value) => !value)}
+					title="Preferir músicas com licença indicada para uso comercial"
+				>
+					{commercialOnly ? "Comercial ✓" : "Todas"}
+				</Button>
+			</div>
+
+			<div className="flex gap-1 overflow-x-auto pb-1 scrollbar-thin">
+				{categories.map((category) => (
+					<Button
+						key={category.label}
+						variant="outline"
+						size="sm"
+						className="h-7 shrink-0 px-2 text-[0.65rem]"
+						onClick={() => setQuery(category.query)}
+					>
+						{category.label}
+					</Button>
+				))}
+			</div>
+
+			<div className="min-h-0 flex-1 overflow-hidden">
+				<ScrollArea className="h-full">
+					<div className="flex flex-col gap-3 pr-1">
+						{isLoading && sounds.length === 0 && (
+							<div className="py-6 text-center text-xs text-muted-foreground">
+								Carregando músicas...
+							</div>
+						)}
+
+						{!isLoading && sounds.length === 0 && (
+							<div className="rounded-md border bg-background p-3 text-xs text-muted-foreground">
+								Nenhuma música encontrada. Tente outro estilo ou termo.
+							</div>
+						)}
+
+						{sounds.map((sound) => (
+							<AudioItem
+								key={sound.id}
+								sound={sound}
+								isPlaying={playingId === sound.id}
+								onPlay={playSound}
+								showDuration
+							/>
+						))}
+
+						{hasMore && (
+							<Button
+								variant="outline"
+								size="sm"
+								className="mb-2 w-full"
+								disabled={isLoading}
+								onClick={() =>
+									void fetchMusic({
+										search: query,
+										nextPage: page + 1,
+										append: true,
+									})
+								}
+							>
+								{isLoading ? "Carregando..." : "Carregar mais músicas"}
+							</Button>
+						)}
+					</div>
+				</ScrollArea>
+			</div>
+		</div>
+	);
+}
+
 function SoundEffectsView() {
 	const {
 		topSoundEffects,
@@ -537,7 +718,7 @@ function AudioItem({ sound, isPlaying, onPlay }: AudioItemProps) {
 					size="icon"
 					className="text-muted-foreground hover:text-foreground w-auto !opacity-100"
 					onClick={handleAddToTimeline}
-					title="Add to timeline"
+					title="Adicionar à timeline"
 				>
 					<HugeiconsIcon icon={PlusSignIcon} />
 				</Button>
@@ -550,7 +731,7 @@ function AudioItem({ sound, isPlaying, onPlay }: AudioItemProps) {
 							: "text-muted-foreground"
 					}`}
 					onClick={handleSaveClick}
-					title={isSaved ? "Remove from saved" : "Save sound"}
+					title={isSaved ? "Remover dos favoritos" : "Salvar nos favoritos"}
 				>
 					<HugeiconsIcon
 						icon={FavouriteIcon}
