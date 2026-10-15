@@ -1,6 +1,6 @@
 {
   "name": "@darkcut/desktop",
-  "version": "0.1.1",
+  "version": "0.1.2",
   "private": true,
   "description": "DarkCut Studio desktop app for Windows",
   "main": "main.cjs",
@@ -23,13 +23,10 @@
     "files": [
       "main.cjs",
       "package.json",
-      "smoke.cjs"
+      "smoke.cjs",
+      "!**/node_modules/**"
     ],
     "extraResources": [
-      {
-        "from": "runtime",
-        "to": "runtime"
-      },
       {
         "from": "tools",
         "to": "tools"
@@ -52,6 +49,7 @@
     "electronVersion": "38.0.0",
     "portable": {
       "artifactName": "DarkCut-Studio-Portable-${version}-${arch}.${ext}"
-    }
+    },
+    "afterPack": "scripts/after-pack.cjs"
   }
 }
