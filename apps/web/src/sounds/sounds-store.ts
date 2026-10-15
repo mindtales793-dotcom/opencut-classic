@@ -6,6 +6,19 @@ import { EditorCore } from "@/core";
 import { buildLibraryAudioElement } from "@/timeline/element-utils";
 import { mediaTimeFromSeconds } from "@/wasm";
 
+function getOrCreateDarkCutAudioTrack({
+	editor,
+	name,
+}: {
+	editor: EditorCore;
+	name: string;
+}) {
+	const scene = editor.scenes.getActiveScene();
+	const existing = scene.tracks.audio.find((track) => track.name === name);
+	if (existing) return existing.id;
+	return editor.timeline.addTrack({ type: "audio", name });
+}
+
 interface SoundsStore {
 	topSoundEffects: SoundEffect[];
 	isLoading: boolean;
@@ -207,43 +220,64 @@ export const useSoundsStore = create<SoundsStore>((set, get) => ({
 	},
 
 	addSoundToTimeline: async ({ sound }) => {
-		const audioUrl = sound.previewUrl;
+		const audioUrl = sound.downloadUrl || sound.previewUrl;
 		if (!audioUrl) {
-			toast.error("Sound file not available");
+			toast.error("Áudio indisponível.");
 			return false;
 		}
 
 		try {
 			const editor = EditorCore.getInstance();
 			const currentTime = editor.playback.getCurrentTime();
+			const isBackgroundMusic = sound.tags?.some(
+				(tag) => tag.toLowerCase() === "jamendo" || tag.toLowerCase() === "music",
+			);
+			const trackName = isBackgroundMusic
+				? "A2 • Música de fundo"
+				: "A3 • Efeitos sonoros";
+			const targetTrackId = getOrCreateDarkCutAudioTrack({
+				editor,
+				name: trackName,
+			});
 
 			const response = await fetch(audioUrl);
-			if (!response.ok)
-				throw new Error(`Failed to download audio: ${response.statusText}`);
+			if (!response.ok) {
+				throw new Error(`Falha ao carregar áudio: ${response.status}`);
+			}
 
 			const arrayBuffer = await response.arrayBuffer();
 			const audioContext = new AudioContext();
-			const buffer = await audioContext.decodeAudioData(arrayBuffer);
+			const buffer = await audioContext.decodeAudioData(arrayBuffer.slice(0));
+			await audioContext.close();
 
+			const measuredDuration =
+				sound.duration > 0 ? sound.duration : Math.max(0.1, buffer.duration);
 			const element = buildLibraryAudioElement({
 				sourceUrl: audioUrl,
 				name: sound.name,
-				duration: mediaTimeFromSeconds({ seconds: sound.duration }),
+				duration: mediaTimeFromSeconds({ seconds: measuredDuration }),
 				startTime: currentTime,
 				buffer,
 			});
 
 			editor.timeline.insertElement({
-				placement: { mode: "auto", trackType: "audio" },
+				placement: { mode: "explicit", trackId: targetTrackId },
 				element,
 			});
+
+			toast.success(
+				isBackgroundMusic
+					? "Música adicionada à faixa A2."
+					: "Efeito sonoro adicionado à faixa A3.",
+				{ id: `sound-${sound.id}` },
+			);
 			return true;
 		} catch (error) {
 			console.error("Failed to add sound to timeline:", error);
 			toast.error(
 				error instanceof Error
 					? error.message
-					: "Failed to add sound to timeline",
+					: "Falha ao adicionar áudio à timeline.",
 				{ id: `sound-${sound.id}` },
 			);
 			return false;
