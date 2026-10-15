@@ -1,5 +1,7 @@
 name: DarkCut Windows App
 
+# DarkCut desktop build
+
 on:
   workflow_dispatch:
   push:
