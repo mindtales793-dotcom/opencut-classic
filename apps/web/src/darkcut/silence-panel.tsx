@@ -11,6 +11,7 @@ import type { TScene } from "@/timeline";
 import {
 	analyzeSilence,
 	ApplySilenceCuts,
+	findMainTrackGaps,
 	loadAudioCore,
 	type SilenceCut,
 } from "./silence";
@@ -120,6 +121,45 @@ export function SilencePanel() {
 			setBusy(false);
 		}
 	};
+	const removeTimelineSpaces = async () => {
+		if (!scene) {
+			toast.error("Abra uma timeline primeiro.");
+			return;
+		}
+		const gaps = findMainTrackGaps(scene);
+		if (!gaps.length) {
+			toast.info("Não encontrei espaços vazios entre os clipes da V1.");
+			return;
+		}
+
+		setBusy(true);
+		try {
+			const core = await loadAudioCore();
+			editor.playback.pause();
+			editor.command.execute({
+				command: new ApplySilenceCuts(editor, scene, gaps, core),
+			});
+			const removedSeconds = gaps.reduce((sum, [a, b]) => sum + (b - a), 0);
+			setPreview(null);
+			toast.success(
+				`${gaps.length} espaço(s) removido(s) da timeline.`,
+				{
+					description: `${removedSeconds.toFixed(
+						2,
+					)}s fechados em todas as faixas. Ctrl+Z desfaz tudo.`,
+				},
+			);
+		} catch (error) {
+			toast.error(
+				error instanceof Error
+					? error.message
+					: "Falha ao remover espaços da timeline.",
+			);
+		} finally {
+			setBusy(false);
+		}
+	};
+
 	const apply = async () => {
 		if (!preview?.cuts.length) return;
 		setBusy(true);
@@ -261,6 +301,19 @@ export function SilencePanel() {
 			<Button className="w-full" disabled={busy || !chosen} onClick={analyze}>
 				{busy ? "Processando áudio…" : "Analisar silêncios"}
 			</Button>
+			<Button
+				variant="outline"
+				className="w-full"
+				disabled={busy || !scene}
+				onClick={removeTimelineSpaces}
+				title="Fecha os espaços vazios entre os clipes da faixa V1 e mantém todas as outras faixas sincronizadas"
+			>
+				🧲 Remover espaços vazios da timeline
+			</Button>
+			<p className="text-[0.68rem] text-muted-foreground">
+				Usa a faixa V1 como referência e fecha os buracos em todas as faixas ao
+				mesmo tempo, mantendo narração, música, efeitos e legendas alinhados.
+			</p>
 			{busy && (
 				<Button variant="secondary" onClick={() => controller.current?.abort()}>
 					Cancelar análise
