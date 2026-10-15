@@ -28,7 +28,7 @@ import {
 import { DEFAULT_NEW_ELEMENT_DURATION } from "@/timeline/creation";
 import { TracksSnapshotCommand } from "@/commands/timeline";
 import { generateUUID } from "@/utils/id";
-import type { TimelineElement } from "@/timeline/types";
+import type { ImageElement, VideoElement } from "@/timeline/types";
 import {
 	addMediaTime,
 	mediaTimeFromSeconds,
@@ -315,7 +315,7 @@ export function MediaView() {
 				return elementEnd > max ? elementEnd : max;
 			}, ZERO_MEDIA_TIME);
 			const batchStart = cursor;
-			const newElements: TimelineElement[] = [];
+			const newElements: Array<ImageElement | VideoElement> = [];
 
 			for (const asset of selectedItems) {
 				const duration =
@@ -335,10 +335,13 @@ export function MediaView() {
 					startTime: cursor,
 				});
 
+				if (element.type !== "image" && element.type !== "video") {
+					continue;
+				}
 				newElements.push({
 					...element,
 					id: generateUUID(),
-				} as TimelineElement);
+				});
 
 				cursor = addMediaTime({ a: cursor, b: duration });
 			}
