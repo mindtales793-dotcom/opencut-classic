@@ -153,6 +153,7 @@ export function Timeline() {
 		}> = [
 			{ type: "video", name: "V2 • Sobreposição" },
 			{ type: "text", name: "T1 • Textos / Legendas" },
+			{ type: "graphic", name: "G1 • Stickers / Gráficos" },
 			{ type: "effect", name: "FX1 • Efeitos visuais" },
 			{ type: "audio", name: "A1 • Narração" },
 			{ type: "audio", name: "A2 • Música de fundo" },
@@ -674,9 +675,46 @@ function TrackLabelsPanel({
 			style={{ width: `${TIMELINE_TRACK_LABELS_COLUMN_WIDTH_PX}px` }}
 		>
 			<div
-				className="shrink-0"
+				className="flex shrink-0 items-center justify-between gap-1 border-b px-2"
 				style={{ height: timelineHeaderHeight || 48 }}
-			/>
+			>
+				<span className="text-[0.62rem] font-semibold tracking-wide text-muted-foreground">
+					FAIXAS
+				</span>
+				<div className="flex items-center gap-1">
+					<button
+						type="button"
+						className="rounded border px-1.5 py-0.5 text-[0.6rem] text-muted-foreground hover:bg-muted"
+						title="Adicionar faixa visual"
+						onClick={() => {
+							const visualCount =
+								1 +
+								(scene?.tracks.overlay.filter((track) => track.type === "video")
+									.length ?? 0);
+							editor.timeline.addTrack({
+								type: "video",
+								name: `V${visualCount + 1} • Vídeo / Imagem`,
+							});
+						}}
+					>
+						+V
+					</button>
+					<button
+						type="button"
+						className="rounded border px-1.5 py-0.5 text-[0.6rem] text-muted-foreground hover:bg-muted"
+						title="Adicionar faixa de áudio"
+						onClick={() => {
+							const audioCount = scene?.tracks.audio.length ?? 0;
+							editor.timeline.addTrack({
+								type: "audio",
+								name: `A${audioCount + 1} • Áudio`,
+							});
+						}}
+					>
+						+A
+					</button>
+				</div>
+			</div>
 			<div ref={trackLabelsRef} className="flex-1 overflow-hidden">
 				<div ref={trackLabelsScrollRef} className="size-full overflow-hidden">
 					{tracks.length > 0 && (
