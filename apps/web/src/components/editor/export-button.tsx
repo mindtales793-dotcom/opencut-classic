@@ -49,12 +49,14 @@ export function ExportButton() {
 	const editor = useEditor();
 	const activeProject = useEditor((e) => e.project.getActiveOrNull());
 	const timelineDuration = useEditor((e) => e.timeline.getTotalDuration());
+	const exportState = useEditor((e) => e.project.getExportState());
 	const hasProject = !!activeProject;
 	const hasTimelineContent = timelineDuration > 0;
 
 	const handlePopoverOpenChange = ({ open }: { open: boolean }) => {
-		if (!open) {
-			editor.project.cancelExport();
+		// Clicking elsewhere or changing tabs must never cancel an active export.
+		// Cancellation is explicit through the "Cancelar" button.
+		if (!open && !exportState.isExporting && exportState.result) {
 			editor.project.clearExportState();
 		}
 		setIsExportPopoverOpen(open);
@@ -95,7 +97,11 @@ export function ExportButton() {
 				>
 					<div className="relative flex items-center gap-1.5 rounded-[0.6rem] bg-linear-270 from-[#2567EC] to-[#37B6F7] px-4 py-1 shadow-[0_1px_3px_0px_rgba(0,0,0,0.65)]">
 						<HugeiconsIcon icon={TransitionTopIcon} className="z-50 size-3.5" />
-						<span className="z-50 text-[0.875rem]">Exportar</span>
+						<span className="z-50 text-[0.875rem]">
+							{exportState.isExporting
+								? `Exportando ${Math.round(exportState.progress * 100)}%`
+								: "Exportar"}
+						</span>
 						<div className="absolute top-0 left-0 z-10 flex size-full items-center justify-center rounded-[0.6rem] bg-linear-to-t from-white/0 to-white/50">
 							<div className="absolute top-[0.08rem] z-50 h-[calc(100%-2px)] w-[calc(100%-2px)] rounded-[0.6rem] bg-linear-270 from-[#2567EC] to-[#37B6F7]" />
 						</div>
@@ -132,6 +138,10 @@ function ExportPopover({
 	const handleExport = async () => {
 		if (!activeProject) return;
 
+		// Export is independent from preview playback. Free preview resources and
+		// keep the UI usable while the renderer continues in the background.
+		editor.playback.pause();
+
 		const result = await editor.project.export({
 			options: {
 				format,
@@ -154,7 +164,17 @@ function ExportPopover({
 			});
 
 			editor.project.clearExportState();
+			toast.success("Exportação concluída.", {
+				description: "O arquivo foi enviado para a pasta de downloads.",
+			});
 			onOpenChange(false);
+			return;
+		}
+
+		if (!result.success && !result.cancelled) {
+			toast.error("Falha na exportação.", {
+				description: result.error || "O renderizador não conseguiu concluir o vídeo.",
+			});
 		}
 	};
 
