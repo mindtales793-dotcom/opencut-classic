@@ -99,17 +99,16 @@ export async function POST(request: Request) {
 		const results = (data.results ?? [])
 			.map((track) => {
 				const idNumber = Number(track.id);
-				const remotePreviewUrl = track.audio || "";
-				const remoteDownloadUrl =
-					track.audiodownload_allowed && track.audiodownload
-						? track.audiodownload
-						: "";
-				const proxiedPreviewUrl = remotePreviewUrl
-					? `/api/darkcut/music/audio?url=${encodeURIComponent(remotePreviewUrl)}`
+				const audioBase = `/api/darkcut/music/audio?trackId=${encodeURIComponent(
+					track.id || "",
+				)}&clientId=${encodeURIComponent(clientId)}`;
+				const proxiedPreviewUrl = track.id
+					? `${audioBase}&action=stream`
 					: undefined;
-				const proxiedDownloadUrl = remoteDownloadUrl
-					? `/api/darkcut/music/audio?url=${encodeURIComponent(remoteDownloadUrl)}`
-					: proxiedPreviewUrl;
+				const proxiedDownloadUrl =
+					track.id && track.audiodownload_allowed
+						? `${audioBase}&action=download`
+						: proxiedPreviewUrl;
 
 				return {
 					id: Number.isFinite(idNumber) ? idNumber : 0,
