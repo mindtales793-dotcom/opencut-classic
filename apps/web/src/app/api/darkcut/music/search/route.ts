@@ -99,19 +99,25 @@ export async function POST(request: Request) {
 		const results = (data.results ?? [])
 			.map((track) => {
 				const idNumber = Number(track.id);
-				const previewUrl = track.audio || "";
-				const downloadUrl =
+				const remotePreviewUrl = track.audio || "";
+				const remoteDownloadUrl =
 					track.audiodownload_allowed && track.audiodownload
 						? track.audiodownload
-						: undefined;
+						: "";
+				const proxiedPreviewUrl = remotePreviewUrl
+					? `/api/darkcut/music/audio?url=${encodeURIComponent(remotePreviewUrl)}`
+					: undefined;
+				const proxiedDownloadUrl = remoteDownloadUrl
+					? `/api/darkcut/music/audio?url=${encodeURIComponent(remoteDownloadUrl)}`
+					: proxiedPreviewUrl;
 
 				return {
 					id: Number.isFinite(idNumber) ? idNumber : 0,
 					name: track.name || "Música Jamendo",
 					description: track.shareurl || "",
 					url: track.shareurl || "",
-					previewUrl: previewUrl || undefined,
-					downloadUrl,
+					previewUrl: proxiedPreviewUrl,
+					downloadUrl: proxiedDownloadUrl,
 					duration:
 						typeof track.duration === "number" ? track.duration : 0,
 					filesize: 0,
