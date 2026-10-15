@@ -135,6 +135,40 @@ export function Timeline() {
 		[scene],
 	);
 	const mainTrackId = scene?.tracks.main.id ?? null;
+
+	useEffect(() => {
+		if (!scene?.isMain) return;
+
+		const allTracks = [
+			...scene.tracks.overlay,
+			scene.tracks.main,
+			...scene.tracks.audio,
+		];
+		const hasNamedTrack = (name: string) =>
+			allTracks.some((track) => track.name === name);
+
+		const requiredTracks: Array<{
+			type: TimelineTrack["type"];
+			name: string;
+		}> = [
+			{ type: "video", name: "V2 • Sobreposição" },
+			{ type: "text", name: "T1 • Textos / Legendas" },
+			{ type: "effect", name: "FX1 • Efeitos visuais" },
+			{ type: "audio", name: "A1 • Narração" },
+			{ type: "audio", name: "A2 • Música de fundo" },
+			{ type: "audio", name: "A3 • Efeitos sonoros" },
+		];
+
+		for (const required of requiredTracks) {
+			if (!hasNamedTrack(required.name)) {
+				timeline.addTrack({
+					type: required.type,
+					name: required.name,
+				});
+			}
+		}
+	}, [scene, timeline]);
+
 	const seek = (time: MediaTime) => editor.playback.seek({ time });
 
 	const timelineRef = useRef<HTMLDivElement>(null);
@@ -667,9 +701,18 @@ function TrackLabelsPanel({
 										}}
 									>
 										<div
-											className="flex shrink-0 items-center justify-end gap-2 px-3"
+											className="flex shrink-0 items-center justify-between gap-2 px-2"
 											style={{ height: `${baseHeight}px` }}
 										>
+											<span
+												className="min-w-0 flex-1 truncate text-[0.67rem] font-medium text-muted-foreground"
+												title={track.name}
+											>
+												{track.name === "Main Track"
+													? "V1 • Vídeo / Imagens"
+													: track.name}
+											</span>
+											<div className="flex shrink-0 items-center gap-1.5">
 											{canTrackHaveAudio(track) && (
 												<TrackToggleIcon
 													isOff={track.muted}
@@ -699,6 +742,7 @@ function TrackLabelsPanel({
 												/>
 											)}
 											<TrackIcon track={track} />
+											</div>
 										</div>
 										{expandedRows.length > 0 && (
 											<PropertyTree rows={expandedRows} />
