@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import {
 	Dialog,
@@ -82,6 +83,7 @@ function MusicLibraryView() {
 	const jamendoClientId = useDarkCutProductionStore(
 		(state) => state.jamendoClientId,
 	);
+	const loadSavedSounds = useSoundsStore((state) => state.loadSavedSounds);
 
 	const categories = [
 		{ label: "Documental", query: "documentary instrumental" },
@@ -137,6 +139,10 @@ function MusicLibraryView() {
 	};
 
 	useEffect(() => {
+		void loadSavedSounds();
+	}, [loadSavedSounds]);
+
+	useEffect(() => {
 		const timeout = setTimeout(() => {
 			void fetchMusic({ search: query, nextPage: 1 });
 		}, query.trim() ? 350 : 0);
@@ -157,16 +163,34 @@ function MusicLibraryView() {
 		}
 
 		audioElement?.pause();
-		if (!sound.previewUrl) return;
+		if (!sound.previewUrl) {
+			toast.error("Prévia dessa música indisponível.");
+			return;
+		}
 
 		const audio = new Audio(sound.previewUrl);
+		audio.preload = "auto";
 		audio.addEventListener("ended", () => setPlayingId(null));
-		audio.addEventListener("error", () => setPlayingId(null));
-		audio.play().catch(() => setPlayingId(null));
-		setAudioElement(audio);
-		setPlayingId(sound.id);
+		audio.addEventListener(
+			"error",
+			() => {
+				setPlayingId(null);
+				toast.error("Não foi possível tocar essa música.");
+			},
+			{ once: true },
+		);
+		audio
+			.play()
+			.then(() => {
+				setAudioElement(audio);
+				setPlayingId(sound.id);
+			})
+			.catch((error) => {
+				console.error("Jamendo preview failed:", error);
+				setPlayingId(null);
+				toast.error("Falha ao reproduzir a prévia da música.");
+			});
 	};
-
 	return (
 		<div className="mt-1 flex h-full min-h-0 flex-col gap-3">
 			<div>
@@ -706,20 +730,31 @@ function AudioItem({
 		onPlay({ sound });
 	};
 
-	const handleSaveClick = ({
+	const handleSaveClick = async ({
 		stopPropagation,
 	}: React.MouseEvent<HTMLButtonElement>) => {
 		stopPropagation();
-		toggleSavedSound({ soundEffect: sound });
+		if (isSaving) return;
+		setIsSaving(true);
+		try {
+			await toggleSavedSound({ soundEffect: sound });
+		} finally {
+			setIsSaving(false);
+		}
 	};
 
 	const handleAddToTimeline = async ({
 		stopPropagation,
 	}: React.MouseEvent<HTMLButtonElement>) => {
 		stopPropagation();
-		await addSoundToTimeline({ sound });
+		if (isAdding) return;
+		setIsAdding(true);
+		try {
+			await addSoundToTimeline({ sound });
+		} finally {
+			setIsAdding(false);
+		}
 	};
-
 	return (
 		<div className="group flex items-center gap-3 opacity-100 hover:opacity-75">
 			<button
