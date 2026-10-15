@@ -4,15 +4,20 @@ import { FISH_NARRATORS } from "@/darkcut/fish-narrators";
 const FISH_TTS_URL = "https://api.fish.audio/v1/tts";
 const DEFAULT_MODEL = "s2.1-pro-free";
 
-export async function POST(request: Request) {
-	const apiKey = process.env.FISH_API_KEY?.trim();
-	if (!apiKey) {
-		return NextResponse.json(
-			{ error: "FISH_API_KEY não configurada no servidor." },
-			{ status: 503 },
-		);
-	}
+function normalizeApiKeys(value: unknown) {
+	if (!Array.isArray(value)) return [];
+	return Array.from(
+		new Set(
+			value
+				.filter((key): key is string => typeof key === "string")
+				.map((key) => key.trim())
+				.filter(Boolean)
+				.slice(0, 3),
+		),
+	);
+}
 
+export async function POST(request: Request) {
 	let payload: unknown;
 	try {
 		payload = await request.json();
@@ -20,10 +25,31 @@ export async function POST(request: Request) {
 		return NextResponse.json({ error: "JSON inválido." }, { status: 400 });
 	}
 
-	const data = payload as { text?: unknown; referenceId?: unknown };
+	const data = payload as {
+		text?: unknown;
+		referenceId?: unknown;
+		fishApiKeys?: unknown;
+	};
 	const text = typeof data.text === "string" ? data.text.trim() : "";
 	const referenceId =
 		typeof data.referenceId === "string" ? data.referenceId.trim() : "";
+	const configuredKeys = normalizeApiKeys(data.fishApiKeys);
+	const envKey = process.env.FISH_API_KEY?.trim();
+	const apiKeys = configuredKeys.length
+		? configuredKeys
+		: envKey
+			? [envKey]
+			: [];
+
+	if (!apiKeys.length) {
+		return NextResponse.json(
+			{
+				error:
+					"Cadastre pelo menos uma chave do Fish Audio em Configurações > APIs.",
+			},
+			{ status: 503 },
+		);
+	}
 
 	if (!text) {
 		return NextResponse.json(
@@ -52,51 +78,73 @@ export async function POST(request: Request) {
 		);
 	}
 
-	let upstream: Response;
-	try {
-		upstream = await fetch(FISH_TTS_URL, {
-			method: "POST",
-			headers: {
-				Authorization: `Bearer ${apiKey}`,
-				"Content-Type": "application/json",
-				model,
-			},
-			body: JSON.stringify({
-				text,
-				reference_id: referenceId,
-				format: "mp3",
-			}),
-			cache: "no-store",
-		});
-	} catch (error) {
-		console.error("Fish Audio request failed:", error);
-		return NextResponse.json(
-			{ error: "Não foi possível conectar ao Fish Audio." },
-			{ status: 502 },
-		);
-	}
+	let lastStatus = 502;
+	let lastMessage = "Não foi possível conectar ao Fish Audio.";
 
-	if (!upstream.ok) {
+	for (let keyIndex = 0; keyIndex < apiKeys.length; keyIndex += 1) {
+		let upstream: Response;
+		try {
+			upstream = await fetch(FISH_TTS_URL, {
+				method: "POST",
+				headers: {
+					Authorization: `Bearer ${apiKeys[keyIndex]}`,
+					"Content-Type": "application/json",
+					model,
+				},
+				body: JSON.stringify({
+					text,
+					reference_id: referenceId,
+					format: "mp3",
+				}),
+				cache: "no-store",
+			});
+		} catch (error) {
+			console.error("Fish Audio request failed:", error);
+			lastMessage = "Não foi possível conectar ao Fish Audio.";
+			continue;
+		}
+
+		if (upstream.ok) {
+			const audio = await upstream.arrayBuffer();
+			return new Response(audio, {
+				status: 200,
+				headers: {
+					"Content-Type":
+						upstream.headers.get("content-type") || "audio/mpeg",
+					"Cache-Control": "no-store",
+					"Content-Disposition":
+						'attachment; filename="darkcut-narracao.mp3"',
+					"X-DarkCut-Fish-Key": String(keyIndex + 1),
+				},
+			});
+		}
+
+		lastStatus = upstream.status;
 		const detail = (await upstream.text()).slice(0, 1000);
 		console.error("Fish Audio error:", upstream.status, detail);
-		return NextResponse.json(
-			{
-				error:
-					upstream.status === 401 || upstream.status === 403
-						? "A chave do Fish Audio foi recusada."
-						: `Fish Audio retornou HTTP ${upstream.status}.`,
-			},
-			{ status: upstream.status >= 400 && upstream.status < 600 ? upstream.status : 502 },
-		);
+		lastMessage =
+			upstream.status === 401 || upstream.status === 403
+				? "A chave do Fish Audio foi recusada."
+				: upstream.status === 429
+					? "A chave do Fish Audio atingiu um limite temporário."
+					: `Fish Audio retornou HTTP ${upstream.status}.`;
+
+		const canTryNext =
+			upstream.status === 401 ||
+			upstream.status === 403 ||
+			upstream.status === 408 ||
+			upstream.status === 429 ||
+			upstream.status >= 500;
+		if (!canTryNext) break;
 	}
 
-	const audio = await upstream.arrayBuffer();
-	return new Response(audio, {
-		status: 200,
-		headers: {
-			"Content-Type": upstream.headers.get("content-type") || "audio/mpeg",
-			"Cache-Control": "no-store",
-			"Content-Disposition": 'attachment; filename="darkcut-narracao.mp3"',
+	return NextResponse.json(
+		{
+			error:
+				apiKeys.length > 1
+					? `Nenhuma das chaves do Fish Audio respondeu corretamente. ${lastMessage}`
+					: lastMessage,
 		},
-	});
+		{ status: lastStatus >= 400 && lastStatus < 600 ? lastStatus : 502 },
+	);
 }
