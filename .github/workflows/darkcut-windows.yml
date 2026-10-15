@@ -45,7 +45,11 @@ jobs:
         run: bun run build:web
 
       - name: Stage desktop runtime
-        run: bun --cwd apps/darkcut-desktop run stage
+        shell: pwsh
+        run: |
+          Push-Location apps/darkcut-desktop
+          bun run stage
+          Pop-Location
 
       - name: Bundle automatic video tools
         shell: pwsh
@@ -70,7 +74,19 @@ jobs:
           & (Join-Path $tools "ffmpeg.exe") -version | Select-Object -First 1
 
       - name: Build Windows EXE
-        run: bun --cwd apps/darkcut-desktop run dist:win
+        shell: pwsh
+        run: |
+          Push-Location apps/darkcut-desktop
+          bun run dist:win
+          Pop-Location
+
+      - name: Verify Windows packages
+        shell: pwsh
+        run: |
+          $files = Get-ChildItem "apps/darkcut-desktop/dist" -Recurse -File
+          $files | ForEach-Object { Write-Host $_.FullName }
+          $exe = $files | Where-Object { $_.Extension -eq ".exe" }
+          if (-not $exe) { throw "DarkCut Studio EXE was not generated." }
 
       - name: Upload DarkCut Studio EXE
         uses: actions/upload-artifact@v4
