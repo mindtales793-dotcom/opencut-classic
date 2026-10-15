@@ -14,7 +14,7 @@ import {
 	type DarkCutMotionPreset,
 	type DarkCutTransitionPreset,
 } from "@/timeline/timeline-store";
-import type { ElementRef } from "@/timeline/types";
+import type { ElementRef, TScene } from "@/timeline/types";
 import { toast } from "sonner";
 
 type DarkCutTemplate = {
@@ -104,7 +104,7 @@ const TEMPLATES: DarkCutTemplate[] = [
 	},
 ];
 
-function collectVisualRefs(scene: ReturnType<ReturnType<typeof useEditor>["scenes"]["getActiveSceneOrNull"]>) {
+function collectVisualRefs(scene: TScene | null) {
 	if (!scene) return [] as ElementRef[];
 	const tracks = [scene.tracks.main, ...scene.tracks.overlay];
 	const refs: ElementRef[] = [];
