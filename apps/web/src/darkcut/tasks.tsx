@@ -69,11 +69,18 @@ export function DarkCutTaskBar() {
 				</button>
 			))}
 			{exp.isExporting && (
-				<span>
-					Exportação{" "}
-					<progress className="h-1 w-20" max={1} value={exp.progress} />{" "}
-					{Math.round(exp.progress * 100)}%
-				</span>
+				<div className="flex items-center gap-2 rounded-md bg-accent/40 px-2 py-1">
+					<span className="font-medium">Exportando</span>
+					<progress className="h-1 w-28" max={1} value={exp.progress} />
+					<span>{Math.round(exp.progress * 100)}%</span>
+					<button
+						type="button"
+						className="rounded border px-2 py-0.5 text-[0.68rem] hover:bg-background"
+						onClick={() => useEditor.getState?.()?.project.cancelExport?.()}
+					>
+						Cancelar
+					</button>
+				</div>
 			)}
 		</div>
 	);
