@@ -1,5 +1,6 @@
 import { useEffect } from "react";
 import { useSoundsStore } from "@/sounds/sounds-store";
+import { useDarkCutProductionStore } from "@/components/editor/panels/assets/darkcut-production-store";
 
 export function useSoundSearch({
 	query,
