@@ -158,32 +158,65 @@ export const useSoundsStore = create<SoundsStore>((set, get) => ({
 	},
 
 	saveSoundEffect: async ({ soundEffect }) => {
+		const previous = get().savedSounds;
+		const optimistic: SavedSound = {
+			id: soundEffect.id,
+			name: soundEffect.name,
+			username: soundEffect.username,
+			previewUrl: soundEffect.previewUrl,
+			downloadUrl: soundEffect.downloadUrl,
+			duration: soundEffect.duration,
+			tags: soundEffect.tags,
+			license: soundEffect.license,
+			savedAt: new Date().toISOString(),
+		};
+
+		if (!previous.some((sound) => sound.id === soundEffect.id)) {
+			set({
+				savedSounds: [...previous, optimistic],
+				savedSoundsError: null,
+			});
+		}
+
 		try {
 			await storageService.saveSoundEffect({ soundEffect });
-
 			const savedSoundsData = await storageService.loadSavedSounds();
-			set({ savedSounds: savedSoundsData.sounds });
+			set({
+				savedSounds: savedSoundsData.sounds,
+				isSavedSoundsLoaded: true,
+				savedSoundsError: null,
+			});
+			toast.success("Música salva nos Favoritos.");
 		} catch (error) {
 			const errorMessage =
-				error instanceof Error ? error.message : "Failed to save sound";
-			set({ savedSoundsError: errorMessage });
-			toast.error("Failed to save sound");
+				error instanceof Error ? error.message : "Falha ao salvar favorito";
+			set({
+				savedSounds: previous,
+				savedSoundsError: errorMessage,
+			});
+			toast.error("Não foi possível salvar nos Favoritos.");
 			console.error("Failed to save sound:", error);
 		}
 	},
 
 	removeSavedSound: async ({ soundId }) => {
+		const previous = get().savedSounds;
+		set({
+			savedSounds: previous.filter((sound) => sound.id !== soundId),
+			savedSoundsError: null,
+		});
+
 		try {
 			await storageService.removeSavedSound({ soundId });
-
-			set((state) => ({
-				savedSounds: state.savedSounds.filter((sound) => sound.id !== soundId),
-			}));
+			toast.success("Removido dos Favoritos.");
 		} catch (error) {
 			const errorMessage =
-				error instanceof Error ? error.message : "Failed to remove sound";
-			set({ savedSoundsError: errorMessage });
-			toast.error("Failed to remove sound");
+				error instanceof Error ? error.message : "Falha ao remover favorito";
+			set({
+				savedSounds: previous,
+				savedSoundsError: errorMessage,
+			});
+			toast.error("Não foi possível remover dos Favoritos.");
 			console.error("Failed to remove sound:", error);
 		}
 	},
