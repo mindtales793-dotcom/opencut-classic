@@ -724,6 +724,8 @@ function AudioItem({
 }: AudioItemProps) {
 	const { addSoundToTimeline, isSoundSaved, toggleSavedSound } =
 		useSoundsStore();
+	const [isAdding, setIsAdding] = useState(false);
+	const [isSaving, setIsSaving] = useState(false);
 	const isSaved = isSoundSaved({ soundId: sound.id });
 
 	const handleClick = () => {
@@ -788,9 +790,14 @@ function AudioItem({
 					size="icon"
 					className="text-muted-foreground hover:text-foreground w-auto !opacity-100"
 					onClick={handleAddToTimeline}
-					title="Adicionar à timeline"
+					disabled={isAdding}
+					title={isAdding ? "Adicionando..." : "Adicionar à timeline"}
 				>
-					<HugeiconsIcon icon={PlusSignIcon} />
+					{isAdding ? (
+						<span className="px-1 text-[0.65rem]">...</span>
+					) : (
+						<HugeiconsIcon icon={PlusSignIcon} />
+					)}
 				</Button>
 				<Button
 					variant="text"
@@ -801,7 +808,14 @@ function AudioItem({
 							: "text-muted-foreground"
 					}`}
 					onClick={handleSaveClick}
-					title={isSaved ? "Remover dos favoritos" : "Salvar nos favoritos"}
+					disabled={isSaving}
+					title={
+						isSaving
+							? "Salvando..."
+							: isSaved
+								? "Remover dos favoritos"
+								: "Salvar nos favoritos"
+					}
 				>
 					<HugeiconsIcon
 						icon={FavouriteIcon}
