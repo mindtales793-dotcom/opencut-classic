@@ -19,6 +19,7 @@ export function DarkCutSyncView() {
 		script,
 		selectedNarratorId,
 		setSelectedNarratorId,
+		fishApiKeys,
 	} = useDarkCutProductionStore();
 
 	const [isGenerating, setIsGenerating] = useState(false);
@@ -60,6 +61,7 @@ export function DarkCutSyncView() {
 				body: JSON.stringify({
 					text: previewText,
 					referenceId: selectedNarrator.id,
+					fishApiKeys,
 				}),
 			});
 
@@ -106,6 +108,7 @@ export function DarkCutSyncView() {
 				body: JSON.stringify({
 					text,
 					referenceId: selectedNarratorId,
+					fishApiKeys,
 				}),
 			});
 
@@ -235,6 +238,9 @@ export function DarkCutSyncView() {
 						<div className="text-sm font-medium">Gerar narração</div>
 						<div className="text-[0.7rem] text-muted-foreground">
 							Fish Audio · selecione a voz antes de gerar.
+							{fishApiKeys.filter((key) => key.trim()).length === 0
+								? " Configure a API em Configurações > APIs."
+								: ""}
 						</div>
 					</div>
 					<span className="rounded bg-primary/10 px-2 py-1 text-[0.65rem] font-medium text-primary">
