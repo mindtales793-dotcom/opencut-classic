@@ -682,9 +682,22 @@ interface AudioItemProps {
 	sound: SoundEffect;
 	isPlaying: boolean;
 	onPlay: ({ sound }: { sound: SoundEffect }) => void;
+	showDuration?: boolean;
 }
 
-function AudioItem({ sound, isPlaying, onPlay }: AudioItemProps) {
+function formatSoundDuration(seconds: number) {
+	if (!Number.isFinite(seconds) || seconds <= 0) return "";
+	const minutes = Math.floor(seconds / 60);
+	const rest = Math.floor(seconds % 60);
+	return `${minutes}:${String(rest).padStart(2, "0")}`;
+}
+
+function AudioItem({
+	sound,
+	isPlaying,
+	onPlay,
+	showDuration = false,
+}: AudioItemProps) {
 	const { addSoundToTimeline, isSoundSaved, toggleSavedSound } =
 		useSoundsStore();
 	const isSaved = isSoundSaved({ soundId: sound.id });
@@ -727,6 +740,9 @@ function AudioItem({ sound, isPlaying, onPlay }: AudioItemProps) {
 					<p className="truncate text-sm font-medium">{sound.name}</p>
 					<span className="text-muted-foreground block truncate text-xs">
 						{sound.username}
+						{showDuration && sound.duration
+							? ` · ${formatSoundDuration(sound.duration)}`
+							: ""}
 					</span>
 				</div>
 			</button>
