@@ -10,6 +10,9 @@ import {
 	applyRandomMotions,
 	applyRandomTransitions,
 	autoEditWithNarration,
+	applyMotionPreset,
+	applyTransitionPreset,
+	syncVisualsToNarration,
 } from "@/timeline/darkcut-tools";
 import {
 	useTimelineStore,
@@ -20,6 +23,7 @@ import {
 import {
 	buildElementFromMedia,
 	buildTextElement,
+	buildEffectElement,
 } from "@/timeline/element-utils";
 import { mediaTimeFromSeconds, mediaTimeToSeconds } from "@/wasm";
 import { resolveAnimationPathValueAtTime } from "@/animation/resolve";
@@ -28,6 +32,14 @@ import type { ImageElement, TimelineElement } from "@/timeline/types";
 import type { ElementRef, TScene } from "@/timeline/types";
 import { cn } from "@/utils/ui";
 import { toast } from "sonner";
+import { useProjectDraft } from "@/darkcut/project-draft";
+import { useDarkCutProductionStore } from "../darkcut-production-store";
+import {
+	buildLocalCrisPlan,
+	type CrisEditPlan,
+	type CrisTemplateContext,
+	type CrisVisualEffect,
+} from "@/darkcut/cris";
 
 type TemplateCategory =
 	| "Todos"
@@ -48,6 +60,7 @@ type DarkCutTemplate = {
 	motions: DarkCutMotionPreset[];
 	transitions: DarkCutTransitionPreset[];
 	intensity: DarkCutEffectIntensity;
+	effects: CrisVisualEffect[];
 	badge: string;
 	accent: string;
 };
@@ -67,6 +80,7 @@ const TEMPLATES: DarkCutTemplate[] = [
 		motions: ["push-in", "documentary", "zoom-in", "ken-burns"],
 		transitions: ["fade", "zoom", "slide-left"],
 		intensity: "normal",
+		effects: ["none", "blur"],
 		badge: "💸",
 		accent: "from-emerald-500/20 via-transparent to-cyan-500/10",
 	},
@@ -82,6 +96,7 @@ const TEMPLATES: DarkCutTemplate[] = [
 		motions: ["push-in", "zoom-in", "pan-left-right"],
 		transitions: ["zoom", "fade", "pop"],
 		intensity: "normal",
+		effects: ["none", "blur"],
 		badge: "🚗",
 		accent: "from-red-500/20 via-transparent to-orange-500/10",
 	},
@@ -97,6 +112,7 @@ const TEMPLATES: DarkCutTemplate[] = [
 		motions: ["documentary", "ken-burns", "pull-out"],
 		transitions: ["fade", "ken-burns"],
 		intensity: "soft",
+		effects: ["none", "blur"],
 		badge: "🌑",
 		accent: "from-violet-500/20 via-transparent to-slate-500/10",
 	},
@@ -112,6 +128,7 @@ const TEMPLATES: DarkCutTemplate[] = [
 		motions: ["documentary", "zoom-in", "ken-burns"],
 		transitions: ["fade", "ken-burns"],
 		intensity: "soft",
+		effects: ["none", "blur"],
 		badge: "🎥",
 		accent: "from-blue-500/20 via-transparent to-indigo-500/10",
 	},
@@ -127,6 +144,7 @@ const TEMPLATES: DarkCutTemplate[] = [
 		motions: ["push-in", "zoom-in", "pan-left-right"],
 		transitions: ["zoom", "pop", "fade"],
 		intensity: "normal",
+		effects: ["none", "blur"],
 		badge: "🎭",
 		accent: "from-fuchsia-500/20 via-transparent to-rose-500/10",
 	},
@@ -142,6 +160,7 @@ const TEMPLATES: DarkCutTemplate[] = [
 		motions: ["pan-left-right", "pan-right-left", "zoom-in"],
 		transitions: ["slide-left", "slide-right", "fade"],
 		intensity: "normal",
+		effects: ["none", "blur"],
 		badge: "📺",
 		accent: "from-sky-500/20 via-transparent to-cyan-500/10",
 	},
@@ -157,6 +176,7 @@ const TEMPLATES: DarkCutTemplate[] = [
 		motions: ["ken-burns", "pull-out", "zoom-out"],
 		transitions: ["fade"],
 		intensity: "soft",
+		effects: ["none", "blur"],
 		badge: "🎬",
 		accent: "from-amber-500/20 via-transparent to-orange-500/10",
 	},
@@ -172,6 +192,7 @@ const TEMPLATES: DarkCutTemplate[] = [
 		motions: ["zoom-in", "pan-up-down", "documentary"],
 		transitions: ["fade", "slide-left"],
 		intensity: "soft",
+		effects: ["none", "blur"],
 		badge: "🧠",
 		accent: "from-lime-500/20 via-transparent to-emerald-500/10",
 	},
@@ -187,6 +208,7 @@ const TEMPLATES: DarkCutTemplate[] = [
 		motions: ["zoom-in", "push-in", "pan-right-left"],
 		transitions: ["pop", "zoom", "slide-right"],
 		intensity: "normal",
+		effects: ["none", "blur"],
 		badge: "⚡",
 		accent: "from-yellow-500/20 via-transparent to-red-500/10",
 	},
@@ -202,6 +224,7 @@ const TEMPLATES: DarkCutTemplate[] = [
 		motions: ["documentary", "push-in", "pan-right-left", "zoom-in"],
 		transitions: ["fade", "slide-right", "zoom"],
 		intensity: "normal",
+		effects: ["none", "blur"],
 		badge: "📖",
 		accent: "from-purple-500/20 via-transparent to-pink-500/10",
 	},
@@ -408,6 +431,20 @@ export function DarkCutTemplatesView({
 	const editor = useEditor();
 	const setActiveTab = useAssetsPanelStore((s) => s.setActiveTab);
 	const [selectedTemplate, setSelectedTemplate] = useState<string | null>(null);
+	const [isCrisAnalyzing, setIsCrisAnalyzing] = useState(false);
+	const [crisPlan, setCrisPlan] = useProjectDraft<CrisEditPlan | null>(
+		"cris-edit-plan",
+		null,
+	);
+	const {
+		script,
+		geminiApiKey,
+		openRouterApiKey,
+		crisPrimaryProvider,
+		crisFallbackProvider,
+		geminiModel,
+		openRouterModel,
+	} = useDarkCutProductionStore();
 	const scene = useEditor((e) => e.scenes.getActiveSceneOrNull());
 	const activeTab = useAssetsPanelStore((s) => s.activeTab);
 	const [previewId, setPreviewId] = useState<string | null>(null);
@@ -473,7 +510,207 @@ export function DarkCutTemplatesView({
 		});
 	};
 
-	const applyTemplate = (template: DarkCutTemplate) => {
+	const requestCrisPlan = async (
+		template: DarkCutTemplate,
+		visualCount: number,
+	): Promise<CrisEditPlan> => {
+		const templateContext: CrisTemplateContext = {
+			id: template.id,
+			title: template.title,
+			motions: template.motions,
+			transitions: template.transitions,
+			intensity: template.intensity,
+			effects: template.effects,
+		};
+		if (!script.trim()) {
+			return buildLocalCrisPlan({
+				script: "",
+				visualCount,
+				template: templateContext,
+			});
+		}
+
+		try {
+			const response = await fetch("/api/darkcut/cris", {
+				method: "POST",
+				headers: { "Content-Type": "application/json" },
+				body: JSON.stringify({
+					mode: "analyze",
+					script,
+					visualCount,
+					template: templateContext,
+					primaryProvider: crisPrimaryProvider,
+					fallbackProvider: crisFallbackProvider,
+					geminiApiKey,
+					openRouterApiKey,
+					geminiModel,
+					openRouterModel,
+				}),
+			});
+			const data = (await response.json()) as {
+				plan?: CrisEditPlan;
+				provider?: string;
+				fallbackUsed?: boolean;
+				warning?: string;
+				error?: string;
+			};
+			if (!response.ok || !data.plan)
+				throw new Error(data.error || "A Cris não conseguiu criar o plano.");
+			if (data.warning) {
+				toast.info("Cris usou o analisador local.", {
+					description: data.warning,
+				});
+			}
+			return data.plan;
+		} catch (error) {
+			console.error(error);
+			toast.info("Cris offline: usando análise local.");
+			return buildLocalCrisPlan({
+				script,
+				visualCount,
+				template: templateContext,
+			});
+		}
+	};
+
+	const applyCrisPlan = ({
+		plan,
+		refs,
+		template,
+	}: {
+		plan: CrisEditPlan;
+		refs: ElementRef[];
+		template: DarkCutTemplate;
+	}) => {
+		for (const [index, ref] of refs.entries()) {
+			const item = plan.scenes[index];
+			if (!item) continue;
+			applyMotionPreset({
+				editor,
+				refs: [ref],
+				preset: item.motion,
+				intensity: item.intensity,
+			});
+			applyTransitionPreset({
+				editor,
+				refs: [ref],
+				preset: item.transition,
+			});
+		}
+
+		const updated = editor.scenes.getActiveScene();
+		const oldTextTrack = updated.tracks.overlay.find(
+			(track) => track.type === "text" && track.name === "T • Cris",
+		);
+		if (oldTextTrack?.elements.length) {
+			editor.timeline.deleteElements({
+				elements: oldTextTrack.elements.map((element) => ({
+					trackId: oldTextTrack.id,
+					elementId: element.id,
+				})),
+			});
+		}
+		const textTrackId =
+			oldTextTrack?.id ??
+			editor.timeline.addTrack({ type: "text", name: "T • Cris" });
+
+		const afterMotion = editor.scenes.getActiveScene();
+		const visualByRef = new Map(
+			[afterMotion.tracks.main, ...afterMotion.tracks.overlay]
+				.flatMap((track) =>
+					track.elements.map((element) => ({
+						ref: `${track.id}:${element.id}`,
+						element,
+					})),
+				)
+				.filter(
+					(item) =>
+						item.element.type === "image" || item.element.type === "video",
+				)
+				.map((item) => [item.ref, item.element] as const),
+		);
+
+		for (const [index, ref] of refs.entries()) {
+			const item = plan.scenes[index];
+			if (!item?.overlayText.trim()) continue;
+			const visual = visualByRef.get(`${ref.trackId}:${ref.elementId}`);
+			if (!visual) continue;
+			editor.timeline.insertElement({
+				placement: { mode: "explicit", trackId: textTrackId },
+				element: buildTextElement({
+					startTime: visual.startTime,
+					raw: {
+						name: `Cris • ${item.sceneType}`,
+						duration: visual.duration,
+						params: {
+							content: item.overlayText,
+							fontSize: template.id === "list" ? 74 : 58,
+							fontWeight: "bold",
+							color: "#ffffff",
+							"background.enabled": true,
+							"background.color": "#0b0d12d9",
+							"background.paddingX": 20,
+							"background.paddingY": 12,
+						},
+					},
+				}),
+			});
+		}
+
+		const refreshed = editor.scenes.getActiveScene();
+		const oldFxTrack = refreshed.tracks.overlay.find(
+			(track) => track.type === "effect" && track.name === "FX • Cris",
+		);
+		if (oldFxTrack?.elements.length) {
+			editor.timeline.deleteElements({
+				elements: oldFxTrack.elements.map((element) => ({
+					trackId: oldFxTrack.id,
+					elementId: element.id,
+				})),
+			});
+		}
+		const blurItems = refs
+			.map((ref, index) => ({ ref, item: plan.scenes[index] }))
+			.filter(({ item }) => item?.effect === "blur");
+		if (blurItems.length) {
+			const fxTrackId =
+				oldFxTrack?.id ??
+				editor.timeline.addTrack({ type: "effect", name: "FX • Cris" });
+			const nowScene = editor.scenes.getActiveScene();
+			const elements = new Map(
+				[nowScene.tracks.main, ...nowScene.tracks.overlay]
+					.flatMap((track) =>
+						track.elements.map((element) => [
+							`${track.id}:${element.id}`,
+							element,
+						] as const),
+					),
+			);
+			for (const { ref } of blurItems) {
+				const visual = elements.get(`${ref.trackId}:${ref.elementId}`);
+				if (!visual || (visual.type !== "image" && visual.type !== "video"))
+					continue;
+				editor.timeline.insertElement({
+					placement: { mode: "explicit", trackId: fxTrackId },
+					element: buildEffectElement({
+						effectType: "blur",
+						startTime: visual.startTime,
+						duration: mediaTimeFromSeconds({
+							seconds: Math.min(
+								0.45,
+								Math.max(
+									0.18,
+									mediaTimeToSeconds({ time: visual.duration }) * 0.12,
+								),
+							),
+						}),
+					}),
+				});
+			}
+		}
+	};
+
+	const applyTemplate = async (template: DarkCutTemplate) => {
 		if (!scene) {
 			toast.error("Abra um projeto antes de aplicar o template.");
 			return;
@@ -497,32 +734,48 @@ export function DarkCutTemplatesView({
 		);
 
 		let changed = refs.length;
-		if (hasNarration) {
-			const result = autoEditWithNarration({
-				editor,
-				refs,
-				motionPresets: template.motions,
-				transitionPresets: template.transitions,
-				intensity: template.intensity,
-			});
-			changed = result.changed;
-		} else {
-			applyFixedDuration({
-				editor,
-				refs,
-				seconds: template.durationSeconds,
-			});
-			applyRandomMotions({
-				editor,
-				refs,
-				presets: template.motions,
-				intensity: template.intensity,
-			});
-			applyRandomTransitions({
-				editor,
-				refs,
-				presets: template.transitions,
-			});
+		setIsCrisAnalyzing(true);
+		try {
+			const plan = await requestCrisPlan(template, refs.length);
+			setCrisPlan(plan);
+			if (hasNarration) {
+				const result = syncVisualsToNarration({ editor, refs });
+				changed = result.changed || refs.length;
+			} else {
+				applyFixedDuration({
+					editor,
+					refs,
+					seconds: template.durationSeconds,
+				});
+			}
+			applyCrisPlan({ plan, refs, template });
+		} catch (error) {
+			console.error(error);
+			if (hasNarration) {
+				const result = autoEditWithNarration({
+					editor,
+					refs,
+					motionPresets: template.motions,
+					transitionPresets: template.transitions,
+					intensity: template.intensity,
+				});
+				changed = result.changed;
+			} else {
+				applyRandomMotions({
+					editor,
+					refs,
+					presets: template.motions,
+					intensity: template.intensity,
+				});
+				applyRandomTransitions({
+					editor,
+					refs,
+					presets: template.transitions,
+				});
+			}
+			toast.error("A Cris falhou; o template básico foi aplicado.");
+		} finally {
+			setIsCrisAnalyzing(false);
 		}
 
 		if (addTitles) {
@@ -580,8 +833,8 @@ export function DarkCutTemplatesView({
 			}
 		}
 		setSelectedTemplate(template.id);
-		toast.success(`${template.title} aplicado.`, {
-			description: `${changed} cena(s) atualizadas. Tudo continua editável na timeline.`,
+		toast.success(`${template.title} aplicado pela Cris.`, {
+			description: `${changed} cena(s) montadas. Movimentos, transições, textos e efeitos continuam editáveis.`,
 		});
 	};
 
@@ -618,6 +871,7 @@ export function DarkCutTemplatesView({
 								<button
 									className="studio-template-poster"
 									aria-label={`Aplicar ${template.title}`}
+									disabled={isCrisAnalyzing}
 									onClick={() => applyTemplate(template)}
 									onFocus={() => {
 										if (
@@ -642,6 +896,7 @@ export function DarkCutTemplatesView({
 								</button>
 								<button
 									className="studio-template-caption"
+									disabled={isCrisAnalyzing}
 									onClick={() => applyTemplate(template)}
 								>
 									<strong>{template.title}</strong>
@@ -668,9 +923,9 @@ export function DarkCutTemplatesView({
 							Templates profissionais
 						</h2>
 						<p className="mt-1 max-w-xl text-xs text-muted-foreground">
-							Aplique ritmo, duração, movimento e transições sem perder a edição
-							manual. Se houver narração, o Auto Edit sincroniza os visuais
-							automaticamente.
+							Escolha o template depois de colocar suas imagens/vídeos. A Cris
+							analisa o roteiro e monta movimentos, transições, textos e efeitos
+							de acordo com cada cena. Tudo continua editável.
 						</p>
 					</div>
 					<div className="rounded-lg border bg-background px-3 py-2 text-right">
@@ -705,9 +960,8 @@ export function DarkCutTemplatesView({
 						</>
 					)}
 					<p className="text-muted-foreground">
-						Usa seus vídeos e imagens. Inclui ritmo, câmera, transições e
-						títulos; sincroniza com a narração existente. Música e voz são
-						adicionadas nas abas correspondentes.
+						Fluxo: roteiro → narração → mídias → template → Cris monta a edição.
+						Se a API estiver sem cota, o analisador local assume automaticamente.
 					</p>
 				</div>
 				<div className="mt-3 flex flex-col gap-2">
@@ -832,6 +1086,12 @@ export function DarkCutTemplatesView({
 										</span>
 										<span className="rounded border px-2 py-1">
 											🎞 {template.transitions.length} transições
+										</span>
+										<span className="rounded border px-2 py-1">
+											FX {template.effects.includes("blur") ? "blur inteligente" : "limpo"}
+										</span>
+										<span className="rounded border px-2 py-1">
+											🤖 Cris + texto automático
 										</span>
 										<span className="rounded border px-2 py-1">
 											✨{" "}
