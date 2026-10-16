@@ -284,6 +284,7 @@ function TemplatePreview({
 			demoCrops[template.id] ??
 			demoCrops[template.category === "POV" ? "pov-finance" : "documentary"];
 		let frame = 0;
+		let timer = 0;
 		const start = performance.now();
 		const draw = (now: number) => {
 			const time = active
@@ -375,12 +376,23 @@ function TemplatePreview({
 			if (active) ctx.fillText(`DEMONSTRAÇÃO • CENA ${index + 1}/3`, 16, 25);
 			ctx.fillStyle = "#ffffff88";
 			ctx.fillRect(0, 267, (480 * time) / (duration * 3), 3);
-			if (active) frame = requestAnimationFrame(draw);
 		};
 		draw(start);
+		if (active) {
+			// Use both rAF and a lightweight timer. Electron/CI can throttle rAF
+			// for a backgrounded packaged window, while the real desktop preview
+			// must keep animating reliably.
+			const tick = () => {
+				draw(performance.now());
+				frame = requestAnimationFrame(tick);
+			};
+			frame = requestAnimationFrame(tick);
+			timer = window.setInterval(() => draw(performance.now()), 120);
+		}
 		if (poster && !active) poster.onload = () => draw(start);
 		return () => {
 			cancelAnimationFrame(frame);
+			if (timer) window.clearInterval(timer);
 			if (poster) poster.onload = null;
 		};
 	}, [template, active, title, ending, posterUrl]);
