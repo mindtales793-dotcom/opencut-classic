@@ -1,5 +1,6 @@
 "use client";
 
+import { useSoundPreview, stopSoundPreview } from "@/sounds/use-sound-preview";
 import { useEffect, useState } from "react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
@@ -78,8 +79,7 @@ function MusicLibraryView() {
 	const [page, setPage] = useState(1);
 	const [hasMore, setHasMore] = useState(false);
 	const [isLoading, setIsLoading] = useState(false);
-	const [playingId, setPlayingId] = useState<number | null>(null);
-	const [audioElement, setAudioElement] = useState<HTMLAudioElement | null>(null);
+	const { playingId, playSound } = useSoundPreview();
 	const jamendoClientId = useDarkCutProductionStore(
 		(state) => state.jamendoClientId,
 	);
@@ -123,10 +123,12 @@ function MusicLibraryView() {
 			});
 			const data = await response.json();
 			if (!response.ok) {
-				throw new Error(data.error || `Falha ao carregar músicas: ${response.status}`);
+				throw new Error(
+					data.error || `Falha ao carregar músicas: ${response.status}`,
+				);
 			}
 			setSounds((current) =>
-				append ? [...current, ...(data.results ?? [])] : data.results ?? [],
+				append ? [...current, ...(data.results ?? [])] : (data.results ?? []),
 			);
 			setPage(nextPage);
 			setHasMore(Boolean(data.hasMore));
@@ -143,54 +145,15 @@ function MusicLibraryView() {
 	}, [loadSavedSounds]);
 
 	useEffect(() => {
-		const timeout = setTimeout(() => {
-			void fetchMusic({ search: query, nextPage: 1 });
-		}, query.trim() ? 350 : 0);
+		const timeout = setTimeout(
+			() => {
+				void fetchMusic({ search: query, nextPage: 1 });
+			},
+			query.trim() ? 350 : 0,
+		);
 		return () => clearTimeout(timeout);
 	}, [query, jamendoClientId]);
 
-	useEffect(() => {
-		return () => {
-			audioElement?.pause();
-		};
-	}, [audioElement]);
-
-	const playSound = ({ sound }: { sound: SoundEffect }) => {
-		if (playingId === sound.id) {
-			audioElement?.pause();
-			setPlayingId(null);
-			return;
-		}
-
-		audioElement?.pause();
-		if (!sound.previewUrl) {
-			toast.error("Prévia dessa música indisponível.");
-			return;
-		}
-
-		const audio = new Audio(sound.previewUrl);
-		audio.preload = "auto";
-		audio.addEventListener("ended", () => setPlayingId(null));
-		audio.addEventListener(
-			"error",
-			() => {
-				setPlayingId(null);
-				toast.error("Não foi possível tocar essa música.");
-			},
-			{ once: true },
-		);
-		audio
-			.play()
-			.then(() => {
-				setAudioElement(audio);
-				setPlayingId(sound.id);
-			})
-			.catch((error) => {
-				console.error("Jamendo preview failed:", error);
-				setPlayingId(null);
-				toast.error("Falha ao reproduzir a prévia da música.");
-			});
-	};
 	return (
 		<div className="mt-1 flex h-full min-h-0 flex-col gap-3">
 			<div>
@@ -243,7 +206,8 @@ function MusicLibraryView() {
 
 						{!jamendoClientId.trim() && (
 							<div className="rounded-md border border-primary/30 bg-primary/5 p-3 text-xs text-muted-foreground">
-								Configure o Jamendo Client ID em Configurações &gt; APIs para carregar as músicas.
+								Configure o Jamendo Client ID em Configurações &gt; APIs para
+								carregar as músicas.
 							</div>
 						)}
 
@@ -318,10 +282,7 @@ function SoundEffectsView() {
 		commercialOnly: showCommercialOnly,
 	});
 
-	const [playingId, setPlayingId] = useState<number | null>(null);
-	const [audioElement, setAudioElement] = useState<HTMLAudioElement | null>(
-		null,
-	);
+	const { playingId, playSound } = useSoundPreview();
 
 	const { scrollAreaRef, handleScroll } = useInfiniteScroll({
 		onLoadMore: loadMore,
@@ -420,33 +381,6 @@ function SoundEffectsView() {
 
 	const displayedSounds = searchQuery ? searchResults : topSoundEffects;
 
-	const playSound = ({ sound }: { sound: SoundEffect }) => {
-		if (playingId === sound.id) {
-			audioElement?.pause();
-			setPlayingId(null);
-			return;
-		}
-
-		audioElement?.pause();
-
-		if (sound.previewUrl) {
-			const audio = new Audio(sound.previewUrl);
-			audio.addEventListener("ended", () => {
-				setPlayingId(null);
-			});
-			audio.addEventListener("error", () => {
-				setPlayingId(null);
-			});
-			audio.play().catch((error) => {
-				console.error("Failed to play sound preview:", error);
-				setPlayingId(null);
-			});
-
-			setAudioElement(audio);
-			setPlayingId(sound.id);
-		}
-	};
-
 	return (
 		<div className="mt-1 flex h-full flex-col gap-5">
 			<div className="flex items-center gap-3">
@@ -536,43 +470,13 @@ function SavedSoundsView() {
 		clearSavedSounds,
 	} = useSoundsStore();
 
-	const [playingId, setPlayingId] = useState<number | null>(null);
-	const [audioElement, setAudioElement] = useState<HTMLAudioElement | null>(
-		null,
-	);
+	const { playingId, playSound } = useSoundPreview();
 
 	const [showClearDialog, setShowClearDialog] = useState(false);
 
 	useEffect(() => {
 		loadSavedSounds();
 	}, [loadSavedSounds]);
-
-	const playSound = ({ sound }: { sound: SoundEffect }) => {
-		if (playingId === sound.id) {
-			audioElement?.pause();
-			setPlayingId(null);
-			return;
-		}
-
-		audioElement?.pause();
-
-		if (sound.previewUrl) {
-			const audio = new Audio(sound.previewUrl);
-			audio.addEventListener("ended", () => {
-				setPlayingId(null);
-			});
-			audio.addEventListener("error", () => {
-				setPlayingId(null);
-			});
-			audio.play().catch((error) => {
-				console.error("Failed to play sound preview:", error);
-				setPlayingId(null);
-			});
-
-			setAudioElement(audio);
-			setPlayingId(sound.id);
-		}
-	};
 
 	const convertToSoundEffect = ({
 		savedSound,
@@ -752,6 +656,7 @@ function AudioItem({
 		if (isAdding) return;
 		setIsAdding(true);
 		try {
+			stopSoundPreview();
 			await addSoundToTimeline({ sound });
 		} finally {
 			setIsAdding(false);
@@ -763,6 +668,7 @@ function AudioItem({
 				type="button"
 				className="flex min-w-0 flex-1 items-center gap-3 text-left"
 				onClick={handleClick}
+				aria-label={`${isPlaying ? "Pausar" : "Ouvir"} ${sound.name}`}
 			>
 				<div className="bg-accent relative flex size-12 shrink-0 items-center justify-center overflow-hidden rounded-md">
 					<div className="from-primary/20 absolute inset-0 bg-gradient-to-br to-transparent" />

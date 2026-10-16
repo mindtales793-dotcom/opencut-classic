@@ -1,12 +1,11 @@
+import { transitionValue } from "@/darkcut/fx-core.generated";
+import { resolveAnimationPathValueAtTime } from "@/animation/resolve";
 import type { EditorCore } from "@/core";
 import type {
 	ElementAnimations,
 	ScalarAnimationChannel,
 } from "@/animation/types";
-import type {
-	ElementRef,
-	TimelineElement,
-} from "@/timeline/types";
+import type { ElementRef, TimelineElement } from "@/timeline/types";
 import type {
 	DarkCutEffectIntensity,
 	DarkCutMotionPreset,
@@ -269,7 +268,38 @@ function scalarChannel(
 	};
 }
 
-function transitionAnimations({
+// Original channels travel with the generated channel so replacing/clearing a
+// transition restores camera keyframes, including after saving and reopening.
+type TransitionChannel = ScalarAnimationChannel & {
+	darkcutTransition?: {
+		preset: DarkCutTransitionPreset;
+		original: ElementAnimations[string] | null;
+	};
+};
+function withoutTransitions(
+	animations: ElementAnimations = {},
+): ElementAnimations {
+	const result: ElementAnimations = {};
+	for (const [path, channel] of Object.entries(animations)) {
+		const meta = (channel as TransitionChannel | undefined)?.darkcutTransition;
+		if (meta) {
+			if (meta.original) result[path] = meta.original;
+			continue;
+		}
+		const id =
+			(channel as ScalarAnimationChannel | undefined)?.keys?.[0]?.id ?? "";
+		// Compatibility with templates saved before transition metadata existed.
+		if (
+			id.startsWith("darkcut-") &&
+			!id.includes("-motion-") &&
+			/-(opacity|positionX|scaleX|scaleY)-0$/.test(id)
+		)
+			continue;
+		result[path] = channel;
+	}
+	return result;
+}
+export function transitionAnimations({
 	element,
 	preset,
 }: {
@@ -277,140 +307,71 @@ function transitionAnimations({
 	preset: DarkCutTransitionPreset;
 }): ElementAnimations {
 	const duration = Math.max(
-		0.2,
+		0.001,
 		mediaTimeToSeconds({ time: element.duration }),
 	);
-	const edge = Math.min(0.55, Math.max(0.15, duration * 0.16));
-	const out = Math.max(edge, duration - edge);
-	const end = duration;
-	const baseX = Number(element.params["transform.positionX"] ?? 0);
-	const baseScaleX = Number(element.params["transform.scaleX"] ?? 1);
-	const baseScaleY = Number(element.params["transform.scaleY"] ?? 1);
-	const existing = element.animations ?? {};
-	const hasMotionTransform = Boolean(
-		existing["transform.positionX"] ||
-			existing["transform.positionY"] ||
-			existing["transform.scaleX"] ||
-			existing["transform.scaleY"],
-	);
-
-	const opacity = (start = 0, finish = 0) =>
-		scalarChannel(element.id, "opacity", [
-			[0, start],
-			[edge, 1],
-			[out, 1],
-			[end, finish],
-		]);
-
-	switch (preset) {
-		case "zoom":
-			if (hasMotionTransform) {
-				return {
-					...existing,
-					opacity: opacity(0.1, 0.1),
-				};
-			}
-			return {
-				...existing,
-				opacity: opacity(0.1, 0.1),
-				"transform.scaleX": scalarChannel(element.id, "scaleX", [
-					[0, baseScaleX * 1.08],
-					[edge, baseScaleX],
-					[out, baseScaleX],
-					[end, baseScaleX * 1.03],
-				]),
-				"transform.scaleY": scalarChannel(element.id, "scaleY", [
-					[0, baseScaleY * 1.08],
-					[edge, baseScaleY],
-					[out, baseScaleY],
-					[end, baseScaleY * 1.03],
-				]),
-			};
-		case "slide-left":
-			if (hasMotionTransform) {
-				return {
-					...existing,
-					opacity: opacity(0, 0),
-				};
-			}
-			return {
-				...existing,
-				opacity: opacity(0, 0),
-				"transform.positionX": scalarChannel(element.id, "positionX", [
-					[0, baseX + 160],
-					[edge, baseX],
-					[out, baseX],
-					[end, baseX - 160],
-				]),
-			};
-		case "slide-right":
-			if (hasMotionTransform) {
-				return {
-					...existing,
-					opacity: opacity(0, 0),
-				};
-			}
-			return {
-				...existing,
-				opacity: opacity(0, 0),
-				"transform.positionX": scalarChannel(element.id, "positionX", [
-					[0, baseX - 160],
-					[edge, baseX],
-					[out, baseX],
-					[end, baseX + 160],
-				]),
-			};
-		case "ken-burns":
-			if (hasMotionTransform) {
-				return {
-					...existing,
-					opacity: opacity(0.25, 0.25),
-				};
-			}
-			return {
-				...existing,
-				opacity: opacity(0.25, 0.25),
-				"transform.scaleX": scalarChannel(element.id, "scaleX", [
-					[0, baseScaleX],
-					[end, baseScaleX * 1.1],
-				]),
-				"transform.scaleY": scalarChannel(element.id, "scaleY", [
-					[0, baseScaleY],
-					[end, baseScaleY * 1.1],
-				]),
-			};
-		case "pop":
-			if (hasMotionTransform) {
-				return {
-					...existing,
-					opacity: opacity(0, 0),
-				};
-			}
-			return {
-				...existing,
-				opacity: opacity(0, 0),
-				"transform.scaleX": scalarChannel(element.id, "scaleX", [
-					[0, baseScaleX * 0.92],
-					[edge, baseScaleX],
-					[out, baseScaleX],
-					[end, baseScaleX * 0.97],
-				]),
-				"transform.scaleY": scalarChannel(element.id, "scaleY", [
-					[0, baseScaleY * 0.92],
-					[edge, baseScaleY],
-					[out, baseScaleY],
-					[end, baseScaleY * 0.97],
-				]),
-			};
-		case "fade":
-		default:
-			return {
-				...existing,
-				opacity: opacity(0, 0),
-			};
+	const existing = withoutTransitions(element.animations);
+	const result = { ...existing };
+	const presetId = [
+		"fade",
+		"zoom",
+		"slide-left",
+		"slide-right",
+		"ken-burns",
+		"pop",
+	].indexOf(preset);
+	const paths = [
+		"opacity",
+		...(preset === "slide-left" || preset === "slide-right"
+			? ["transform.positionX"]
+			: []),
+		...(["zoom", "ken-burns", "pop"].includes(preset)
+			? ["transform.scaleX", "transform.scaleY"]
+			: []),
+	];
+	for (const path of paths) {
+		const original = existing[path];
+		const times = new Set(
+			Array.from({ length: 121 }, (_, i) => (duration * i) / 120),
+		);
+		for (const key of (original as ScalarAnimationChannel | undefined)?.keys ??
+			[])
+			times.add(Math.min(duration, mediaTimeToSeconds({ time: key.time })));
+		const points: Array<[number, number]> = [...times]
+			.sort((a, b) => a - b)
+			.map((time) => {
+				const base = resolveAnimationPathValueAtTime({
+					animations: existing,
+					propertyPath: path,
+					localTime: mediaTimeFromSeconds({ seconds: time }),
+					fallbackValue: Number(
+						element.params[path] ?? (path === "transform.positionX" ? 0 : 1),
+					),
+				});
+				return [
+					time,
+					transitionValue(
+						presetId,
+						path === "opacity" ? 0 : path === "transform.positionX" ? 1 : 2,
+						time,
+						duration,
+						base,
+					),
+				];
+			});
+		const channel: TransitionChannel = scalarChannel(
+			element.id,
+			`transition-${path}`,
+			points,
+		);
+		channel.keys.forEach((key) => {
+			key.segmentToNext = "linear";
+		});
+		channel.darkcutTransition = { preset, original: original ?? null };
+		result[path] = channel;
 	}
+	return result;
 }
-
 
 function intensityFactor(intensity: DarkCutEffectIntensity) {
 	switch (intensity) {
@@ -424,7 +385,33 @@ function intensityFactor(intensity: DarkCutEffectIntensity) {
 	}
 }
 
-function motionAnimations({
+export function motionAnimations(
+	args: Parameters<typeof rawMotionAnimations>[0],
+): ElementAnimations {
+	const previous = args.element.animations ?? {};
+	const transition = Object.values(previous)
+		.map((c) => (c as TransitionChannel | undefined)?.darkcutTransition?.preset)
+		.find(Boolean);
+	const clean = withoutTransitions(previous);
+	for (const [path, channel] of Object.entries(clean)) {
+		if (
+			(channel as ScalarAnimationChannel | undefined)?.keys?.[0]?.id?.includes(
+				"-motion-",
+			)
+		)
+			delete clean[path];
+	}
+	const element = { ...args.element, animations: clean };
+	const animations = rawMotionAnimations({ ...args, element });
+	return transition
+		? transitionAnimations({
+				element: { ...element, animations },
+				preset: transition,
+			})
+		: animations;
+}
+
+function rawMotionAnimations({
 	element,
 	preset,
 	intensity,
@@ -671,7 +658,9 @@ export function applyRandomTransitions({
 	editor.timeline.updateElements({
 		updates: targets.map((target, index) => {
 			const preset =
-				pool[Math.floor(Math.random() * pool.length)] ?? pool[index % pool.length] ?? pool[0];
+				pool[Math.floor(Math.random() * pool.length)] ??
+				pool[index % pool.length] ??
+				pool[0];
 			return {
 				trackId: target.trackId,
 				elementId: target.elementId,
@@ -701,43 +690,17 @@ export function clearDarkCutTransitions({
 	});
 	if (targets.length === 0) return 0;
 
-	const isTransitionChannel = (
-		key: string,
-		channel: ScalarAnimationChannel,
-	) => {
-		if (key === "opacity") return true;
-		if (
-			key !== "transform.positionX" &&
-			key !== "transform.scaleX" &&
-			key !== "transform.scaleY"
-		) {
-			return false;
-		}
-		const firstKeyId = channel.keys[0]?.id ?? "";
-		return (
-			firstKeyId.includes("-positionX-") ||
-			firstKeyId.includes("-scaleX-") ||
-			firstKeyId.includes("-scaleY-")
-		);
-	};
-
 	editor.timeline.updateElements({
 		updates: targets.map((target) => ({
 			trackId: target.trackId,
 			elementId: target.elementId,
 			patch: {
-				animations: Object.fromEntries(
-					Object.entries(target.element.animations ?? {}).filter(
-						([key, channel]) =>
-							!isTransitionChannel(key, channel as ScalarAnimationChannel),
-					),
-				),
+				animations: withoutTransitions(target.element.animations),
 			},
 		})),
 	});
 	return targets.length;
 }
-
 
 export function autoEditWithNarration({
 	editor,

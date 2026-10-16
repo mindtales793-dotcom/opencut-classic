@@ -1,7 +1,7 @@
 "use client";
 
 import { useProjectDraft } from "@/darkcut/project-draft";
-import { useDarkCutTasks } from "@/darkcut/tasks";
+import { TaskStatus, useDarkCutTasks } from "@/darkcut/tasks";
 import { MusicPanel } from "@/darkcut/music-panel";
 import { SilencePanel } from "@/darkcut/silence-panel";
 import { useEffect, useState } from "react";
@@ -26,6 +26,7 @@ export function DarkCutSyncView() {
 		fishApiKeys,
 	} = useDarkCutProductionStore();
 
+	const narrationTask = useDarkCutTasks((s) => s.tasks.narration);
 	const [isGenerating, setIsGenerating] = useState(false);
 	const [isPreviewingVoice, setIsPreviewingVoice] = useState(false);
 	const [voicePreviewUrl, setVoicePreviewUrl] = useState<string | null>(null);
@@ -118,17 +119,16 @@ export function DarkCutSyncView() {
 		}
 
 		const projectId = editor.project.getActive().metadata.id;
-		const task = (status: "running" | "done" | "error") =>
-			useDarkCutTasks
-				.getState()
-				.set("narration", {
-					projectId,
-					label: "Narração",
-					tab: "sync",
-					status,
-				});
+		const task = (status: "running" | "done" | "error", detail?: string) =>
+			useDarkCutTasks.getState().set("narration", {
+				projectId,
+				label: "Narração",
+				detail,
+				tab: "sync",
+				status,
+			});
 		setIsGenerating(true);
-		task("running");
+		task("running", "Enviando roteiro…");
 		try {
 			const creation = await fetch("/api/darkcut/narration-jobs", {
 				method: "POST",
@@ -144,6 +144,7 @@ export function DarkCutSyncView() {
 			const job = await creation.json();
 			if (!creation.ok) throw new Error(job.error || "Falha ao criar tarefa.");
 			setJobId(job.id);
+			task("running", "Gerando voz — aguardando Fish Audio…");
 			while (true) {
 				const check = await fetch(`/api/darkcut/narration-jobs?id=${job.id}`);
 				const state = await check.json();
@@ -158,6 +159,7 @@ export function DarkCutSyncView() {
 				if (state.status === "ready") break;
 				await new Promise((resolve) => setTimeout(resolve, 1500));
 			}
+			task("running", "Baixando narração…");
 			const response = await fetch(
 				`/api/darkcut/narration-jobs?id=${job.id}&audio=1`,
 			);
@@ -186,6 +188,7 @@ export function DarkCutSyncView() {
 				type: blob.type || "audio/mpeg",
 			});
 
+			task("running", "Preparando áudio…");
 			const [processed] = await processMediaAssets({ files: [file] });
 			if (!processed) {
 				throw new Error("Não foi possível preparar o áudio gerado.");
@@ -196,6 +199,7 @@ export function DarkCutSyncView() {
 				throw new Error(
 					"Narração pronta. Reabra o projeto de origem e clique em Retomar narração.",
 				);
+			task("running", "Salvando narração…");
 			const asset = await editor.media.addMediaAsset({
 				projectId: activeProject.metadata.id,
 				asset: processed,
@@ -211,7 +215,10 @@ export function DarkCutSyncView() {
 			setNarrationFileName(fileName);
 			toast.success(`Narração gerada com ${selected?.name ?? "Fish Audio"}.`);
 		} catch (error) {
-			task("error");
+			task(
+				"error",
+				error instanceof Error ? error.message : "Falha ao gerar narração.",
+			);
 			console.error(error);
 			toast.error(
 				error instanceof Error
@@ -405,6 +412,11 @@ export function DarkCutSyncView() {
 							: "🎙️ Gerar narração"}
 				</Button>
 
+				{isGenerating && narrationTask && (
+					<div role="status" className="rounded-md border p-3 text-xs">
+						<TaskStatus task={narrationTask} />
+					</div>
+				)}
 				<p className="text-xs text-muted-foreground">
 					Pode trocar de aba durante a geração. Se fechar o aplicativo, use
 					Retomar narração ao reabrir; resultados concluídos são recuperados sem

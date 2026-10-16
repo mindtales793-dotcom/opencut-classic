@@ -1,9 +1,11 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { Button } from "@/components/ui/button";
 import { useEditor } from "@/editor/use-editor";
 import {
+	motionAnimations,
+	transitionAnimations,
 	applyFixedDuration,
 	applyRandomMotions,
 	applyRandomTransitions,
@@ -15,6 +17,14 @@ import {
 	type DarkCutMotionPreset,
 	type DarkCutTransitionPreset,
 } from "@/timeline/timeline-store";
+import {
+	buildElementFromMedia,
+	buildTextElement,
+} from "@/timeline/element-utils";
+import { mediaTimeFromSeconds, mediaTimeToSeconds } from "@/wasm";
+import { resolveAnimationPathValueAtTime } from "@/animation/resolve";
+import { useAssetsPanelStore } from "../assets-panel-store";
+import type { ImageElement, TimelineElement } from "@/timeline/types";
 import type { ElementRef, TScene } from "@/timeline/types";
 import { cn } from "@/utils/ui";
 import { toast } from "sonner";
@@ -220,9 +230,135 @@ function collectVisualRefs(scene: TScene | null) {
 	return refs;
 }
 
+function TemplatePreview({
+	template,
+	active,
+	title,
+	ending,
+}: {
+	template: DarkCutTemplate;
+	active: boolean;
+	title: string;
+	ending: string;
+}) {
+	const canvas = useRef<HTMLCanvasElement>(null);
+	useEffect(() => {
+		const ctx = canvas.current?.getContext("2d");
+		if (!ctx) return;
+		const duration = template.durationSeconds;
+		const elements = [0, 1, 2].map((index) => {
+			const element = {
+				...buildElementFromMedia({
+					mediaId: "demo",
+					mediaType: "image",
+					name: "Demo",
+					duration: mediaTimeFromSeconds({ seconds: duration }),
+					startTime: mediaTimeFromSeconds({ seconds: 0 }),
+				}),
+				id: `demo-${index}`,
+			} as ImageElement;
+			element.animations = motionAnimations({
+				element,
+				preset: template.motions[index % template.motions.length],
+				intensity: template.intensity,
+			});
+			element.animations = transitionAnimations({
+				element,
+				preset: template.transitions[index % template.transitions.length],
+			});
+			return element;
+		});
+		let frame = 0;
+		const start = performance.now();
+		const draw = (now: number) => {
+			const time = active
+				? ((now - start) / 1000) % (duration * 3)
+				: duration * 0.4;
+			const index = Math.floor(time / duration);
+			const localTime = time % duration;
+			const animations = elements[index].animations;
+			const value = (propertyPath: string, fallbackValue: number) =>
+				resolveAnimationPathValueAtTime({
+					animations,
+					propertyPath,
+					localTime: mediaTimeFromSeconds({ seconds: localTime }),
+					fallbackValue,
+				});
+			ctx.fillStyle = "#080c16";
+			ctx.fillRect(0, 0, 480, 270);
+			ctx.save();
+			ctx.globalAlpha = value("opacity", 1);
+			ctx.translate(
+				240 + value("transform.positionX", 0) / 4,
+				135 + value("transform.positionY", 0) / 4,
+			);
+			ctx.scale(value("transform.scaleX", 1), value("transform.scaleY", 1));
+			ctx.rotate((value("transform.rotate", 0) * Math.PI) / 180);
+			const hue = (TEMPLATES.indexOf(template) * 33 + index * 20) % 360;
+			const gradient = ctx.createLinearGradient(-240, -135, 240, 135);
+			gradient.addColorStop(0, `hsl(${hue} 50% 22%)`);
+			gradient.addColorStop(1, "#101525");
+			ctx.fillStyle = gradient;
+			ctx.fillRect(-300, -200, 600, 400);
+			// Original illustrative scenery; no remote media or audio downloads.
+			for (let n = 0; n < 12; n++) {
+				ctx.fillStyle = `hsl(${hue} 35% ${20 + (n % 3) * 7}%)`;
+				ctx.fillRect(n * 48 - 280, 15 - ((n * 37 + index * 19) % 110), 35, 200);
+			}
+			ctx.fillStyle = `hsl(${hue} 90% 75%)`;
+			ctx.beginPath();
+			ctx.arc(145, -65, 35, 0, Math.PI * 2);
+			ctx.fill();
+			ctx.fillStyle = "#ffffff";
+			ctx.textAlign = "center";
+			ctx.font = "48px sans-serif";
+			ctx.fillText(template.badge, 0, -15);
+			ctx.font = "bold 22px sans-serif";
+			ctx.fillText(
+				index === 0
+					? title
+					: index === 2
+						? ending
+						: template.tagline.split(" • ")[1] || "Sua história",
+				0,
+				40,
+				420,
+			);
+			ctx.restore();
+			ctx.fillStyle = "#ffffffaa";
+			ctx.font = "12px sans-serif";
+			ctx.textAlign = "left";
+			ctx.fillText(`DEMONSTRAÇÃO • CENA ${index + 1}/3`, 16, 25);
+			ctx.fillStyle = "#ffffff88";
+			ctx.fillRect(0, 267, (480 * time) / (duration * 3), 3);
+			if (active) frame = requestAnimationFrame(draw);
+		};
+		draw(start);
+		return () => cancelAnimationFrame(frame);
+	}, [template, active, title, ending]);
+	return (
+		<canvas
+			ref={canvas}
+			width={480}
+			height={270}
+			className="h-full w-full object-cover"
+			aria-label={`Demonstração de ${template.title}`}
+			data-preview-playing={active}
+		/>
+	);
+}
+
 export function DarkCutTemplatesView() {
 	const editor = useEditor();
 	const scene = useEditor((e) => e.scenes.getActiveSceneOrNull());
+	const activeTab = useAssetsPanelStore((s) => s.activeTab);
+	const [previewId, setPreviewId] = useState<string | null>(null);
+	const [addTitles, setAddTitles] = useState(true);
+	const [opening, setOpening] = useState("Uma decisão muda tudo");
+	const [ending, setEnding] = useState("E você, o que faria?");
+	useEffect(() => {
+		setPreviewId(null);
+	}, [activeTab]);
 	const [query, setQuery] = useState("");
 	const [category, setCategory] = useState<TemplateCategory>("Todos");
 	const [favorites, setFavorites] = useState<string[]>([]);
@@ -331,6 +467,60 @@ export function DarkCutTemplatesView() {
 			});
 		}
 
+		if (addTitles) {
+			const updated = editor.scenes.getActiveScene();
+			const visuals = [updated.tracks.main, ...updated.tracks.overlay]
+				.flatMap((t) => t.elements as TimelineElement[])
+				.filter((e) => e.type === "image" || e.type === "video");
+			const start = Math.min(
+				...visuals.map((e) => mediaTimeToSeconds({ time: e.startTime })),
+			);
+			const end = Math.max(
+				...visuals.map(
+					(e) =>
+						mediaTimeToSeconds({ time: e.startTime }) +
+						mediaTimeToSeconds({ time: e.duration }),
+				),
+			);
+			const length = Math.min(template.durationSeconds, (end - start) / 2);
+			const old = updated.tracks.overlay.find((t) => t.name === "T • Template");
+			if (old?.elements.length)
+				editor.timeline.deleteElements({
+					elements: old.elements.map((e) => ({
+						trackId: old.id,
+						elementId: e.id,
+					})),
+				});
+			const trackId =
+				old?.id ??
+				editor.timeline.addTrack({ type: "text", name: "T • Template" });
+			for (const [content, seconds, name] of [
+				[opening.trim(), start, "Abertura"],
+				[ending.trim(), end - length, "Encerramento"],
+			] as const) {
+				if (!content || length <= 0) continue;
+				editor.timeline.insertElement({
+					placement: { mode: "explicit", trackId },
+					element: buildTextElement({
+						startTime: mediaTimeFromSeconds({ seconds }),
+						raw: {
+							name: `${name} • ${template.title}`,
+							duration: mediaTimeFromSeconds({ seconds: length }),
+							params: {
+								content,
+								fontSize: 64,
+								fontWeight: "bold",
+								color: "#ffffff",
+								"background.enabled": true,
+								"background.color": "#101525cc",
+								"background.paddingX": 24,
+								"background.paddingY": 16,
+							},
+						},
+					}),
+				});
+			}
+		}
 		toast.success(`${template.title} aplicado.`, {
 			description: `${changed} cena(s) atualizadas. Tudo continua editável na timeline.`,
 		});
@@ -348,9 +538,9 @@ export function DarkCutTemplatesView() {
 							Templates profissionais
 						</h2>
 						<p className="mt-1 max-w-xl text-xs text-muted-foreground">
-							Aplique ritmo, duração, movimento e transições sem perder a
-							edição manual. Se houver narração, o Auto Edit sincroniza os
-							visuais automaticamente.
+							Aplique ritmo, duração, movimento e transições sem perder a edição
+							manual. Se houver narração, o Auto Edit sincroniza os visuais
+							automaticamente.
 						</p>
 					</div>
 					<div className="rounded-lg border bg-background px-3 py-2 text-right">
@@ -359,6 +549,37 @@ export function DarkCutTemplatesView() {
 					</div>
 				</div>
 
+				<div className="mt-3 space-y-2 rounded-lg border p-3 text-xs">
+					<label className="flex items-center gap-2">
+						<input
+							type="checkbox"
+							checked={addTitles}
+							onChange={(e) => setAddTitles(e.target.checked)}
+						/>
+						Incluir abertura e encerramento editáveis
+					</label>
+					{addTitles && (
+						<>
+							<input
+								aria-label="Texto de abertura"
+								value={opening}
+								onChange={(e) => setOpening(e.target.value)}
+								className="w-full rounded border bg-background p-2"
+							/>
+							<input
+								aria-label="Texto de encerramento"
+								value={ending}
+								onChange={(e) => setEnding(e.target.value)}
+								className="w-full rounded border bg-background p-2"
+							/>
+						</>
+					)}
+					<p className="text-muted-foreground">
+						Usa seus vídeos e imagens. Inclui ritmo, câmera, transições e
+						títulos; sincroniza com a narração existente. Música e voz são
+						adicionadas nas abas correspondentes.
+					</p>
+				</div>
 				<div className="mt-3 flex flex-col gap-2">
 					<input
 						value={query}
@@ -393,21 +614,60 @@ export function DarkCutTemplatesView() {
 						return (
 							<div
 								key={template.id}
+								onMouseEnter={() => {
+									if (
+										!window.matchMedia("(prefers-reduced-motion: reduce)")
+											.matches
+									)
+										setPreviewId(template.id);
+								}}
+								onMouseLeave={() =>
+									setPreviewId((id) => (id === template.id ? null : id))
+								}
+								onFocus={() => {
+									if (
+										!window.matchMedia("(prefers-reduced-motion: reduce)")
+											.matches
+									)
+										setPreviewId(template.id);
+								}}
+								onBlur={(e) => {
+									if (!e.currentTarget.contains(e.relatedTarget))
+										setPreviewId((id) => (id === template.id ? null : id));
+								}}
 								className="group overflow-hidden rounded-xl border bg-card shadow-sm transition-all hover:-translate-y-0.5 hover:border-primary/50 hover:shadow-md"
 							>
 								<div
 									className={cn(
-										"relative flex h-24 items-center justify-center overflow-hidden bg-gradient-to-br",
+										"relative flex aspect-video items-center justify-center overflow-hidden bg-gradient-to-br",
 										template.accent,
 									)}
 								>
-									<div className="absolute inset-0 opacity-40 [background-image:linear-gradient(90deg,transparent_49%,hsl(var(--border))_50%,transparent_51%)] [background-size:36px_36px]" />
-									<div className="relative text-4xl transition-transform duration-200 group-hover:scale-110">
-										{template.badge}
-									</div>
+									<TemplatePreview
+										template={template}
+										active={
+											previewId === template.id && activeTab === "templates"
+										}
+										title={opening.trim() || template.title}
+										ending={ending.trim() || "Sua história continua"}
+									/>
 									<button
 										type="button"
-										aria-label={favorite ? "Remover dos favoritos" : "Favoritar template"}
+										aria-label={`Prévia de ${template.title}`}
+										onClick={() =>
+											setPreviewId(
+												previewId === template.id ? null : template.id,
+											)
+										}
+										className="absolute bottom-2 right-2 rounded bg-black/70 px-2 py-1 text-xs text-white"
+									>
+										{previewId === template.id ? "Pausar prévia" : "▶ Prévia"}
+									</button>
+									<button
+										type="button"
+										aria-label={
+											favorite ? "Remover dos favoritos" : "Favoritar template"
+										}
 										onClick={() => toggleFavorite(template.id)}
 										className="absolute right-2 top-2 flex size-8 items-center justify-center rounded-full border bg-background/80 text-base backdrop-blur transition-transform hover:scale-105"
 									>
@@ -427,7 +687,9 @@ export function DarkCutTemplatesView() {
 										{template.description}
 									</p>
 									<p className="mt-2 text-[0.68rem] text-muted-foreground">
-										<span className="font-medium text-foreground">Ideal para:</span>{" "}
+										<span className="font-medium text-foreground">
+											Ideal para:
+										</span>{" "}
 										{template.idealFor}
 									</p>
 
@@ -442,7 +704,8 @@ export function DarkCutTemplatesView() {
 											🎞 {template.transitions.length} transições
 										</span>
 										<span className="rounded border px-2 py-1">
-											✨ {template.intensity === "soft"
+											✨{" "}
+											{template.intensity === "soft"
 												? "suave"
 												: template.intensity === "strong"
 													? "forte"

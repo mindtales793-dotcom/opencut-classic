@@ -82,7 +82,7 @@ function DegradedRendererBanner() {
 
 function EditorLayout() {
 	usePasteMedia();
-	const { panels, setPanel } = usePanelStore();
+	const { panels, setPanel, showProperties } = usePanelStore();
 
 	return (
 		<ResizablePanelGroup
@@ -106,6 +106,7 @@ function EditorLayout() {
 				className="min-h-0"
 			>
 				<ResizablePanelGroup
+					key={showProperties ? "with-properties" : "wide-preview"}
 					direction="horizontal"
 					className="size-full gap-[0.19rem] px-3"
 					onLayout={(sizes) => {
@@ -129,23 +130,28 @@ function EditorLayout() {
 					<ResizableHandle withHandle />
 
 					<ResizablePanel
-						defaultSize={panels.preview}
+						defaultSize={
+							100 - panels.tools - (showProperties ? panels.properties : 0)
+						}
 						minSize={30}
 						className="min-h-0 min-w-0 flex-1"
 					>
 						<EditorPreview />
 					</ResizablePanel>
 
-					<ResizableHandle withHandle />
-
-					<ResizablePanel
-						defaultSize={panels.properties}
-						minSize={15}
-						maxSize={40}
-						className="min-w-0"
-					>
-						<PropertiesPanel />
-					</ResizablePanel>
+					{showProperties && (
+						<>
+							<ResizableHandle withHandle />
+							<ResizablePanel
+								defaultSize={panels.properties}
+								minSize={15}
+								maxSize={40}
+								className="min-w-0"
+							>
+								<PropertiesPanel />
+							</ResizablePanel>
+						</>
+					)}
 				</ResizablePanelGroup>
 			</ResizablePanel>
 

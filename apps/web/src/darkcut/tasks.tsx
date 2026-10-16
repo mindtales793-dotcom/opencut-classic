@@ -1,4 +1,5 @@
 "use client";
+import { useEffect, useState } from "react";
 import { create } from "zustand";
 import { useEditor } from "@/editor/use-editor";
 import {
@@ -8,6 +9,8 @@ import {
 export type TaskProgress = {
 	projectId: string;
 	label: string;
+	detail?: string;
+	startedAt?: number;
 	done?: number;
 	total?: number;
 	tab: Tab;
@@ -18,8 +21,73 @@ export const useDarkCutTasks = create<{
 	set: (id: string, value: TaskProgress) => void;
 }>((set) => ({
 	tasks: {},
-	set: (id, value) => set((s) => ({ tasks: { ...s.tasks, [id]: value } })),
+	set: (id, value) =>
+		set((s) => ({
+			tasks: {
+				...s.tasks,
+				[id]: {
+					...value,
+					startedAt:
+						s.tasks[id]?.status === "running" &&
+						s.tasks[id]?.projectId === value.projectId
+							? s.tasks[id].startedAt
+							: Date.now(),
+				},
+			},
+		})),
 }));
+export function TaskStatus({ task }: { task: TaskProgress }) {
+	const [now, setNow] = useState(Date.now());
+	useEffect(() => {
+		if (task.status !== "running") return;
+		setNow(Date.now());
+		const timer = window.setInterval(() => setNow(Date.now()), 1000);
+		return () => window.clearInterval(timer);
+	}, [task.status, task.startedAt]);
+	const seconds = Math.max(
+		0,
+		Math.floor((now - (task.startedAt ?? now)) / 1000),
+	);
+	return (
+		<span
+			className="flex flex-wrap items-center gap-2"
+			data-task-status={task.status}
+		>
+			<span>
+				{task.detail ??
+					(task.status === "running"
+						? "Em andamento"
+						: task.status === "done"
+							? "Concluído"
+							: task.status === "paused"
+								? "Pausado"
+								: "Falhou — tente novamente")}
+			</span>
+			{task.total !== undefined && task.total > 0 ? (
+				<>
+					<progress
+						aria-label={task.label}
+						className="h-2 w-24"
+						max={task.total}
+						value={task.done ?? 0}
+					/>
+					<span>
+						{task.done ?? 0}/{task.total}
+					</span>
+				</>
+			) : (
+				task.status === "running" && (
+					<progress aria-label={task.label} className="h-2 w-24" />
+				)
+			)}
+			{task.status === "running" && (
+				<span className="tabular-nums" aria-live="off">
+					{Math.floor(seconds / 60)}:{String(seconds % 60).padStart(2, "0")}
+				</span>
+			)}
+		</span>
+	);
+}
 export function DarkCutTaskBar() {
 	const editor = useEditor();
 	const tasks = useDarkCutTasks((s) => s.tasks);
@@ -31,7 +99,12 @@ export function DarkCutTaskBar() {
 		<div
 			className="flex shrink-0 flex-wrap items-center gap-3 border-b px-4 py-1 text-xs"
 			aria-live="polite"
-			data-darkcut-running={exp.isExporting || Object.values(tasks).some(t=>t.status === "running") ? "true" : "false"}
+			data-darkcut-running={
+				exp.isExporting ||
+				Object.values(tasks).some((t) => t.status === "running")
+					? "true"
+					: "false"
+			}
 		>
 			<span className="font-semibold">Produção</span>
 			{!visible.length && !exp.isExporting && (
@@ -55,18 +128,7 @@ export function DarkCutTaskBar() {
 									: "◌"}{" "}
 						{t.label}
 					</span>
-					{t.total !== undefined && t.total > 0 && (
-						<>
-							<progress
-								className="h-1 w-20"
-								max={t.total}
-								value={t.done ?? 0}
-							/>
-							<span>
-								{t.done ?? 0}/{t.total}
-							</span>
-						</>
-					)}
+					<TaskStatus task={t} />
 				</button>
 			))}
 			{exp.isExporting && (

@@ -1,4 +1,5 @@
 "use client";
+import { usePanelStore } from "@/editor/panel-store";
 
 import { Button } from "../ui/button";
 import { useRef, useState } from "react";
@@ -28,6 +29,8 @@ import Image from "next/image";
 import { cn } from "@/utils/ui";
 
 export function EditorHeader() {
+	const showProperties = usePanelStore((s) => s.showProperties);
+	const toggleProperties = usePanelStore((s) => s.toggleProperties);
 	return (
 		<header className="bg-background flex h-[3.4rem] items-center justify-between px-3 pt-0.5">
 			<div className="flex items-center gap-1">
@@ -35,6 +38,14 @@ export function EditorHeader() {
 				<EditableProjectName />
 			</div>
 			<nav className="flex items-center gap-2">
+				<Button
+					variant="ghost"
+					size="sm"
+					onClick={toggleProperties}
+					aria-pressed={showProperties}
+				>
+					{showProperties ? "Ocultar ajustes" : "Ajustes do clipe"}
+				</Button>
 				<FeedbackPopover />
 				<ExportButton />
 				<ThemeToggle />

@@ -13,6 +13,8 @@ export interface PanelSizes {
 export type PanelId = keyof PanelSizes;
 
 interface PanelState {
+	showProperties: boolean;
+	toggleProperties: () => void;
 	panels: PanelSizes;
 	setPanel: (args: { panel: PanelId; size: number }) => void;
 	setPanels: (sizes: Partial<PanelSizes>) => void;
@@ -23,6 +25,9 @@ export const usePanelStore = create<PanelState>()(
 	persist(
 		(set) => ({
 			...PANEL_CONFIG,
+			showProperties: false,
+			toggleProperties: () =>
+				set((s) => ({ showProperties: !s.showProperties })),
 			setPanel: ({ panel, size }) =>
 				set((state) => ({
 					panels: {
@@ -87,6 +92,7 @@ export const usePanelStore = create<PanelState>()(
 			},
 			partialize: (state) => ({
 				panels: state.panels,
+				showProperties: state.showProperties,
 			}),
 		},
 	),

@@ -1,9 +1,12 @@
+import { useDarkCutTasks } from "@/darkcut/tasks";
 import { create } from "zustand";
 import type { SoundEffect, SavedSound } from "@/sounds/types";
 import { storageService } from "@/services/storage/service";
 import { toast } from "sonner";
 import { EditorCore } from "@/core";
-import { buildLibraryAudioElement } from "@/timeline/element-utils";
+import { processMediaAssets } from "@/media/processing";
+import { stopSoundPreview } from "@/sounds/use-sound-preview";
+import { buildElementFromMedia } from "@/timeline/element-utils";
 import { mediaTimeFromSeconds } from "@/wasm";
 
 function getOrCreateDarkCutAudioTrack({
@@ -259,38 +262,87 @@ export const useSoundsStore = create<SoundsStore>((set, get) => ({
 			return false;
 		}
 
+		const projectId = EditorCore.getInstance().project.getActive().metadata.id;
+		const task = (status: "running" | "done" | "error", detail: string) =>
+			useDarkCutTasks
+				.getState()
+				.set(`sound-${sound.id}`, {
+					projectId,
+					label: sound.name,
+					tab: "sounds",
+					status,
+					detail,
+				});
+		task("running", "Baixando áudio…");
 		try {
 			const editor = EditorCore.getInstance();
 			const currentTime = editor.playback.getCurrentTime();
 			const isBackgroundMusic = sound.tags?.some(
-				(tag) => tag.toLowerCase() === "jamendo" || tag.toLowerCase() === "music",
+				(tag) =>
+					tag.toLowerCase() === "jamendo" || tag.toLowerCase() === "music",
 			);
 			const trackName = isBackgroundMusic
 				? "A2 • Música de fundo"
 				: "A3 • Efeitos sonoros";
+
+			const sceneId = editor.scenes.getActiveScene().id;
+			stopSoundPreview();
+			toast.loading("Baixando e preparando áudio…", {
+				id: `sound-${sound.id}`,
+			});
+			const response = await fetch(audioUrl, {
+				signal: AbortSignal.timeout(90000),
+			});
+			if (!response.ok) {
+				const detail = await response.json().catch(() => null);
+				throw new Error(
+					detail?.error || `Falha ao carregar áudio: ${response.status}`,
+				);
+			}
+			const type = response.headers.get("content-type") || "";
+			if (type.includes("json") || type.includes("text/"))
+				throw new Error("O provedor não retornou um arquivo de áudio.");
+			const blob = await response.blob();
+			const file = new File(
+				[blob],
+				`${sound.name.replace(/[<>:"/\\|?*]/g, "-")}.mp3`,
+				{ type: blob.type.startsWith("audio/") ? blob.type : "audio/mpeg" },
+			);
+			task("running", "Preparando áudio…");
+			const [processed] = await processMediaAssets({ files: [file] });
+			if (!processed || !processed.duration)
+				throw new Error("Não foi possível decodificar essa música.");
+			if (
+				editor.project.getActive().metadata.id !== projectId ||
+				editor.scenes.getActiveScene().id !== sceneId
+			)
+				throw new Error(
+					"O projeto mudou. Adicione a música novamente no projeto desejado.",
+				);
+			task("running", "Salvando áudio…");
+			const asset = await editor.media.addMediaAsset({
+				projectId,
+				asset: processed,
+			});
+			if (!asset)
+				throw new Error("Não foi possível salvar a música localmente.");
+			if (
+				editor.project.getActive().metadata.id !== projectId ||
+				editor.scenes.getActiveScene().id !== sceneId
+			)
+				throw new Error(
+					"O projeto mudou. O áudio foi salvo na biblioteca do projeto original.",
+				);
 			const targetTrackId = getOrCreateDarkCutAudioTrack({
 				editor,
 				name: trackName,
 			});
-
-			const response = await fetch(audioUrl);
-			if (!response.ok) {
-				throw new Error(`Falha ao carregar áudio: ${response.status}`);
-			}
-
-			const arrayBuffer = await response.arrayBuffer();
-			const audioContext = new AudioContext();
-			const buffer = await audioContext.decodeAudioData(arrayBuffer.slice(0));
-			await audioContext.close();
-
-			const measuredDuration =
-				sound.duration > 0 ? sound.duration : Math.max(0.1, buffer.duration);
-			const element = buildLibraryAudioElement({
-				sourceUrl: audioUrl,
+			const element = buildElementFromMedia({
+				mediaId: asset.id,
+				mediaType: "audio",
 				name: sound.name,
-				duration: mediaTimeFromSeconds({ seconds: measuredDuration }),
+				duration: mediaTimeFromSeconds({ seconds: processed.duration }),
 				startTime: currentTime,
-				buffer,
 			});
 
 			editor.timeline.insertElement({
@@ -298,6 +350,7 @@ export const useSoundsStore = create<SoundsStore>((set, get) => ({
 				element,
 			});
 
+			task("done", "Adicionado à timeline");
 			toast.success(
 				isBackgroundMusic
 					? "Música adicionada à faixa A2."
@@ -306,6 +359,10 @@ export const useSoundsStore = create<SoundsStore>((set, get) => ({
 			);
 			return true;
 		} catch (error) {
+			task(
+				"error",
+				error instanceof Error ? error.message : "Falha ao adicionar áudio",
+			);
 			console.error("Failed to add sound to timeline:", error);
 			toast.error(
 				error instanceof Error

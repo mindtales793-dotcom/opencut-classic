@@ -1,3 +1,4 @@
+import { existsSync } from "node:fs";
 import { spawn } from "node:child_process";
 import { mkdtemp, readFile, readdir, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
@@ -32,7 +33,11 @@ type YouTubeSearchResponse = {
 
 function runYtDlp(args: string[], timeoutMs = 120_000) {
 	return new Promise<{ stdout: string; stderr: string }>((resolve, reject) => {
-		const child = spawn("yt-dlp", args, {
+		const toolsDir = process.env.DARKCUT_VIDEO_TOOLS;
+		const executable = toolsDir
+			? join(toolsDir, process.platform === "win32" ? "yt-dlp.exe" : "yt-dlp")
+			: "yt-dlp";
+		const child = spawn(executable, args, {
 			windowsHide: true,
 			stdio: ["ignore", "pipe", "pipe"],
 		});
@@ -42,14 +47,18 @@ function runYtDlp(args: string[], timeoutMs = 120_000) {
 		child.stdout.setEncoding("utf8");
 		child.stderr.setEncoding("utf8");
 		child.stdout.on("data", (chunk) => {
-			stdout += chunk;
+			stdout = (stdout + chunk).slice(-16000);
 		});
 		child.stderr.on("data", (chunk) => {
-			stderr += chunk;
+			stderr = (stderr + chunk).slice(-16000);
 		});
 
 		const timer = setTimeout(() => {
-			child.kill();
+			if (process.platform === "win32" && child.pid)
+				spawn("taskkill", ["/pid", String(child.pid), "/t", "/f"], {
+					windowsHide: true,
+				});
+			else child.kill();
 			reject(new Error("O yt-dlp demorou demais para responder."));
 		}, timeoutMs);
 
@@ -110,7 +119,7 @@ async function searchWithYouTubeApi({
 		try {
 			const response = await fetch(
 				`https://www.googleapis.com/youtube/v3/search?${params.toString()}`,
-				{ cache: "no-store" },
+				{ cache: "no-store", signal: AbortSignal.timeout(20000) },
 			);
 			const data = (await response.json()) as YouTubeSearchResponse;
 
@@ -159,17 +168,21 @@ export async function POST(request: Request) {
 		return NextResponse.json({ error: "JSON inválido." }, { status: 400 });
 	}
 
+	if (!body || typeof body !== "object")
+		return NextResponse.json({ error: "JSON inválido." }, { status: 400 });
 	const query = typeof body.query === "string" ? body.query.trim() : "";
 	const requestedDuration =
-		typeof body.durationSeconds === "number" ? body.durationSeconds : 3;
+		typeof body.durationSeconds === "number" &&
+		Number.isFinite(body.durationSeconds)
+			? body.durationSeconds
+			: 3;
 	const durationSeconds = Math.max(1, Math.min(15, requestedDuration));
 	const apiKeys = normalizeApiKeys(body.youtubeApiKeys);
 	const excluded = new Set(
 		Array.isArray(body.excludeVideoIds)
 			? body.excludeVideoIds.filter(
 					(value): value is string =>
-						typeof value === "string" &&
-						/^[a-zA-Z0-9_-]{3,32}$/.test(value),
+						typeof value === "string" && /^[a-zA-Z0-9_-]{3,32}$/.test(value),
 				)
 			: [],
 	);
@@ -190,7 +203,7 @@ export async function POST(request: Request) {
 		return NextResponse.json(
 			{
 				error:
-					"Cadastre pelo menos uma chave da YouTube Data API v3 na aba Vídeos com Vídeos.",
+					"Cadastre pelo menos uma chave da YouTube Data API v3 em Configurações > APIs.",
 			},
 			{ status: 400 },
 		);
@@ -228,13 +241,31 @@ export async function POST(request: Request) {
 				const outputTemplate = join(workDir, "clip.%(ext)s");
 				await runYtDlp(
 					[
+						"--ignore-config",
 						"--no-playlist",
+						"--no-progress",
+						"--socket-timeout",
+						"20",
+						"--retries",
+						"2",
+						"--fragment-retries",
+						"2",
+						...(process.env.DARKCUT_VIDEO_TOOLS
+							? ["--ffmpeg-location", process.env.DARKCUT_VIDEO_TOOLS]
+							: []),
+						...(process.env.DARKCUT_VIDEO_TOOLS &&
+						existsSync(join(process.env.DARKCUT_VIDEO_TOOLS, "deno.exe"))
+							? [
+									"--js-runtimes",
+									`deno:${join(process.env.DARKCUT_VIDEO_TOOLS, "deno.exe")}`,
+								]
+							: []),
 						"--no-warnings",
 						"--download-sections",
 						`*0-${durationSeconds}`,
 						"--force-keyframes-at-cuts",
 						"-f",
-						"best[ext=mp4]/best",
+						"bv*[ext=mp4][height<=720]+ba[ext=m4a]/b[ext=mp4][height<=720]/b[height<=720]",
 						"--merge-output-format",
 						"mp4",
 						"-o",
@@ -244,15 +275,14 @@ export async function POST(request: Request) {
 					180_000,
 				);
 
-				const files = (await readdir(workDir)).filter((name) =>
-					name.startsWith("clip."),
+				const files = (await readdir(workDir)).filter(
+					(name) =>
+						name.startsWith("clip.") && /\.(mp4|webm|mkv|mov)$/.test(name),
 				);
 				const selected =
 					files.find((name) => name.endsWith(".mp4")) ?? files[0];
 				if (!selected) {
-					throw new Error(
-						"O download terminou sem gerar um arquivo de vídeo.",
-					);
+					throw new Error("O download terminou sem gerar um arquivo de vídeo.");
 				}
 
 				const bytes = await readFile(join(workDir, selected));
@@ -296,8 +326,11 @@ export async function POST(request: Request) {
 				: "Os primeiros resultados falharam durante o download.";
 		return NextResponse.json(
 			{
-				error:
-					"Não consegui baixar os primeiros resultados automaticamente. Tente novamente para buscar outros candidatos.",
+				error: /sign in|confirm.*bot|not a bot/i.test(detail)
+					? "O YouTube bloqueou o download automático nesta conexão. Tente outro vídeo ou importe um arquivo local."
+					: /format.*not available/i.test(detail)
+						? "Os vídeos encontrados não disponibilizaram um formato compatível. Tente outra palavra-chave."
+						: "Não foi possível baixar os candidatos encontrados. Confira os detalhes e tente outra busca.",
 				detail: detail.slice(0, 500),
 				attemptedVideoIds,
 			},

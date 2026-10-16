@@ -48,20 +48,20 @@ export function DarkCutVideosView() {
 	const pause = useRef(false);
 	const usedVideoIds = useRef(new Set<string>());
 	const task = (
-		status: "running" | "paused" | "done",
+		status: "running" | "paused" | "done" | "error",
 		done: number,
 		total: number,
+		detail?: string,
 	) =>
-		useDarkCutTasks
-			.getState()
-			.set("videos", {
-				projectId: editor.project.getActive().metadata.id,
-				label: "Vídeos",
-				tab: "videos",
-				status,
-				done,
-				total,
-			});
+		useDarkCutTasks.getState().set("videos", {
+			projectId: editor.project.getActive().metadata.id,
+			label: "Vídeos",
+			detail,
+			tab: "videos",
+			status,
+			done,
+			total,
+		});
 
 	const readyCount = useMemo(
 		() => blocks.filter((block) => block.statusLabel === "ready").length,
@@ -135,10 +135,12 @@ export function DarkCutVideosView() {
 				try {
 					const data = (await response.json()) as {
 						error?: string;
+						detail?: string;
 						exhausted?: boolean;
 						attemptedVideoIds?: string[];
 					};
 					if (data.error) message = data.error;
+					if (data.detail) message += ` Detalhes: ${data.detail}`;
 					exhausted = Boolean(data.exhausted);
 					attemptedVideoIds = Array.isArray(data.attemptedVideoIds)
 						? data.attemptedVideoIds
@@ -234,10 +236,24 @@ export function DarkCutVideosView() {
 			for (const block of currentBlocks) {
 				if (pause.current) break;
 				if (block.statusLabel === "ready" && block.mediaId) continue;
+				task(
+					"running",
+					success,
+					currentBlocks.length,
+					`Buscando e baixando bloco ${currentBlocks.indexOf(block) + 1} de ${currentBlocks.length}…`,
+				);
 				if (await downloadForBlock(block)) success += 1;
 				task("running", success, currentBlocks.length);
 			}
-			task(pause.current ? "paused" : "done", success, currentBlocks.length);
+			task(
+				pause.current
+					? "paused"
+					: success === currentBlocks.length
+						? "done"
+						: "error",
+				success,
+				currentBlocks.length,
+			);
 			toast.success(
 				`${success} de ${currentBlocks.length} blocos receberam vídeos.`,
 			);

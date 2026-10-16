@@ -10,6 +10,7 @@ on:
     paths:
       - "apps/web/**"
       - "rust/darkcut-audio/**"
+      - "rust/darkcut-fx/**"
       - "apps/darkcut-desktop/**"
       - "package.json"
       - "bun.lock"
@@ -50,7 +51,13 @@ jobs:
           targets: wasm32-unknown-unknown
 
       - name: Test and build local audio core
-        run: node rust/darkcut-audio/build.mjs
+        run: |
+          node rust/darkcut-audio/build.mjs
+          node rust/darkcut-fx/build.mjs
+
+      - name: Test transition and camera combinations
+        working-directory: apps/web
+        run: bun test --preload ./scripts/test-wasm-preload.ts ./src/timeline/__tests__/darkcut-effects.test.ts ./src/sounds/__tests__/preview.test.ts
 
       - name: Build DarkCut web runtime
         run: bun run build:web
@@ -69,6 +76,11 @@ jobs:
           New-Item -ItemType Directory -Force -Path $tools | Out-Null
 
           Invoke-WebRequest -Uri "https://github.com/yt-dlp/yt-dlp/releases/latest/download/yt-dlp.exe" -OutFile (Join-Path $tools "yt-dlp.exe")
+
+          $denoZip = Join-Path $env:RUNNER_TEMP "deno.zip"
+          Invoke-WebRequest -Uri "https://github.com/denoland/deno/releases/latest/download/deno-x86_64-pc-windows-msvc.zip" -OutFile $denoZip
+          Expand-Archive -Path $denoZip -DestinationPath $tools -Force
+          & (Join-Path $tools "deno.exe") --version
 
           $ffmpegZip = Join-Path $env:RUNNER_TEMP "ffmpeg.zip"
           $ffmpegDir = Join-Path $env:RUNNER_TEMP "ffmpeg"
