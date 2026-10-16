@@ -88,6 +88,10 @@ export function MediaView() {
 	const [batchSelectedIds, setBatchSelectedIds] = useState<string[]>([]);
 	const [isAddingBatch, setIsAddingBatch] = useState(false);
 	const folderInputRef = useRef<HTMLInputElement>(null);
+	const audioInputRef = useRef<HTMLInputElement>(null);
+	const [mediaCategory, setMediaCategory] = useState<"visual" | "audio">(
+		"visual",
+	);
 	const imageDurationSeconds = useTimelineStore(
 		(state) => state.darkcutDurationSeconds,
 	);
@@ -163,7 +167,9 @@ export function MediaView() {
 		});
 
 		if (mediaFiles.length === 0) {
-			toast.error("Essa pasta não possui imagens, vídeos ou áudios compatíveis.");
+			toast.error(
+				"Essa pasta não possui imagens, vídeos ou áudios compatíveis.",
+			);
 		} else {
 			processFiles({ files: mediaFiles });
 		}
@@ -198,7 +204,13 @@ export function MediaView() {
 	};
 
 	const filteredMediaItems = useMemo(() => {
-		const filtered = mediaFiles.filter((item) => !item.ephemeral);
+		const filtered = mediaFiles.filter(
+			(item) =>
+				!item.ephemeral &&
+				(mediaCategory === "audio"
+					? item.type === "audio"
+					: item.type !== "audio"),
+		);
 
 		filtered.sort((a, b) => {
 			let valueA: string | number;
@@ -231,7 +243,7 @@ export function MediaView() {
 		});
 
 		return filtered;
-	}, [mediaFiles, mediaSortBy, mediaSortOrder]);
+	}, [mediaFiles, mediaSortBy, mediaSortOrder, mediaCategory]);
 	const orderedMediaIds = useMemo(() => {
 		return filteredMediaItems.map((item) => item.id);
 	}, [filteredMediaItems]);
@@ -258,9 +270,7 @@ export function MediaView() {
 
 	useEffect(() => {
 		const available = new Set(batchSelectableIds);
-		setBatchSelectedIds((current) =>
-			current.filter((id) => available.has(id)),
-		);
+		setBatchSelectedIds((current) => current.filter((id) => available.has(id)));
 	}, [batchSelectableIds]);
 
 	const toggleBatchSelection = (id: string) => {
@@ -302,7 +312,9 @@ export function MediaView() {
 
 		try {
 			// Deixa o navegador pintar o feedback antes do lote pesado.
-			await new Promise<void>((resolve) => requestAnimationFrame(() => resolve()));
+			await new Promise<void>((resolve) =>
+				requestAnimationFrame(() => resolve()),
+			);
 
 			const beforeTracks = scene.tracks;
 			const mainTrack = beforeTracks.main;
@@ -376,16 +388,13 @@ export function MediaView() {
 			editor.playback.seek({ time: batchStart });
 			setBatchSelectedIds([]);
 
-			toast.success(
-				`${selectedItems.length} mídia(s) adicionadas à V1.`,
-				{
-					id: toastId,
-					description: `Inserção em lote concluída. Imagens: ${Math.max(
-						0.1,
-						imageDurationSeconds,
-					).toFixed(1)}s cada.`,
-				},
-			);
+			toast.success(`${selectedItems.length} mídia(s) adicionadas à V1.`, {
+				id: toastId,
+				description: `Inserção em lote concluída. Imagens: ${Math.max(
+					0.1,
+					imageDurationSeconds,
+				).toFixed(1)}s cada.`,
+			});
 		} catch (error) {
 			console.error("Falha ao adicionar lote à timeline:", error);
 			toast.error("Não foi possível adicionar as mídias à timeline.", {
@@ -401,6 +410,32 @@ export function MediaView() {
 	return (
 		<>
 			<input {...fileInputProps} />
+			<input
+				ref={folderInputRef}
+				type="file"
+				hidden
+				multiple
+				onChange={handleFolderChange}
+			/>
+			<input
+				ref={audioInputRef}
+				type="file"
+				hidden
+				multiple
+				accept=".wav,.mp3,audio/wav,audio/mpeg"
+				onChange={(event) => {
+					const files = Array.from(event.target.files ?? []).filter((file) =>
+						/\.(wav|mp3)$/i.test(file.name),
+					);
+					event.target.value = "";
+					if (!files.length) {
+						toast.error("Selecione um áudio WAV ou MP3.");
+						return;
+					}
+					setMediaCategory("audio");
+					void processFiles({ files });
+				}}
+			/>
 
 			<PanelView
 				title="Assets"
@@ -414,6 +449,7 @@ export function MediaView() {
 						onSort={handleSort}
 						onImport={openFilePicker}
 						onImportFolder={openFolderPicker}
+						onImportAudio={() => audioInputRef.current?.click()}
 						selectedCount={batchSelectedIds.length}
 						allSelected={allBatchSelected}
 						someSelected={someBatchSelected}
@@ -425,12 +461,38 @@ export function MediaView() {
 				contentClassName="h-full"
 				{...dragProps}
 			>
+				<div
+					className="sticky top-0 z-10 flex gap-2 bg-background p-2"
+					role="tablist"
+					aria-label="Tipo de mídia"
+				>
+					<Button
+						role="tab"
+						aria-selected={mediaCategory === "visual"}
+						variant={mediaCategory === "visual" ? "secondary" : "ghost"}
+						onClick={() => setMediaCategory("visual")}
+					>
+						Imagens e vídeos
+					</Button>
+					<Button
+						role="tab"
+						aria-selected={mediaCategory === "audio"}
+						variant={mediaCategory === "audio" ? "secondary" : "ghost"}
+						onClick={() => setMediaCategory("audio")}
+					>
+						Áudios
+					</Button>
+				</div>
 				{isDragOver || filteredMediaItems.length === 0 ? (
 					<MediaDragOverlay
 						isVisible={true}
 						isProcessing={isProcessing}
 						progress={progress}
-						onClick={openFilePicker}
+						onClick={
+							mediaCategory === "audio"
+								? () => audioInputRef.current?.click()
+								: openFilePicker
+						}
 					/>
 				) : (
 					<SelectableSurface
@@ -753,6 +815,7 @@ function MediaActions({
 	onSort,
 	onImport,
 	onImportFolder,
+	onImportAudio,
 	selectedCount,
 	allSelected,
 	someSelected,
@@ -767,6 +830,7 @@ function MediaActions({
 	onSort: ({ key }: { key: MediaSortKey }) => void;
 	onImport: () => void;
 	onImportFolder: () => void;
+	onImportAudio: () => void;
 	selectedCount: number;
 	allSelected: boolean;
 	someSelected: boolean;
@@ -774,7 +838,7 @@ function MediaActions({
 	onAddSelected: () => void;
 }) {
 	return (
-		<div className="flex gap-1.5">
+		<div className="flex flex-wrap gap-1.5">
 			<TooltipProvider>
 				<Tooltip>
 					<TooltipTrigger asChild>
@@ -896,6 +960,14 @@ function MediaActions({
 			>
 				<HugeiconsIcon icon={CloudUploadIcon} />
 				Arquivos
+			</Button>
+			<Button
+				variant="outline"
+				size="sm"
+				onClick={onImportAudio}
+				disabled={isProcessing}
+			>
+				Adicionar áudio
 			</Button>
 		</div>
 	);

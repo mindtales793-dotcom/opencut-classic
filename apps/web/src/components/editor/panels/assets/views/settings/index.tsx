@@ -43,8 +43,8 @@ function isSettingsView(value: string): value is SettingsView {
 
 const PRESET_LABELS: Record<string, string> = {
 	"1:1": "1:1",
-	"16:9": "16:9",
-	"9:16": "9:16",
+	"16:9": "YouTube • Horizontal (16:9)",
+	"9:16": "TikTok / Reels / Shorts (9:16)",
 	"4:3": "4:3",
 };
 
@@ -271,7 +271,7 @@ export function SettingsView() {
 						sectionKey="settings:aspect-ratio"
 					>
 						<SectionHeader>
-							<SectionTitle className="flex-1">Aspect ratio</SectionTitle>
+							<SectionTitle className="flex-1">Formato do vídeo</SectionTitle>
 						</SectionHeader>
 						<SectionContent className="px-2 flex flex-col gap-1 pb-2">
 							{presetItems.map((preset) => (

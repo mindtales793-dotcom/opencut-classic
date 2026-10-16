@@ -1,6 +1,11 @@
 "use client";
 
 import { useEffect, useMemo, useRef, useState } from "react";
+import { buildSubtitleTextElement } from "@/subtitles/build-subtitle-text-element";
+import { extractTimelineAudio } from "@/media/mediabunny";
+import { decodeAudioToFloat32 } from "@/media/audio";
+import { transcriptionService } from "@/services/transcription/service";
+import { DEFAULT_TRANSCRIPTION_SAMPLE_RATE } from "@/transcription/audio";
 import { Button } from "@/components/ui/button";
 import { useEditor } from "@/editor/use-editor";
 import {
@@ -42,12 +47,7 @@ import {
 } from "@/darkcut/cris";
 
 type TemplateCategory =
-	| "Todos"
-	| "POV"
-	| "Financeiro"
-	| "Documentário"
-	| "Educativo"
-	| "Social";
+	"Todos" | "POV" | "Financeiro" | "Documentário" | "Educativo" | "Social";
 
 type DarkCutTemplate = {
 	id: string;
@@ -432,6 +432,9 @@ export function DarkCutTemplatesView({
 	const setActiveTab = useAssetsPanelStore((s) => s.setActiveTab);
 	const [selectedTemplate, setSelectedTemplate] = useState<string | null>(null);
 	const [isCrisAnalyzing, setIsCrisAnalyzing] = useState(false);
+	const applyingRef = useRef(false);
+	const [analysisStep, setAnalysisStep] = useState("");
+	const [narrationTrackId, setNarrationTrackId] = useState("");
 	const [crisPlan, setCrisPlan] = useProjectDraft<CrisEditPlan | null>(
 		"cris-edit-plan",
 		null,
@@ -515,6 +518,7 @@ export function DarkCutTemplatesView({
 	const requestCrisPlan = async (
 		template: DarkCutTemplate,
 		visualCount: number,
+		analysisScript = script,
 	): Promise<CrisEditPlan> => {
 		const templateContext: CrisTemplateContext = {
 			id: template.id,
@@ -524,7 +528,7 @@ export function DarkCutTemplatesView({
 			intensity: template.intensity,
 			effects: template.effects,
 		};
-		if (!script.trim()) {
+		if (!analysisScript.trim()) {
 			return buildLocalCrisPlan({
 				script: "",
 				visualCount,
@@ -538,7 +542,7 @@ export function DarkCutTemplatesView({
 				headers: { "Content-Type": "application/json" },
 				body: JSON.stringify({
 					mode: "analyze",
-					script,
+					script: analysisScript,
 					visualCount,
 					template: templateContext,
 					primaryProvider: crisPrimaryProvider,
@@ -570,11 +574,40 @@ export function DarkCutTemplatesView({
 			console.error(error);
 			toast.info("Cris offline: usando análise local.");
 			return buildLocalCrisPlan({
-				script,
+				script: analysisScript,
 				visualCount,
 				template: templateContext,
 			});
 		}
+	};
+
+	const templateTextParams = (content: string, pixelsAt1080: number) => {
+		const canvasSize = editor.project.getActive().settings.canvasSize;
+		return buildSubtitleTextElement({
+			index: 0,
+			canvasSize,
+			caption: {
+				text: content,
+				startTime: 0,
+				duration: 1,
+				style: {
+					fontSizeRatioOfPlayHeight:
+						(pixelsAt1080 / 1080) *
+						Math.min(1, canvasSize.width / canvasSize.height),
+					placement: {
+						verticalAlign: "middle",
+						marginLeftRatio: 0.1,
+						marginRightRatio: 0.1,
+					},
+					background: {
+						enabled: true,
+						color: "#0b0d12d9",
+						paddingX: 20,
+						paddingY: 12,
+					},
+				},
+			},
+		}).params;
 	};
 
 	const applyCrisPlan = ({
@@ -647,8 +680,10 @@ export function DarkCutTemplatesView({
 						name: `Cris • ${item.sceneType}`,
 						duration: visual.duration,
 						params: {
-							content: item.overlayText,
-							fontSize: template.id === "list" ? 74 : 58,
+							...templateTextParams(
+								item.overlayText,
+								template.id === "list" ? 74 : 58,
+							),
 							fontWeight: "bold",
 							color: "#ffffff",
 							"background.enabled": true,
@@ -682,13 +717,11 @@ export function DarkCutTemplatesView({
 				editor.timeline.addTrack({ type: "effect", name: "FX • Cris" });
 			const nowScene = editor.scenes.getActiveScene();
 			const elements = new Map(
-				[nowScene.tracks.main, ...nowScene.tracks.overlay]
-					.flatMap((track) =>
-						track.elements.map((element) => [
-							`${track.id}:${element.id}`,
-							element,
-						] as const),
+				[nowScene.tracks.main, ...nowScene.tracks.overlay].flatMap((track) =>
+					track.elements.map(
+						(element) => [`${track.id}:${element.id}`, element] as const,
 					),
+				),
 			);
 			for (const { ref } of blurItems) {
 				const visual = elements.get(`${ref.trackId}:${ref.elementId}`);
@@ -715,6 +748,7 @@ export function DarkCutTemplatesView({
 	};
 
 	const applyTemplate = async (template: DarkCutTemplate) => {
+		if (applyingRef.current) return;
 		if (!scene) {
 			toast.error("Abra um projeto antes de aplicar o template.");
 			return;
@@ -738,11 +772,54 @@ export function DarkCutTemplatesView({
 		);
 
 		let changed = refs.length;
+		applyingRef.current = true;
 		setIsCrisAnalyzing(true);
+		setAnalysisStep("Preparando template…");
 		try {
-			const plan = await requestCrisPlan(template, refs.length);
-			setCrisPlan(plan);
-			if (hasNarration) {
+			let analysisScript = script;
+			if (narrationTrackId) {
+				const track = scene.tracks.audio.find(
+					(item) => item.id === narrationTrackId,
+				);
+				if (!track || !track.elements.length)
+					throw new Error("A faixa de narração selecionada está vazia.");
+				setAnalysisStep("Preparando áudio da narração…");
+				const audioBlob = await extractTimelineAudio({
+					tracks: {
+						...scene.tracks,
+						main: { ...scene.tracks.main, elements: [] },
+						overlay: [],
+						audio: [{ ...track, muted: false }],
+					},
+					mediaAssets: editor.media.getAssets(),
+					totalDuration: editor.timeline.getTotalDuration(),
+				});
+				const { samples } = await decodeAudioToFloat32({
+					audioBlob,
+					sampleRate: DEFAULT_TRANSCRIPTION_SAMPLE_RATE,
+				});
+				const transcript = await transcriptionService.transcribe({
+					audioData: samples,
+					onProgress: (progress) => {
+						setAnalysisStep(
+							progress.status === "loading-model"
+								? `Baixando modelo de voz: ${Math.round(progress.progress)}%`
+								: "Transcrevendo narração…",
+						);
+					},
+				});
+				if (!transcript.segments.length)
+					throw new Error("Não foi possível identificar fala na narração.");
+				analysisScript = `TRANSCRIÇÃO REAL (segundos na timeline):\n${transcript.segments.map((segment) => `[${segment.start.toFixed(2)}–${segment.end.toFixed(2)}] ${segment.text}`).join("\n")}\n\nROTEIRO DE REFERÊNCIA:\n${script}`;
+			}
+			if (editor.scenes.getActiveSceneOrNull()?.id !== scene.id)
+				throw new Error(
+					"O projeto mudou durante a análise. Aplique o template no projeto atual.",
+				);
+			setAnalysisStep("Cris: analisando roteiro e montando cenas…");
+			if (narrationTrackId) {
+				// Keep the existing media intervals when analyzing a specific voice track.
+			} else if (hasNarration) {
 				const result = syncVisualsToNarration({ editor, refs });
 				changed = result.changed || refs.length;
 			} else {
@@ -752,9 +829,41 @@ export function DarkCutTemplatesView({
 					seconds: template.durationSeconds,
 				});
 			}
+			const current = editor.scenes.getActiveScene();
+			const targets = [current.tracks.main, ...current.tracks.overlay].flatMap(
+				(track) =>
+					track.elements.map((element) => ({ trackId: track.id, element })),
+			);
+			const timings = refs
+				.map((ref, index) => {
+					const target = targets.find(
+						(item) =>
+							item.trackId === ref.trackId && item.element.id === ref.elementId,
+					)?.element;
+					if (!target) return "";
+					const start = mediaTimeToSeconds({ time: target.startTime });
+					return `Cena ${index}: ${start.toFixed(2)}–${(start + mediaTimeToSeconds({ time: target.duration })).toFixed(2)} segundos`;
+				})
+				.join("\n");
+			const plan = await requestCrisPlan(
+				template,
+				refs.length,
+				`${analysisScript}\n\nINTERVALOS DAS MÍDIAS (respeite a fala correspondente a cada intervalo):\n${timings}`,
+			);
+			if (editor.scenes.getActiveSceneOrNull()?.id !== scene.id)
+				throw new Error("O projeto mudou durante a análise.");
+			setCrisPlan(plan);
 			applyCrisPlan({ plan, refs, template });
 		} catch (error) {
 			console.error(error);
+			if (narrationTrackId) {
+				toast.error(
+					error instanceof Error
+						? error.message
+						: "Falha ao transcrever ou montar. Tente novamente.",
+				);
+				return;
+			}
 			if (hasNarration) {
 				const result = autoEditWithNarration({
 					editor,
@@ -780,6 +889,8 @@ export function DarkCutTemplatesView({
 			toast.error("A Cris falhou; o template básico foi aplicado.");
 		} finally {
 			setIsCrisAnalyzing(false);
+			applyingRef.current = false;
+			setAnalysisStep("");
 		}
 
 		if (addTitles) {
@@ -822,8 +933,7 @@ export function DarkCutTemplatesView({
 							name: `${name} • ${template.title}`,
 							duration: mediaTimeFromSeconds({ seconds: length }),
 							params: {
-								content,
-								fontSize: 64,
+								...templateTextParams(content, 64),
 								fontWeight: "bold",
 								color: "#ffffff",
 								"background.enabled": true,
@@ -842,6 +952,36 @@ export function DarkCutTemplatesView({
 		});
 	};
 
+	const narrationControls = (
+		<div className="space-y-2 p-2">
+			<label className="block text-xs">
+				Fonte da fala para a Cris
+				<select
+					className="mt-1 w-full rounded border bg-background p-2"
+					value={narrationTrackId}
+					disabled={isCrisAnalyzing}
+					onChange={(event) => setNarrationTrackId(event.target.value)}
+				>
+					<option value="">Usar roteiro (sem transcrever)</option>
+					{scene?.tracks.audio.map((track) => (
+						<option key={track.id} value={track.id}>
+							Transcrever: {track.name}
+						</option>
+					))}
+				</select>
+			</label>
+			<p className="text-xs text-muted-foreground">
+				Selecione a faixa de voz, sem música. Whisper baixa o modelo no primeiro
+				uso.
+			</p>
+			{isCrisAnalyzing && (
+				<p role="status" aria-live="polite" className="text-xs text-primary">
+					{analysisStep}
+				</p>
+			)}
+		</div>
+	);
+
 	if (compact)
 		return (
 			<section className="studio-template-gallery">
@@ -849,6 +989,7 @@ export function DarkCutTemplatesView({
 					<h2>Templates</h2>
 					<button onClick={() => setActiveTab("templates")}>Ver todos ›</button>
 				</header>
+				{narrationControls}
 				<div className="studio-template-grid">
 					{[
 						"pov-finance",
@@ -917,6 +1058,7 @@ export function DarkCutTemplatesView({
 			data-template-library="true"
 			className="flex h-full flex-col overflow-hidden p-4"
 		>
+			{narrationControls}
 			<div className="mb-3 rounded-xl border bg-card p-4">
 				<div className="flex items-start justify-between gap-3">
 					<div>
@@ -965,7 +1107,8 @@ export function DarkCutTemplatesView({
 					)}
 					<p className="text-muted-foreground">
 						Fluxo: roteiro → narração → mídias → template → Cris monta a edição.
-						Se a API estiver sem cota, o analisador local assume automaticamente.
+						Se a API estiver sem cota, o analisador local assume
+						automaticamente.
 					</p>
 				</div>
 				<div className="mt-3 flex flex-col gap-2">
@@ -1092,7 +1235,10 @@ export function DarkCutTemplatesView({
 											🎞 {template.transitions.length} transições
 										</span>
 										<span className="rounded border px-2 py-1">
-											FX {template.effects.includes("blur") ? "blur inteligente" : "limpo"}
+											FX{" "}
+											{template.effects.includes("blur")
+												? "blur inteligente"
+												: "limpo"}
 										</span>
 										<span className="rounded border px-2 py-1">
 											🤖 Cris + texto automático
@@ -1109,6 +1255,7 @@ export function DarkCutTemplatesView({
 
 									<Button
 										className="mt-4 w-full"
+										disabled={isCrisAnalyzing}
 										onClick={() => applyTemplate(template)}
 									>
 										✨ Aplicar template

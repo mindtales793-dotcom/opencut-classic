@@ -104,7 +104,7 @@ function promptForPlan({
 			],
 		}),
 		"ROTEIRO:",
-		script.slice(0, 60000),
+		script,
 	].join("\n");
 }
 
