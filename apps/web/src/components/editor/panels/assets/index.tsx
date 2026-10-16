@@ -18,6 +18,7 @@ import { DarkCutProductionView } from "./views/darkcut-production";
 import { DarkCutSyncView } from "./views/darkcut-sync";
 import { DarkCutVideosView } from "./views/darkcut-videos";
 import { DarkCutTemplatesView } from "./views/darkcut-templates";
+import { DarkCutTransitionsView } from "./views/darkcut-transitions";
 
 export function AssetsPanel() {
 	const { activeTab } = useAssetsPanelStore();
@@ -36,11 +37,7 @@ export function AssetsPanel() {
 		stickers: <StickersView />,
 		effects: <EffectsView />,
 		templates: <DarkCutTemplatesView />,
-		transitions: (
-			<div className="text-muted-foreground p-4">
-				Transitions view coming soon...
-			</div>
-		),
+		transitions: <DarkCutTransitionsView />,
 		captions: <Captions />,
 		adjustment: (
 			<div className="text-muted-foreground p-4">
