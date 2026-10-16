@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { toast } from "sonner";
 import { PanelView } from "@/components/editor/panels/assets/views/base-panel";
 import {
@@ -355,6 +355,17 @@ function ApiSettingsContent() {
 	const fishCount = fishApiKeys.filter((key) => key.trim()).length;
 	const [isTestingCris, setIsTestingCris] = useState(false);
 
+	useEffect(() => {
+		if (
+			geminiModel === "gemini-2.5-flash-lite" ||
+			geminiModel === "gemini-2.5-flash" ||
+			geminiModel === "gemini-2.0-flash-lite" ||
+			geminiModel === "gemini-2.0-flash"
+		) {
+			setGeminiModel("gemini-3.5-flash-lite");
+		}
+	}, [geminiModel, setGeminiModel]);
+
 	const clearAll = () => {
 		for (let index = 0; index < 3; index += 1) {
 			setYoutubeApiKey(index, "");
@@ -479,7 +490,7 @@ function ApiSettingsContent() {
 					<Input
 						value={geminiModel}
 						onChange={(event) => setGeminiModel(event.target.value)}
-						placeholder="Modelo Gemini"
+						placeholder="gemini-3.5-flash-lite"
 						autoComplete="off"
 					/>
 				</div>
@@ -524,14 +535,15 @@ function ApiSettingsContent() {
 								ok?: boolean;
 								provider?: string;
 								fallbackUsed?: boolean;
+								model?: string;
 								error?: string;
 							};
 							if (!response.ok || !data.ok)
 								throw new Error(data.error || "Falha ao testar a Cris.");
 							toast.success("Cris conectada.", {
 								description: data.fallbackUsed
-									? `Conectou usando o fallback: ${data.provider}.`
-									: `Provedor ativo: ${data.provider}.`,
+									? `Conectou usando o fallback: ${data.provider} · ${data.model ?? "modelo automático"}.`
+									: `Provedor ativo: ${data.provider} · ${data.model ?? "modelo automático"}.`,
 							});
 						} catch (error) {
 							toast.error(
@@ -548,7 +560,7 @@ function ApiSettingsContent() {
 				</Button>
 
 				<p className="text-[0.65rem] leading-relaxed text-muted-foreground">
-					Se as APIs estiverem sem cota ou indisponíveis, o DarkCut usa o analisador local para não interromper a montagem.
+					O DarkCut migra automaticamente modelos Gemini antigos. Se a API estiver sem cota ou indisponível, usa OpenRouter e depois o analisador local sem interromper a montagem.
 				</p>
 			</section>
 
