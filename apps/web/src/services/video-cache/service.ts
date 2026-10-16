@@ -281,6 +281,9 @@ export class VideoCache {
 			const sink = new CanvasSink(videoTrack, {
 				poolSize: 3,
 				fit: "contain",
+				decoderOptions: {
+					hardwareAcceleration: "prefer-hardware",
+				},
 			});
 
 			this.sinks.set(mediaId, {
