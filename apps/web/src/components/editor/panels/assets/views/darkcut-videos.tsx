@@ -22,6 +22,8 @@ type VideoBlock = DarkCutScene & {
 	statusLabel: "idle" | "searching" | "ready" | "error" | "exhausted";
 	triedVideoIds: string[];
 	lastVideoId?: string;
+	mediaSource?: "youtube" | "pexels" | "pixabay";
+	mediaKind?: "video" | "image";
 	error?: string;
 };
 
@@ -44,6 +46,8 @@ export function DarkCutVideosView() {
 		setSceneSeconds,
 		youtubeApiKeys,
 		setYoutubeApiKey,
+		pexelsApiKey,
+		pixabayApiKey,
 	} = useDarkCutProductionStore();
 	const [blocks, setBlocks] = useProjectDraft<VideoBlock[]>("video-blocks", []);
 	const [isRunning, setIsRunning] = useState(false);
@@ -77,6 +81,8 @@ export function DarkCutVideosView() {
 		() => youtubeApiKeys.filter((key) => key.trim()).length,
 		[youtubeApiKeys],
 	);
+	const configuredStockApis = Number(Boolean(pexelsApiKey.trim())) + Number(Boolean(pixabayApiKey.trim()));
+	const hasAnyMediaSource = configuredApiKeys > 0 || configuredStockApis > 0;
 
 	const analyze = () => {
 		const next = createVideoBlocks(script, sceneSeconds);
@@ -97,6 +103,79 @@ export function DarkCutVideosView() {
 		);
 	};
 
+	const saveResponseAsMedia = async ({
+		response,
+		block,
+		source,
+	}: {
+		response: Response;
+		block: VideoBlock;
+		source: "youtube" | "pexels" | "pixabay";
+	}) => {
+		const contentType = response.headers.get("content-type") || "application/octet-stream";
+		const isImage = contentType.startsWith("image/");
+		const rawTitle =
+			response.headers.get(source === "youtube" ? "X-DarkCut-Video-Title" : "X-DarkCut-Media-Title") || "";
+		const title = rawTitle
+			? decodeURIComponent(rawTitle)
+			: `${source.toUpperCase()} · bloco ${block.index}`;
+		const mediaId =
+			response.headers.get(source === "youtube" ? "X-DarkCut-Video-Id" : "X-DarkCut-Media-Id") ||
+			String(Date.now());
+		const blob = await response.blob();
+		const extension = isImage
+			? contentType.includes("png")
+				? "png"
+				: contentType.includes("webp")
+					? "webp"
+					: "jpg"
+			: "mp4";
+		const file = new File(
+			[blob],
+			`DARKCUT-BLOCO-${block.index}-${source}-${mediaId}.${extension}`,
+			{ type: contentType },
+		);
+		const [processed] = await processMediaAssets({ files: [file] });
+		if (!processed) throw new Error("Não foi possível preparar a mídia encontrada.");
+
+		const activeProject = editor.project.getActive();
+		const asset = await editor.media.addMediaAsset({
+			projectId: activeProject.metadata.id,
+			asset: processed,
+		});
+		if (!asset) throw new Error("Não foi possível salvar a mídia na Mídia Local.");
+
+		updateBlock(block.id, {
+			statusLabel: "ready",
+			status: "ready",
+			mediaId: asset.id,
+			mediaName: title,
+			mediaSource: source,
+			mediaKind: isImage ? "image" : "video",
+			error: undefined,
+		});
+		return true;
+	};
+
+	const tryStockFallback = async (block: VideoBlock) => {
+		if (!configuredStockApis) return false;
+		const response = await fetch("/api/darkcut/stock/media", {
+			method: "POST",
+			headers: { "Content-Type": "application/json" },
+			body: JSON.stringify({
+				query: block.searchQuery.trim(),
+				pexelsApiKey,
+				pixabayApiKey,
+				prefer: "video",
+			}),
+		});
+		if (!response.ok) return false;
+		const sourceHeader = response.headers.get("X-DarkCut-Source");
+		const source =
+			sourceHeader === "pixabay" ? "pixabay" : "pexels";
+		return saveResponseAsMedia({ response, block, source });
+	};
+
 	const downloadForBlock = async (block: VideoBlock) => {
 		const query = block.searchQuery.trim();
 		if (!query) {
@@ -106,119 +185,105 @@ export function DarkCutVideosView() {
 			});
 			return false;
 		}
-		if (!configuredApiKeys) {
+		if (!hasAnyMediaSource) {
 			updateBlock(block.id, {
 				statusLabel: "error",
-				error: "Cadastre pelo menos uma chave da YouTube Data API v3.",
+				error: "Cadastre YouTube, Pexels ou Pixabay em Configurações > APIs.",
 			});
-			toast.error("Cadastre pelo menos uma chave do YouTube antes de buscar.");
+			toast.error("Cadastre pelo menos uma fonte de mídia antes de buscar.");
 			return false;
 		}
 
 		updateBlock(block.id, { statusLabel: "searching", error: undefined });
-		try {
-			const response = await fetch("/api/darkcut/youtube/clip", {
-				method: "POST",
-				headers: { "Content-Type": "application/json" },
-				body: JSON.stringify({
-					query,
-					durationSeconds: block.durationSeconds,
-					excludeVideoIds: Array.from(
-						new Set([
-							...block.triedVideoIds,
-							...usedVideoIds.current,
-							...blocks.flatMap((b) => (b.lastVideoId ? [b.lastVideoId] : [])),
-						]),
-					),
-					youtubeApiKeys,
-				}),
-			});
+		let youtubeError = "";
 
-			if (!response.ok) {
-				let message = "Falha ao buscar vídeo.";
-				let exhausted = false;
-				let attemptedVideoIds: string[] = [];
+		if (configuredApiKeys) {
+			try {
+				const response = await fetch("/api/darkcut/youtube/clip", {
+					method: "POST",
+					headers: { "Content-Type": "application/json" },
+					body: JSON.stringify({
+						query,
+						durationSeconds: block.durationSeconds,
+						excludeVideoIds: Array.from(
+							new Set([
+								...block.triedVideoIds,
+								...usedVideoIds.current,
+								...blocks.flatMap((b) => (b.lastVideoId ? [b.lastVideoId] : [])),
+							]),
+						),
+						youtubeApiKeys,
+					}),
+				});
+
+				if (response.ok) {
+					const videoId = response.headers.get("X-DarkCut-Video-Id") || "";
+					if (videoId) usedVideoIds.current.add(videoId);
+					const triedHeader = response.headers.get("X-DarkCut-Tried-Ids") || "";
+					const autoTriedIds = triedHeader
+						.split(",")
+						.map((value) => value.trim())
+						.filter(Boolean);
+					updateBlock(block.id, {
+						lastVideoId: videoId || undefined,
+						triedVideoIds: Array.from(
+							new Set([
+								...block.triedVideoIds,
+								...autoTriedIds,
+								...(videoId ? [videoId] : []),
+							]),
+						),
+					});
+					return await saveResponseAsMedia({
+						response,
+						block,
+						source: "youtube",
+					});
+				}
+
 				try {
 					const data = (await response.json()) as {
 						error?: string;
 						detail?: string;
-						exhausted?: boolean;
 						attemptedVideoIds?: string[];
 					};
-					if (data.error) message = data.error;
-					if (data.detail) message += ` Detalhes: ${data.detail}`;
-					exhausted = Boolean(data.exhausted);
-					attemptedVideoIds = Array.isArray(data.attemptedVideoIds)
-						? data.attemptedVideoIds
-						: [];
-				} catch {}
-				updateBlock(block.id, {
-					statusLabel: exhausted ? "exhausted" : "error",
-					error: message,
-					triedVideoIds: Array.from(
-						new Set([...block.triedVideoIds, ...attemptedVideoIds]),
-					),
-				});
-				return false;
+					youtubeError = [data.error, data.detail].filter(Boolean).join(" ");
+					if (Array.isArray(data.attemptedVideoIds)) {
+						updateBlock(block.id, {
+							triedVideoIds: Array.from(
+								new Set([...block.triedVideoIds, ...data.attemptedVideoIds]),
+							),
+						});
+					}
+				} catch {
+					youtubeError = "YouTube não retornou um resultado utilizável.";
+				}
+			} catch (error) {
+				youtubeError =
+					error instanceof Error ? error.message : "Falha ao acessar o YouTube.";
 			}
-
-			const videoId = response.headers.get("X-DarkCut-Video-Id") || "";
-			if (videoId) usedVideoIds.current.add(videoId);
-			const triedHeader = response.headers.get("X-DarkCut-Tried-Ids") || "";
-			const autoTriedIds = triedHeader
-				.split(",")
-				.map((value) => value.trim())
-				.filter(Boolean);
-			const rawTitle = response.headers.get("X-DarkCut-Video-Title") || "";
-			const title = rawTitle
-				? decodeURIComponent(rawTitle)
-				: `YouTube ${videoId}`;
-			const blob = await response.blob();
-			const fileName = `DARKCUT-BLOCO-${block.index}-${videoId || Date.now()}.mp4`;
-			const file = new File([blob], fileName, {
-				type: blob.type || "video/mp4",
-			});
-			const [processed] = await processMediaAssets({ files: [file] });
-			if (!processed)
-				throw new Error("Não foi possível preparar o clipe baixado.");
-
-			const activeProject = editor.project.getActive();
-			const asset = await editor.media.addMediaAsset({
-				projectId: activeProject.metadata.id,
-				asset: processed,
-			});
-			if (!asset)
-				throw new Error("Não foi possível salvar o clipe na Mídia Local.");
-
-			const tried = Array.from(
-				new Set([
-					...block.triedVideoIds,
-					...autoTriedIds,
-					...(videoId ? [videoId] : []),
-				]),
-			);
-
-			updateBlock(block.id, {
-				statusLabel: "ready",
-				status: "ready",
-				mediaId: asset.id,
-				mediaName: title,
-				lastVideoId: videoId || undefined,
-				triedVideoIds: tried,
-				error: undefined,
-			});
-			return true;
-		} catch (error) {
-			const message =
-				error instanceof Error ? error.message : "Falha ao baixar o vídeo.";
-			updateBlock(block.id, { statusLabel: "error", error: message });
-			return false;
 		}
+
+		try {
+			if (await tryStockFallback(block)) return true;
+		} catch (error) {
+			const stockError =
+				error instanceof Error ? error.message : "Falha nos bancos de mídia.";
+			youtubeError = [youtubeError, stockError].filter(Boolean).join(" · ");
+		}
+
+		updateBlock(block.id, {
+			statusLabel: "exhausted",
+			error:
+				youtubeError ||
+				"Nenhum resultado adequado foi encontrado no YouTube, Pexels ou Pixabay.",
+		});
+		return false;
 	};
 
 	const searchAll = async () => {
-		if (!configuredApiKeys) {
-			toast.error("Cadastre pelo menos uma chave da YouTube Data API v3.");
+		if (!hasAnyMediaSource) {
+			toast.error("Cadastre YouTube, Pexels ou Pixabay em Configurações > APIs.");
 			return;
 		}
 		const currentBlocks = blocks.length
@@ -304,7 +369,7 @@ export function DarkCutVideosView() {
 			}));
 
 		if (!readyScenes.length) {
-			toast.error("Nenhum bloco com vídeo pronto.");
+			toast.error("Nenhum bloco com mídia pronta.");
 			return;
 		}
 		const inserted = assembleScenesOnTimeline({
@@ -312,7 +377,7 @@ export function DarkCutVideosView() {
 			editor,
 			addCaptions: false,
 		});
-		toast.success(`${inserted} clipes adicionados à timeline.`);
+		toast.success(`${inserted} mídias adicionadas à timeline.`);
 	};
 
 	return (
@@ -343,7 +408,7 @@ export function DarkCutVideosView() {
 					{!isRunning && isPaused && (
 						<Button
 							onClick={searchAll}
-							disabled={!script.trim() || !configuredApiKeys}
+							disabled={!script.trim() || !hasAnyMediaSource}
 						>
 							▶ Retomar busca
 						</Button>
@@ -359,7 +424,7 @@ export function DarkCutVideosView() {
 					uma busca visual curta em inglês, em vez de pesquisar a frase inteira.
 				</p>
 				<p className="mt-1 text-xs text-muted-foreground">
-					Roteiro → interpretação visual → palavra-chave em inglês → busca →
+					Roteiro → interpretação visual → YouTube → Pexels → Pixabay →
 					preview do resultado → Mídia Local → timeline.
 				</p>
 			</div>
@@ -453,7 +518,7 @@ export function DarkCutVideosView() {
 					</Button>
 					<Button
 						onClick={searchAll}
-						disabled={isRunning || !script.trim() || !configuredApiKeys}
+						disabled={isRunning || !script.trim() || !hasAnyMediaSource}
 					>
 						{isRunning
 							? "Buscando e baixando..."
@@ -560,7 +625,9 @@ export function DarkCutVideosView() {
 											)}
 											<div className="flex items-center justify-between gap-2 border-t border-white/10 bg-black/80 px-2 py-1.5 text-[0.65rem] text-white/80">
 												<span className="truncate">✓ {block.mediaName || asset.name}</span>
-												<span className="shrink-0">{asset.type === "video" ? "Vídeo encontrado" : "Imagem encontrada"}</span>
+												<span className="shrink-0">
+													{block.mediaSource ? block.mediaSource.toUpperCase() : "MÍDIA"} · {asset.type === "video" ? "Vídeo" : "Imagem"}
+												</span>
 											</div>
 										</div>
 									);
@@ -578,7 +645,7 @@ export function DarkCutVideosView() {
 										disabled={block.statusLabel === "searching"}
 										onClick={() => searchAnother(block)}
 									>
-										{block.mediaId ? "↻ Outro vídeo" : "Buscar este bloco"}
+										{block.mediaId ? "↻ Outra mídia" : "Buscar este bloco"}
 									</Button>
 									<Button
 										size="sm"
@@ -612,10 +679,10 @@ export function DarkCutVideosView() {
 					disabled={!readyCount}
 					onClick={addReadyToTimeline}
 				>
-					+ Adicionar vídeos prontos à timeline ({readyCount})
+					+ Adicionar mídias prontas à timeline ({readyCount})
 				</Button>
 				<p className="mt-2 text-[0.68rem] text-muted-foreground">
-					Os clipes baixados ficam salvos na Mídia Local do projeto antes de
+					As mídias encontradas ficam salvas na Mídia Local do projeto antes de
 					entrar na timeline.
 				</p>
 			</section>
