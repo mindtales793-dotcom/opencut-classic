@@ -2,6 +2,7 @@ import { create } from "zustand";
 import { persist } from "zustand/middleware";
 
 export type DarkCutProductionMode = "ai" | "broll" | "hybrid";
+export type CrisProvider = "gemini" | "openrouter";
 export type DarkCutProductionStage =
 	| "project"
 	| "script"
@@ -22,6 +23,12 @@ interface DarkCutProductionState {
 	fishApiKeys: string[];
 	jamendoClientId: string;
 	freesoundApiKey: string;
+	geminiApiKey: string;
+	openRouterApiKey: string;
+	crisPrimaryProvider: CrisProvider;
+	crisFallbackProvider: CrisProvider;
+	geminiModel: string;
+	openRouterModel: string;
 	useFlowZika: boolean;
 	useYoutube: boolean;
 	useStock: boolean;
@@ -39,6 +46,12 @@ interface DarkCutProductionState {
 	setFishApiKey: (index: number, value: string) => void;
 	setJamendoClientId: (value: string) => void;
 	setFreesoundApiKey: (value: string) => void;
+	setGeminiApiKey: (value: string) => void;
+	setOpenRouterApiKey: (value: string) => void;
+	setCrisPrimaryProvider: (value: CrisProvider) => void;
+	setCrisFallbackProvider: (value: CrisProvider) => void;
+	setGeminiModel: (value: string) => void;
+	setOpenRouterModel: (value: string) => void;
 	setSource: (
 		key: "useFlowZika" | "useYoutube" | "useStock" | "useLocal",
 		value: boolean,
@@ -61,6 +74,12 @@ export const useDarkCutProductionStore = create<DarkCutProductionState>()(
 			fishApiKeys: ["", "", ""],
 			jamendoClientId: "",
 			freesoundApiKey: "",
+			geminiApiKey: "",
+			openRouterApiKey: "",
+			crisPrimaryProvider: "gemini",
+			crisFallbackProvider: "openrouter",
+			geminiModel: "gemini-2.5-flash-lite",
+			openRouterModel: "openrouter/free",
 			useFlowZika: true,
 			useYoutube: true,
 			useStock: true,
@@ -98,6 +117,14 @@ export const useDarkCutProductionStore = create<DarkCutProductionState>()(
 				}),
 			setJamendoClientId: (jamendoClientId) => set({ jamendoClientId }),
 			setFreesoundApiKey: (freesoundApiKey) => set({ freesoundApiKey }),
+			setGeminiApiKey: (geminiApiKey) => set({ geminiApiKey }),
+			setOpenRouterApiKey: (openRouterApiKey) => set({ openRouterApiKey }),
+			setCrisPrimaryProvider: (crisPrimaryProvider) =>
+				set({ crisPrimaryProvider }),
+			setCrisFallbackProvider: (crisFallbackProvider) =>
+				set({ crisFallbackProvider }),
+			setGeminiModel: (geminiModel) => set({ geminiModel }),
+			setOpenRouterModel: (openRouterModel) => set({ openRouterModel }),
 			setSource: (key, value) => set({ [key]: value }),
 			setStage: (stage) => set({ stage }),
 		}),
