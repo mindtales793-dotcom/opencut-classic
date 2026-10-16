@@ -23,15 +23,30 @@ type RequestBody = {
 	openRouterModel?: string;
 };
 
+const DEFAULT_GEMINI_MODEL = "gemini-3.5-flash-lite";
+const GEMINI_MODEL_FALLBACK = "gemini-3.8-flash";
+const LEGACY_GEMINI_MODELS = new Set([
+	"gemini-2.5-flash-lite",
+	"gemini-2.5-flash",
+	"gemini-2.0-flash-lite",
+	"gemini-2.0-flash",
+]);
+
 function cleanKey(value: unknown) {
 	return typeof value === "string" ? value.trim() : "";
+}
+
+function normalizeGeminiModel(value: unknown) {
+	const model = cleanKey(value);
+	if (!model || LEGACY_GEMINI_MODELS.has(model)) return DEFAULT_GEMINI_MODEL;
+	return model;
 }
 
 function parseJsonText(text: string) {
 	const cleaned = text
 		.trim()
-		.replace(/^\`\`\`(?:json)?/i, "")
-		.replace(/\`\`\`$/i, "")
+		.replace(/^```(?:json)?/i, "")
+		.replace(/```$/i, "")
 		.trim();
 	return JSON.parse(cleaned) as unknown;
 }
@@ -83,7 +98,7 @@ function promptForPlan({
 	].join("\n");
 }
 
-async function callGemini({
+async function callGeminiOnce({
 	apiKey,
 	model,
 	prompt,
@@ -94,7 +109,7 @@ async function callGemini({
 }) {
 	const response = await fetch(
 		`https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(
-			model || "gemini-2.5-flash-lite",
+			model,
 		)}:generateContent`,
 		{
 			method: "POST",
@@ -106,7 +121,6 @@ async function callGemini({
 				contents: [{ parts: [{ text: prompt }] }],
 				generationConfig: {
 					responseMimeType: "application/json",
-					temperature: 0.25,
 				},
 			}),
 			cache: "no-store",
@@ -118,7 +132,10 @@ async function callGemini({
 		error?: { message?: string };
 	};
 	if (!response.ok) {
-		throw new Error(data.error?.message || `Gemini HTTP ${response.status}`);
+		const message = data.error?.message || `Gemini HTTP ${response.status}`;
+		const error = new Error(message) as Error & { status?: number };
+		error.status = response.status;
+		throw error;
 	}
 	const text =
 		data.candidates?.[0]?.content?.parts
@@ -127,6 +144,49 @@ async function callGemini({
 			.trim() ?? "";
 	if (!text) throw new Error("Gemini respondeu sem plano de edição.");
 	return parseJsonText(text);
+}
+
+function shouldTryAnotherGeminiModel(error: unknown) {
+	if (!(error instanceof Error)) return false;
+	const status = (error as Error & { status?: number }).status;
+	const message = error.message.toLowerCase();
+	return (
+		status === 404 ||
+		status === 400 ||
+		message.includes("model") ||
+		message.includes("no longer available") ||
+		message.includes("not found") ||
+		message.includes("not supported")
+	);
+}
+
+async function callGemini({
+	apiKey,
+	model,
+	prompt,
+}: {
+	apiKey: string;
+	model: string;
+	prompt: string;
+}) {
+	const preferred = normalizeGeminiModel(model);
+	const candidates = Array.from(
+		new Set([preferred, DEFAULT_GEMINI_MODEL, GEMINI_MODEL_FALLBACK]),
+	);
+	let lastError: unknown;
+
+	for (const candidate of candidates) {
+		try {
+			return await callGeminiOnce({ apiKey, model: candidate, prompt });
+		} catch (error) {
+			lastError = error;
+			if (!shouldTryAnotherGeminiModel(error)) throw error;
+		}
+	}
+
+	throw lastError instanceof Error
+		? lastError
+		: new Error("Nenhum modelo Gemini disponível.");
 }
 
 async function callOpenRouter({
@@ -187,7 +247,7 @@ async function analyzeWithProvider({
 		if (!key) throw new Error("Gemini API Key não configurada.");
 		return callGemini({
 			apiKey: key,
-			model: cleanKey(body.geminiModel) || "gemini-2.5-flash-lite",
+			model: normalizeGeminiModel(body.geminiModel),
 			prompt,
 		});
 	}
@@ -228,7 +288,14 @@ export async function POST(request: Request) {
 		});
 		try {
 			await analyzeWithProvider({ provider: primary, body, prompt });
-			return NextResponse.json({ ok: true, provider: primary });
+			return NextResponse.json({
+				ok: true,
+				provider: primary,
+				model:
+					primary === "gemini"
+						? normalizeGeminiModel(body.geminiModel)
+						: cleanKey(body.openRouterModel) || "openrouter/free",
+			});
 		} catch (primaryError) {
 			if (fallback !== primary) {
 				try {
@@ -237,6 +304,10 @@ export async function POST(request: Request) {
 						ok: true,
 						provider: fallback,
 						fallbackUsed: true,
+						model:
+							fallback === "gemini"
+								? normalizeGeminiModel(body.geminiModel)
+								: cleanKey(body.openRouterModel) || "openrouter/free",
 					});
 				} catch {}
 			}
