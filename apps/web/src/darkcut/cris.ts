@@ -189,9 +189,12 @@ export function buildLocalCrisPlan({
 	template: CrisTemplateContext;
 }): CrisEditPlan {
 	const texts = splitScript(script, visualCount);
-	const motions = template.motions.length ? template.motions : ["zoom-in"];
-	const transitions = template.transitions.length ? template.transitions : ["fade"];
-	const effects = template.effects.length ? template.effects : ["none"];
+	const motions: DarkCutMotionPreset[] =
+		template.motions.length ? template.motions : ["zoom-in"];
+	const transitions: DarkCutTransitionPreset[] =
+		template.transitions.length ? template.transitions : ["fade"];
+	const effects: CrisVisualEffect[] =
+		template.effects.length ? template.effects : ["none"];
 
 	return {
 		provider: "local",
