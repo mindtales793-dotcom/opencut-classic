@@ -111,6 +111,20 @@ jobs:
           $exe = $files | Where-Object { $_.Extension -eq ".exe" }
           if (-not $exe) { throw "DarkCut Studio EXE was not generated." }
 
+          $packagedTools = Join-Path $PWD "apps/darkcut-desktop/dist/win-unpacked/resources/tools"
+          $requiredTools = @("yt-dlp.exe", "ffmpeg.exe", "ffprobe.exe", "deno.exe")
+          foreach ($tool in $requiredTools) {
+            $toolPath = Join-Path $packagedTools $tool
+            if (-not (Test-Path $toolPath)) {
+              throw "Required packaged video tool missing: $tool"
+            }
+          }
+
+          & (Join-Path $packagedTools "yt-dlp.exe") --version
+          & (Join-Path $packagedTools "deno.exe") --version
+          & (Join-Path $packagedTools "ffmpeg.exe") -version | Select-Object -First 1
+          & (Join-Path $packagedTools "ffprobe.exe") -version | Select-Object -First 1
+
       - name: Open packaged app and create a project
         shell: pwsh
         run: |
