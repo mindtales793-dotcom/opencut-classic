@@ -1,5 +1,7 @@
 "use client";
 
+import { TabBar } from "@/components/editor/panels/assets/tabbar";
+import "./studio.css";
 import { DarkCutTaskBar } from "@/darkcut/tasks";
 import { useParams } from "next/navigation";
 import {
@@ -43,12 +45,17 @@ export default function Editor() {
 	return (
 		<MobileGate>
 			<EditorProvider projectId={projectId}>
-				<div className="bg-background flex h-screen w-screen flex-col overflow-hidden">
+				<div className="darkcut-studio-shell dark bg-background flex h-screen w-screen flex-col overflow-hidden">
 					<DegradedRendererBanner />
 					<EditorHeader />
-					<DarkCutTaskBar />
-					<div className="min-h-0 min-w-0 flex-1">
-						<EditorLayout />
+					<div className="flex min-h-0 flex-1">
+						<TabBar />
+						<div className="min-w-0 flex-1 flex flex-col">
+							<DarkCutTaskBar />
+							<div className="min-h-0 flex-1">
+								<EditorLayout />
+							</div>
+						</div>
 					</div>
 					<Onboarding />
 					<MigrationDialog />
@@ -107,56 +114,36 @@ function EditorLayout() {
 			>
 				<ResizablePanelGroup
 					direction="horizontal"
-					className="size-full gap-[0.19rem] px-3"
+					className="studio-workspace"
 					onLayout={(sizes) => {
-						setPanel({ panel: "tools", size: sizes[0] ?? panels.tools });
-						setPanel({ panel: "preview", size: sizes[1] ?? panels.preview });
-						setPanel({
-							panel: "properties",
-							size: sizes[2] ?? panels.properties,
-						});
+						setPanel({ panel: "preview", size: sizes[0] ?? 50 });
+						setPanel({ panel: "tools", size: sizes[1] ?? 50 });
 					}}
 				>
 					<ResizablePanel
-						id="assets"
-						order={1}
-						defaultSize={panels.tools}
-						minSize={15}
-						maxSize={40}
-						className="min-w-0"
-					>
-						<AssetsPanel />
-					</ResizablePanel>
-
-					<ResizableHandle withHandle />
-
-					<ResizablePanel
 						id="preview"
-						order={2}
-						defaultSize={
-							100 - panels.tools - (showProperties ? panels.properties : 0)
-						}
+						order={1}
+						defaultSize={50}
 						minSize={30}
-						className="min-h-0 min-w-0 flex-1"
+						className="min-w-0 min-h-0"
 					>
 						<EditorPreview />
 					</ResizablePanel>
-
-					{showProperties && (
-						<>
-							<ResizableHandle withHandle />
-							<ResizablePanel
-								id="properties"
-								order={3}
-								defaultSize={panels.properties}
-								minSize={15}
-								maxSize={40}
-								className="min-w-0"
-							>
+					<ResizableHandle withHandle />
+					<ResizablePanel
+						id="assets"
+						order={2}
+						defaultSize={50}
+						minSize={30}
+						className="min-w-0 min-h-0 relative"
+					>
+						<AssetsPanel />
+						{showProperties && (
+							<div className="studio-properties-overlay">
 								<PropertiesPanel />
-							</ResizablePanel>
-						</>
-					)}
+							</div>
+						)}
+					</ResizablePanel>
 				</ResizablePanelGroup>
 			</ResizablePanel>
 
@@ -166,7 +153,7 @@ function EditorLayout() {
 				defaultSize={panels.timeline}
 				minSize={15}
 				maxSize={70}
-				className="min-h-0 px-3 pb-3"
+				className="studio-timeline min-h-0"
 			>
 				<Timeline />
 			</ResizablePanel>

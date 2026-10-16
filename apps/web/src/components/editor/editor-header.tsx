@@ -29,12 +29,34 @@ import Image from "next/image";
 import { cn } from "@/utils/ui";
 
 export function EditorHeader() {
+	const [shortcutsOpen, setShortcutsOpen] = useState(false);
+	const resolution = useEditor(
+		(e) => e.project.getActive().settings.canvasSize,
+	);
 	const showProperties = usePanelStore((s) => s.showProperties);
 	const toggleProperties = usePanelStore((s) => s.toggleProperties);
 	return (
-		<header className="bg-background flex h-[3.4rem] items-center justify-between px-3 pt-0.5">
+		<header className="studio-header">
 			<div className="flex items-center gap-1">
+				<div className="studio-brand">
+					<svg viewBox="0 0 28 32" aria-hidden="true">
+						<path
+							d="M5 3L25 16L5 29V3Z"
+							fill="none"
+							stroke="currentColor"
+							strokeWidth="4"
+						/>
+						<path
+							d="M5 5L13 16L5 27"
+							fill="none"
+							stroke="currentColor"
+							strokeWidth="3"
+						/>
+					</svg>
+					<strong>DarkCut Studio</strong>
+				</div>
 				<ProjectDropdown />
+				<span className="studio-project-prefix">Projeto /</span>
 				<EditableProjectName />
 			</div>
 			<nav className="flex items-center gap-2">
@@ -46,9 +68,19 @@ export function EditorHeader() {
 				>
 					{showProperties ? "Ocultar ajustes" : "Ajustes do clipe"}
 				</Button>
-				<FeedbackPopover />
+				<Button
+					variant="ghost"
+					size="sm"
+					onClick={() => setShortcutsOpen(true)}
+				>
+					⌘ Atalhos
+				</Button>
+				<span className="studio-resolution">{resolution?.height ?? 1080}p</span>
+				<ShortcutsDialog
+					isOpen={shortcutsOpen}
+					onOpenChange={setShortcutsOpen}
+				/>
 				<ExportButton />
-				<ThemeToggle />
 			</nav>
 		</header>
 	);
@@ -122,14 +154,13 @@ function ProjectDropdown() {
 		<>
 			<DropdownMenu>
 				<DropdownMenuTrigger asChild>
-					<Button variant="ghost" size="icon" className="p-1 rounded-sm size-8">
-						<Image
-							src={DEFAULT_LOGO_URL}
-							alt="Project thumbnail"
-							width={32}
-							height={32}
-							className="invert dark:invert-0 size-5"
-						/>
+					<Button
+						variant="ghost"
+						size="icon"
+						className="p-1 rounded-sm size-8"
+						aria-label="Menu do projeto"
+					>
+						<span aria-hidden="true">⌄</span>
 					</Button>
 				</DropdownMenuTrigger>
 				<DropdownMenuContent align="start" className="z-100 w-44">

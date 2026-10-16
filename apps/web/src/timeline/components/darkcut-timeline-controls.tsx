@@ -1,5 +1,6 @@
 "use client";
 
+import { useAssetsPanelStore } from "@/components/editor/panels/assets/assets-panel-store";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { useEditor } from "@/editor/use-editor";
@@ -128,7 +129,9 @@ export function DarkCutTimelineControls() {
 			fallbackToAll: false,
 		});
 		if (!changed) {
-			toast.error("Selecione uma ou mais imagens/vídeos para aplicar a transição.");
+			toast.error(
+				"Selecione uma ou mais imagens/vídeos para aplicar a transição.",
+			);
 			return;
 		}
 		const label =
@@ -147,15 +150,12 @@ export function DarkCutTimelineControls() {
 			toast.error("Não há imagens ou vídeos na timeline.");
 			return;
 		}
-		toast.success(
-			`Transições aleatórias aplicadas em ${changed} item(ns).`,
-			{
-				description:
-					favorites.length > 0
-						? "Usando apenas suas transições favoritas."
-						: "Usando todos os presets DarkCut.",
-			},
-		);
+		toast.success(`Transições aleatórias aplicadas em ${changed} item(ns).`, {
+			description:
+				favorites.length > 0
+					? "Usando apenas suas transições favoritas."
+					: "Usando todos os presets DarkCut.",
+		});
 	};
 
 	const applyMotion = () => {
@@ -167,7 +167,9 @@ export function DarkCutTimelineControls() {
 			fallbackToAll: false,
 		});
 		if (!changed) {
-			toast.error("Selecione uma ou mais imagens/vídeos para aplicar movimento.");
+			toast.error(
+				"Selecione uma ou mais imagens/vídeos para aplicar movimento.",
+			);
 			return;
 		}
 		const label =
@@ -204,20 +206,21 @@ export function DarkCutTimelineControls() {
 			intensity: effectIntensity,
 		});
 		if (!result.narrationSeconds) {
-			toast.error(
-				"Adicione a narração à timeline antes de usar o Auto Edit.",
-			);
+			toast.error("Adicione a narração à timeline antes de usar o Auto Edit.");
 			return;
 		}
 		if (!result.changed) {
 			toast.error("Não encontrei imagens ou vídeos para editar.");
 			return;
 		}
-		toast.success(`DarkCut Auto Edit concluído em ${result.changed} item(ns).`, {
-			description: `Sincronizado com ${Math.round(
-				result.narrationSeconds,
-			)}s de narração + ${result.motions} movimentos + ${result.transitions} transições.`,
-		});
+		toast.success(
+			`DarkCut Auto Edit concluído em ${result.changed} item(ns).`,
+			{
+				description: `Sincronizado com ${Math.round(
+					result.narrationSeconds,
+				)}s de narração + ${result.motions} movimentos + ${result.transitions} transições.`,
+			},
+		);
 	};
 
 	const clearTransitions = () => {
@@ -237,165 +240,7 @@ export function DarkCutTimelineControls() {
 	};
 
 	return (
-		<div className="flex items-center gap-1">
-			<div className="bg-border mx-1 h-6 w-px" />
-
-			<div
-				className="flex h-8 items-center rounded-md border bg-background"
-				title="Definir duração exata para os itens selecionados"
-			>
-				<input
-					type="number"
-					min={0.1}
-					step={0.1}
-					value={durationSeconds}
-					onChange={(event) =>
-						setDurationSeconds(
-							Math.max(0.1, Number(event.target.value) || 0.1),
-						)
-					}
-					onKeyDown={(event) => {
-						if (event.key === "Enter") applyDuration();
-					}}
-					className="h-full w-14 bg-transparent px-2 text-center text-xs outline-none"
-					aria-label="Duração em segundos"
-				/>
-				<span className="pr-1 text-[0.65rem] text-muted-foreground">s</span>
-			</div>
-			<Button
-				variant="secondary"
-				size="sm"
-				className="h-8 px-2 text-xs"
-				onClick={applyDuration}
-				title="Aplicar duração aos itens selecionados"
-			>
-				Aplicar
-			</Button>
-			<Button
-				variant="outline"
-				size="sm"
-				className="h-8 px-2 text-xs"
-				onClick={syncNarration}
-				title="Distribuir as imagens/vídeos para preencher toda a duração da narração"
-			>
-				Sync voz
-			</Button>
-
-			<div className="bg-border mx-1 h-6 w-px" />
-
-			<select
-				value={transitionPreset}
-				onChange={(event) =>
-					setTransitionPreset(event.target.value as DarkCutTransitionPreset)
-				}
-				className="h-8 max-w-32 rounded-md border bg-background px-2 text-xs outline-none"
-				aria-label="Transição DarkCut"
-				title="Escolher transição"
-			>
-				{DARKCUT_TRANSITIONS.map((transition) => (
-					<option key={transition.id} value={transition.id}>
-						{transition.label}
-					</option>
-				))}
-			</select>
-			<Button
-				variant={isFavorite ? "secondary" : "text"}
-				size="icon"
-				className="size-8 text-base"
-				onClick={() => toggleFavorite(transitionPreset)}
-				title={isFavorite ? "Remover dos favoritos" : "Favoritar transição"}
-			>
-				{isFavorite ? "★" : "☆"}
-			</Button>
-			<Button
-				variant="secondary"
-				size="sm"
-				className="h-8 px-2 text-xs"
-				onClick={applyTransition}
-				title="Aplicar a transição escolhida aos itens selecionados"
-			>
-				Transição
-			</Button>
-			<Button
-				variant="outline"
-				size="sm"
-				className="h-8 px-2 text-xs"
-				onClick={randomizeTransitions}
-				title="Aplicar transições aleatórias; usa favoritas se houver"
-			>
-				Aleatório
-			</Button>
-			<Button
-				variant="text"
-				size="sm"
-				className="h-8 px-2 text-xs"
-				onClick={clearTransitions}
-				title="Remover transições dos itens selecionados"
-			>
-				Limpar
-			</Button>
-
-			<div className="bg-border mx-1 h-6 w-px" />
-
-			<select
-				value={motionPreset}
-				onChange={(event) =>
-					setMotionPreset(event.target.value as DarkCutMotionPreset)
-				}
-				className="h-8 max-w-36 rounded-md border bg-background px-2 text-xs outline-none"
-				aria-label="Movimento DarkCut"
-				title="Escolher movimento/efeito"
-			>
-				{DARKCUT_MOTIONS.map((motion) => (
-					<option key={motion.id} value={motion.id}>
-						{motion.label}
-					</option>
-				))}
-			</select>
-			<Button
-				variant={isMotionFavorite ? "secondary" : "text"}
-				size="icon"
-				className="size-8 text-base"
-				onClick={() => toggleMotionFavorite(motionPreset)}
-				title={
-					isMotionFavorite
-						? "Remover movimento dos favoritos"
-						: "Favoritar movimento"
-				}
-			>
-				{isMotionFavorite ? "★" : "☆"}
-			</Button>
-			<select
-				value={effectIntensity}
-				onChange={(event) =>
-					setEffectIntensity(event.target.value as DarkCutEffectIntensity)
-				}
-				className="h-8 rounded-md border bg-background px-2 text-xs outline-none"
-				aria-label="Intensidade do efeito"
-				title="Intensidade dos movimentos"
-			>
-				<option value="soft">Suave</option>
-				<option value="normal">Normal</option>
-				<option value="strong">Forte</option>
-			</select>
-			<Button
-				variant="secondary"
-				size="sm"
-				className="h-8 px-2 text-xs"
-				onClick={applyMotion}
-				title="Aplicar movimento aos itens selecionados"
-			>
-				Movimento
-			</Button>
-			<Button
-				variant="outline"
-				size="sm"
-				className="h-8 px-2 text-xs"
-				onClick={randomizeMotions}
-				title="Aplicar movimentos aleatórios sem repetir consecutivamente"
-			>
-				FX aleatório
-			</Button>
+		<div className="studio-quick-tools flex items-center gap-1">
 			<Button
 				size="sm"
 				className="h-8 px-3 text-xs font-semibold"
@@ -404,6 +249,179 @@ export function DarkCutTimelineControls() {
 			>
 				✨ Auto Edit
 			</Button>
+			<Button
+				variant="outline"
+				size="sm"
+				onClick={() => useAssetsPanelStore.getState().setActiveTab("sync")}
+			>
+				≋ Remover silêncios
+			</Button>
+			<Button variant="outline" size="sm" onClick={syncNarration}>
+				♧ Sincronizar
+			</Button>
+			<details className="studio-extra-tools">
+				<summary>Transições e movimento ▾</summary>
+				<div className="studio-extra-tools-content">
+					<div className="bg-border mx-1 h-6 w-px" />
+
+					<div
+						className="flex h-8 items-center rounded-md border bg-background"
+						title="Definir duração exata para os itens selecionados"
+					>
+						<input
+							type="number"
+							min={0.1}
+							step={0.1}
+							value={durationSeconds}
+							onChange={(event) =>
+								setDurationSeconds(
+									Math.max(0.1, Number(event.target.value) || 0.1),
+								)
+							}
+							onKeyDown={(event) => {
+								if (event.key === "Enter") applyDuration();
+							}}
+							className="h-full w-14 bg-transparent px-2 text-center text-xs outline-none"
+							aria-label="Duração em segundos"
+						/>
+						<span className="pr-1 text-[0.65rem] text-muted-foreground">s</span>
+					</div>
+					<Button
+						variant="secondary"
+						size="sm"
+						className="h-8 px-2 text-xs"
+						onClick={applyDuration}
+						title="Aplicar duração aos itens selecionados"
+					>
+						Aplicar
+					</Button>
+					<Button
+						variant="outline"
+						size="sm"
+						className="h-8 px-2 text-xs"
+						onClick={syncNarration}
+						title="Distribuir as imagens/vídeos para preencher toda a duração da narração"
+					>
+						Sync voz
+					</Button>
+
+					<div className="bg-border mx-1 h-6 w-px" />
+
+					<select
+						value={transitionPreset}
+						onChange={(event) =>
+							setTransitionPreset(event.target.value as DarkCutTransitionPreset)
+						}
+						className="h-8 max-w-32 rounded-md border bg-background px-2 text-xs outline-none"
+						aria-label="Transição DarkCut"
+						title="Escolher transição"
+					>
+						{DARKCUT_TRANSITIONS.map((transition) => (
+							<option key={transition.id} value={transition.id}>
+								{transition.label}
+							</option>
+						))}
+					</select>
+					<Button
+						variant={isFavorite ? "secondary" : "text"}
+						size="icon"
+						className="size-8 text-base"
+						onClick={() => toggleFavorite(transitionPreset)}
+						title={isFavorite ? "Remover dos favoritos" : "Favoritar transição"}
+					>
+						{isFavorite ? "★" : "☆"}
+					</Button>
+					<Button
+						variant="secondary"
+						size="sm"
+						className="h-8 px-2 text-xs"
+						onClick={applyTransition}
+						title="Aplicar a transição escolhida aos itens selecionados"
+					>
+						Transição
+					</Button>
+					<Button
+						variant="outline"
+						size="sm"
+						className="h-8 px-2 text-xs"
+						onClick={randomizeTransitions}
+						title="Aplicar transições aleatórias; usa favoritas se houver"
+					>
+						Aleatório
+					</Button>
+					<Button
+						variant="text"
+						size="sm"
+						className="h-8 px-2 text-xs"
+						onClick={clearTransitions}
+						title="Remover transições dos itens selecionados"
+					>
+						Limpar
+					</Button>
+
+					<div className="bg-border mx-1 h-6 w-px" />
+
+					<select
+						value={motionPreset}
+						onChange={(event) =>
+							setMotionPreset(event.target.value as DarkCutMotionPreset)
+						}
+						className="h-8 max-w-36 rounded-md border bg-background px-2 text-xs outline-none"
+						aria-label="Movimento DarkCut"
+						title="Escolher movimento/efeito"
+					>
+						{DARKCUT_MOTIONS.map((motion) => (
+							<option key={motion.id} value={motion.id}>
+								{motion.label}
+							</option>
+						))}
+					</select>
+					<Button
+						variant={isMotionFavorite ? "secondary" : "text"}
+						size="icon"
+						className="size-8 text-base"
+						onClick={() => toggleMotionFavorite(motionPreset)}
+						title={
+							isMotionFavorite
+								? "Remover movimento dos favoritos"
+								: "Favoritar movimento"
+						}
+					>
+						{isMotionFavorite ? "★" : "☆"}
+					</Button>
+					<select
+						value={effectIntensity}
+						onChange={(event) =>
+							setEffectIntensity(event.target.value as DarkCutEffectIntensity)
+						}
+						className="h-8 rounded-md border bg-background px-2 text-xs outline-none"
+						aria-label="Intensidade do efeito"
+						title="Intensidade dos movimentos"
+					>
+						<option value="soft">Suave</option>
+						<option value="normal">Normal</option>
+						<option value="strong">Forte</option>
+					</select>
+					<Button
+						variant="secondary"
+						size="sm"
+						className="h-8 px-2 text-xs"
+						onClick={applyMotion}
+						title="Aplicar movimento aos itens selecionados"
+					>
+						Movimento
+					</Button>
+					<Button
+						variant="outline"
+						size="sm"
+						className="h-8 px-2 text-xs"
+						onClick={randomizeMotions}
+						title="Aplicar movimentos aleatórios sem repetir consecutivamente"
+					>
+						FX aleatório
+					</Button>
+				</div>
+			</details>
 		</div>
 	);
 }

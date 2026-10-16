@@ -235,11 +235,13 @@ function TemplatePreview({
 	active,
 	title,
 	ending,
+	posterUrl,
 }: {
 	template: DarkCutTemplate;
 	active: boolean;
 	title: string;
 	ending: string;
+	posterUrl?: string;
 }) {
 	const canvas = useRef<HTMLCanvasElement>(null);
 	useEffect(() => {
@@ -268,6 +270,8 @@ function TemplatePreview({
 			});
 			return element;
 		});
+		const poster = posterUrl ? new Image() : null;
+		if (poster) poster.src = posterUrl!;
 		let frame = 0;
 		const start = performance.now();
 		const draw = (now: number) => {
@@ -309,6 +313,21 @@ function TemplatePreview({
 			ctx.beginPath();
 			ctx.arc(145, -65, 35, 0, Math.PI * 2);
 			ctx.fill();
+			if (poster?.complete && poster.naturalWidth) {
+				const scale = Math.max(
+					480 / poster.naturalWidth,
+					270 / poster.naturalHeight,
+				);
+				ctx.drawImage(
+					poster,
+					(-poster.naturalWidth * scale) / 2,
+					(-poster.naturalHeight * scale) / 2,
+					poster.naturalWidth * scale,
+					poster.naturalHeight * scale,
+				);
+				ctx.fillStyle = "rgba(0,0,0,0.3)";
+				ctx.fillRect(-240, -135, 480, 270);
+			}
 			ctx.fillStyle = "#ffffff";
 			ctx.textAlign = "center";
 			ctx.font = "48px sans-serif";
@@ -334,8 +353,12 @@ function TemplatePreview({
 			if (active) frame = requestAnimationFrame(draw);
 		};
 		draw(start);
-		return () => cancelAnimationFrame(frame);
-	}, [template, active, title, ending]);
+		if (poster && !active) poster.onload = () => draw(start);
+		return () => {
+			cancelAnimationFrame(frame);
+			if (poster) poster.onload = null;
+		};
+	}, [template, active, title, ending, posterUrl]);
 	return (
 		<canvas
 			ref={canvas}
@@ -348,8 +371,19 @@ function TemplatePreview({
 	);
 }
 
-export function DarkCutTemplatesView() {
+export function DarkCutTemplatesView({
+	compact = false,
+}: {
+	compact?: boolean;
+}) {
 	const editor = useEditor();
+	const previewMedia = useEditor((e) => e.media.getAssets());
+	const previewPosters = previewMedia
+		.filter((m) => m.type !== "audio")
+		.map((m) => m.thumbnailUrl || (m.type === "image" ? m.url : undefined))
+		.filter(Boolean);
+	const setActiveTab = useAssetsPanelStore((s) => s.setActiveTab);
+	const [selectedTemplate, setSelectedTemplate] = useState<string | null>(null);
 	const scene = useEditor((e) => e.scenes.getActiveSceneOrNull());
 	const activeTab = useAssetsPanelStore((s) => s.activeTab);
 	const [previewId, setPreviewId] = useState<string | null>(null);
@@ -521,13 +555,91 @@ export function DarkCutTemplatesView() {
 				});
 			}
 		}
+		setSelectedTemplate(template.id);
 		toast.success(`${template.title} aplicado.`, {
 			description: `${changed} cena(s) atualizadas. Tudo continua editável na timeline.`,
 		});
 	};
 
+	if (compact)
+		return (
+			<section className="studio-template-gallery">
+				<header>
+					<h2>Templates</h2>
+					<button onClick={() => setActiveTab("templates")}>Ver todos ›</button>
+				</header>
+				<div className="studio-template-grid">
+					{[
+						"pov-finance",
+						"pov-car",
+						"dark-channel",
+						"storytelling",
+						"documentary",
+						"vox",
+					]
+						.map((id) => TEMPLATES.find((t) => t.id === id)!)
+						.map((template) => (
+							<div
+								key={template.id}
+								className={`studio-template-card ${selectedTemplate === template.id ? "selected" : ""}`}
+								onMouseEnter={() => {
+									if (
+										!window.matchMedia("(prefers-reduced-motion: reduce)")
+											.matches
+									)
+										setPreviewId(template.id);
+								}}
+								onMouseLeave={() => setPreviewId(null)}
+							>
+								<button
+									className="studio-template-poster"
+									aria-label={`Aplicar ${template.title}`}
+									onClick={() => applyTemplate(template)}
+									onFocus={() => {
+										if (
+											!window.matchMedia("(prefers-reduced-motion: reduce)")
+												.matches
+										)
+											setPreviewId(template.id);
+									}}
+									onBlur={() => setPreviewId(null)}
+								>
+									<TemplatePreview
+										posterUrl={
+											previewPosters[
+												TEMPLATES.indexOf(template) %
+													Math.max(1, previewPosters.length)
+											]
+										}
+										template={template}
+										active={
+											previewId === template.id && activeTab === "production"
+										}
+										title={opening}
+										ending={ending}
+									/>
+									{selectedTemplate === template.id && (
+										<span className="studio-template-check">✓</span>
+									)}
+								</button>
+								<button
+									className="studio-template-caption"
+									onClick={() => applyTemplate(template)}
+								>
+									<strong>{template.title}</strong>
+									<small>{template.tagline.split(" • ").join(" · ")}</small>
+								</button>
+							</div>
+						))}
+				</div>
+			</section>
+		);
+
 	return (
-		<div className="flex h-full flex-col overflow-hidden p-4">
+		<div
+			data-template-library="true"
+			className="flex h-full flex-col overflow-hidden p-4"
+		>
 			<div className="mb-3 rounded-xl border bg-card p-4">
 				<div className="flex items-start justify-between gap-3">
 					<div>
@@ -644,6 +756,12 @@ export function DarkCutTemplatesView() {
 									)}
 								>
 									<TemplatePreview
+										posterUrl={
+											previewPosters[
+												TEMPLATES.indexOf(template) %
+													Math.max(1, previewPosters.length)
+											]
+										}
 										template={template}
 										active={
 											previewId === template.id && activeTab === "templates"

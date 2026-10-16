@@ -636,10 +636,10 @@ function AudioItem({
 		onPlay({ sound });
 	};
 
-	const handleSaveClick = async ({
-		stopPropagation,
-	}: React.MouseEvent<HTMLButtonElement>) => {
-		stopPropagation();
+	const handleSaveClick = async (
+		event: React.MouseEvent<HTMLButtonElement>,
+	) => {
+		event.stopPropagation();
 		if (isSaving) return;
 		setIsSaving(true);
 		try {
@@ -649,10 +649,10 @@ function AudioItem({
 		}
 	};
 
-	const handleAddToTimeline = async ({
-		stopPropagation,
-	}: React.MouseEvent<HTMLButtonElement>) => {
-		stopPropagation();
+	const handleAddToTimeline = async (
+		event: React.MouseEvent<HTMLButtonElement>,
+	) => {
+		event.stopPropagation();
 		if (isAdding) return;
 		setIsAdding(true);
 		try {

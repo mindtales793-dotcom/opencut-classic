@@ -1,4 +1,4 @@
-const { app, BrowserWindow, dialog, shell, Tray, Menu, nativeImage } = require("electron");
+const { app, BrowserWindow, dialog, shell, Tray, Menu, nativeImage, nativeTheme } = require("electron");
 const path = require("node:path");
 const fs = require("node:fs");
 const http = require("node:http");
@@ -157,6 +157,7 @@ function startServer() {
 }
 
 async function createWindow() {
+  nativeTheme.themeSource = "dark";
   const win = new BrowserWindow({
     width: 1500,
     height: 920,

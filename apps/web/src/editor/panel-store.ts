@@ -45,7 +45,7 @@ export const usePanelStore = create<PanelState>()(
 			resetPanels: () => set({ ...PANEL_CONFIG }),
 		}),
 		{
-			name: "panel-sizes",
+			name: "studio-panel-sizes-v3",
 			version: 2,
 			migrate: (persistedState) => {
 				const state = persistedState as

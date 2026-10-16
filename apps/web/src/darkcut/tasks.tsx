@@ -97,7 +97,8 @@ export function DarkCutTaskBar() {
 	const visible = Object.values(tasks).filter((t) => t.projectId === id);
 	return (
 		<div
-			className="flex shrink-0 flex-wrap items-center gap-3 border-b px-4 py-1 text-xs"
+			hidden={!visible.length && !exp.isExporting}
+            className="studio-taskbar flex shrink-0 flex-wrap items-center gap-3 border-b px-4 py-1 text-xs"
 			aria-live="polite"
 			data-darkcut-running={
 				exp.isExporting ||

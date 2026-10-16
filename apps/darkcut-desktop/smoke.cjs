@@ -145,7 +145,7 @@ async function run(win) {
 	await clickByAria(win, "Templates", "templates:open");
 	await until(
 		win,
-		`document.querySelectorAll('canvas[data-preview-playing]').length===10`,
+		`document.querySelectorAll('[data-template-library] canvas[data-preview-playing]').length===10`,
 		20000,
 		"templates:ten-previews",
 	);
@@ -310,6 +310,24 @@ async function run(win) {
 		"renderer:responsive",
 	);
 
+	await clickByAria(win, "Produção", "design:production");
+	await until(
+		win,
+		`!!document.querySelector('.studio-script-grid') && !!document.querySelector('.studio-sidebar')`,
+		10000,
+		"design:dashboard",
+	);
+	const geometry = await execute(
+		win,
+		`(()=>{const preview=document.querySelector('[data-panel-id="preview"]')?.getBoundingClientRect();const assets=document.querySelector('[data-panel-id="assets"]')?.getBoundingClientRect();const sidebar=document.querySelector('.studio-sidebar')?.getBoundingClientRect();return {preview:preview?.x,assets:assets?.x,sidebar:sidebar?.width};})()`,
+		"design:geometry",
+	);
+	if (!(geometry.preview < geometry.assets && geometry.sidebar >= 140))
+		throw new Error(
+			"Studio layout order or sidebar width is invalid: " +
+				JSON.stringify(geometry),
+		);
+
 	const screenshot = await win.webContents.capturePage();
 	if (process.env.DARKCUT_SMOKE_REPORT) {
 		fs.writeFileSync(
@@ -337,6 +355,7 @@ async function run(win) {
 			"ten template previews and live animation",
 			"music fixture downloaded, decoded and inserted in A2",
 			"indeterminate import progress visible",
+			"reference layout: labeled sidebar, preview left and production right",
 		],
 	});
 }
