@@ -1,6 +1,5 @@
 "use client";
 
-import { useEffect, useState } from "react";
 import { Separator } from "@/components/ui/separator";
 import {
 	type Tab,
@@ -23,10 +22,6 @@ import { DarkCutTransitionsView } from "./views/darkcut-transitions";
 
 export function AssetsPanel() {
 	const { activeTab } = useAssetsPanelStore();
-	const [visited, setVisited] = useState<Tab[]>([activeTab]);
-	useEffect(() => {
-		setVisited((old) => (old.includes(activeTab) ? old : [...old, activeTab]));
-	}, [activeTab]);
 
 	const viewMap: Record<Tab, React.ReactNode> = {
 		production: <DarkCutProductionView />,
@@ -47,12 +42,10 @@ export function AssetsPanel() {
 	return (
 		<div className="studio-assets panel flex h-full flex-col overflow-hidden">
 			<StudioWorkflow />
-			<div className="min-h-0 flex-1 overflow-hidden">
-				{Array.from(new Set([...visited, activeTab])).map((tab) => (
-					<div key={tab} hidden={tab !== activeTab} className="h-full">
-						{viewMap[tab]}
-					</div>
-				))}
+			<div className="studio-assets-scroll min-h-0 flex-1 overflow-y-auto overscroll-contain">
+				<div className="min-h-full min-w-0">
+					{viewMap[activeTab]}
+				</div>
 			</div>
 		</div>
 	);
