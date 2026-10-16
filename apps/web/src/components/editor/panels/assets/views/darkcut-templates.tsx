@@ -270,8 +270,19 @@ function TemplatePreview({
 			});
 			return element;
 		});
-		const poster = posterUrl ? new Image() : null;
-		if (poster) poster.src = posterUrl!;
+		const poster = new Image();
+		poster.src = posterUrl || "/darkcut/studio-reference.png";
+		const demoCrops: Record<string, [number, number, number, number]> = {
+			"pov-finance": [1205, 264, 137, 80],
+			"pov-car": [1359, 264, 141, 80],
+			"dark-channel": [1514, 264, 137, 80],
+			storytelling: [1205, 407, 137, 79],
+			documentary: [1359, 407, 141, 79],
+			vox: [1514, 407, 137, 79],
+		};
+		const crop =
+			demoCrops[template.id] ??
+			demoCrops[template.category === "POV" ? "pov-finance" : "documentary"];
 		let frame = 0;
 		const start = performance.now();
 		const draw = (now: number) => {
@@ -318,36 +329,50 @@ function TemplatePreview({
 					480 / poster.naturalWidth,
 					270 / poster.naturalHeight,
 				);
-				ctx.drawImage(
-					poster,
-					(-poster.naturalWidth * scale) / 2,
-					(-poster.naturalHeight * scale) / 2,
-					poster.naturalWidth * scale,
-					poster.naturalHeight * scale,
-				);
+				if (posterUrl)
+					ctx.drawImage(
+						poster,
+						(-poster.naturalWidth * scale) / 2,
+						(-poster.naturalHeight * scale) / 2,
+						poster.naturalWidth * scale,
+						poster.naturalHeight * scale,
+					);
+				else
+					ctx.drawImage(
+						poster,
+						crop[0],
+						crop[1],
+						crop[2],
+						crop[3],
+						-240,
+						-135,
+						480,
+						270,
+					);
 				ctx.fillStyle = "rgba(0,0,0,0.3)";
 				ctx.fillRect(-240, -135, 480, 270);
 			}
 			ctx.fillStyle = "#ffffff";
 			ctx.textAlign = "center";
 			ctx.font = "48px sans-serif";
-			ctx.fillText(template.badge, 0, -15);
+			if (!poster.complete) ctx.fillText(template.badge, 0, -15);
 			ctx.font = "bold 22px sans-serif";
-			ctx.fillText(
-				index === 0
-					? title
-					: index === 2
-						? ending
-						: template.tagline.split(" • ")[1] || "Sua história",
-				0,
-				40,
-				420,
-			);
+			if (active)
+				ctx.fillText(
+					index === 0
+						? title
+						: index === 2
+							? ending
+							: template.tagline.split(" • ")[1] || "Sua história",
+					0,
+					40,
+					420,
+				);
 			ctx.restore();
 			ctx.fillStyle = "#ffffffaa";
 			ctx.font = "12px sans-serif";
 			ctx.textAlign = "left";
-			ctx.fillText(`DEMONSTRAÇÃO • CENA ${index + 1}/3`, 16, 25);
+			if (active) ctx.fillText(`DEMONSTRAÇÃO • CENA ${index + 1}/3`, 16, 25);
 			ctx.fillStyle = "#ffffff88";
 			ctx.fillRect(0, 267, (480 * time) / (duration * 3), 3);
 			if (active) frame = requestAnimationFrame(draw);
@@ -377,11 +402,6 @@ export function DarkCutTemplatesView({
 	compact?: boolean;
 }) {
 	const editor = useEditor();
-	const previewMedia = useEditor((e) => e.media.getAssets());
-	const previewPosters = previewMedia
-		.filter((m) => m.type !== "audio")
-		.map((m) => m.thumbnailUrl || (m.type === "image" ? m.url : undefined))
-		.filter(Boolean);
 	const setActiveTab = useAssetsPanelStore((s) => s.setActiveTab);
 	const [selectedTemplate, setSelectedTemplate] = useState<string | null>(null);
 	const scene = useEditor((e) => e.scenes.getActiveSceneOrNull());
@@ -605,12 +625,6 @@ export function DarkCutTemplatesView({
 									onBlur={() => setPreviewId(null)}
 								>
 									<TemplatePreview
-										posterUrl={
-											previewPosters[
-												TEMPLATES.indexOf(template) %
-													Math.max(1, previewPosters.length)
-											]
-										}
 										template={template}
 										active={
 											previewId === template.id && activeTab === "production"
@@ -756,12 +770,6 @@ export function DarkCutTemplatesView({
 									)}
 								>
 									<TemplatePreview
-										posterUrl={
-											previewPosters[
-												TEMPLATES.indexOf(template) %
-													Math.max(1, previewPosters.length)
-											]
-										}
 										template={template}
 										active={
 											previewId === template.id && activeTab === "templates"
