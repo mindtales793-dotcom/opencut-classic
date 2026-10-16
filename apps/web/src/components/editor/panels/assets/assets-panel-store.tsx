@@ -42,7 +42,7 @@ const createHugeiconsIcon =
 export const tabs = {
 	production: {
 		icon: createHugeiconsIcon({ icon: MagicWand05Icon }),
-		label: "Roteiro",
+		label: "Produção",
 	},
 	sync: {
 		icon: createHugeiconsIcon({ icon: ArrowRightDoubleIcon }),
@@ -54,15 +54,15 @@ export const tabs = {
 	},
 	media: {
 		icon: createHugeiconsIcon({ icon: Folder03Icon }),
-		label: "Media",
+		label: "Mídia",
 	},
 	sounds: {
 		icon: createHugeiconsIcon({ icon: HeadphonesIcon }),
-		label: "Sounds",
+		label: "Áudio",
 	},
 	text: {
 		icon: createHugeiconsIcon({ icon: TextIcon }),
-		label: "Text",
+		label: "Texto",
 	},
 	stickers: {
 		icon: createHugeiconsIcon({ icon: Happy01Icon }),
@@ -70,7 +70,7 @@ export const tabs = {
 	},
 	effects: {
 		icon: createHugeiconsIcon({ icon: MagicWand05Icon }),
-		label: "Effects",
+		label: "Efeitos",
 	},
 	templates: {
 		icon: createHugeiconsIcon({ icon: MagicWand05Icon }),
@@ -78,19 +78,19 @@ export const tabs = {
 	},
 	transitions: {
 		icon: createHugeiconsIcon({ icon: ArrowRightDoubleIcon }),
-		label: "Transitions",
+		label: "Transições",
 	},
 	captions: {
 		icon: createHugeiconsIcon({ icon: ClosedCaptionIcon }),
-		label: "Captions",
+		label: "Legendas",
 	},
 	adjustment: {
 		icon: createHugeiconsIcon({ icon: SlidersHorizontalIcon }),
-		label: "Adjustment",
+		label: "Ajustes",
 	},
 	settings: {
 		icon: createHugeiconsIcon({ icon: Settings01Icon }),
-		label: "Settings",
+		label: "Configurações",
 	},
 } satisfies Record<
 	Tab,
