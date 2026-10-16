@@ -36,6 +36,7 @@ function createVideoBlocks(script: string, sceneSeconds: number): VideoBlock[] {
 
 export function DarkCutVideosView() {
 	const editor = useEditor();
+	const mediaAssets = useEditor((e) => e.media.getAssets());
 	const setActiveTab = useAssetsPanelStore((state) => state.setActiveTab);
 	const {
 		script,
@@ -358,8 +359,8 @@ export function DarkCutVideosView() {
 					uma busca visual curta em inglês, em vez de pesquisar a frase inteira.
 				</p>
 				<p className="mt-1 text-xs text-muted-foreground">
-					Roteiro → interpretação visual → palavra-chave em inglês → YouTube →
-					Mídia Local → timeline.
+					Roteiro → interpretação visual → palavra-chave em inglês → busca →
+					preview do resultado → Mídia Local → timeline.
 				</p>
 			</div>
 
@@ -528,11 +529,42 @@ export function DarkCutVideosView() {
 									placeholder="Palavra-chave visual em inglês"
 								/>
 
-								{block.mediaName && (
-									<div className="mt-1 truncate text-[0.68rem] text-foreground">
-										✓ {block.mediaName}
+								{block.statusLabel === "searching" && (
+									<div className="mt-2 overflow-hidden rounded-md border border-primary/25 bg-primary/5">
+										<div className="aspect-video w-full animate-pulse bg-muted/50" />
+										<div className="flex items-center gap-2 border-t px-2 py-1.5 text-[0.65rem] text-muted-foreground">
+											<span className="inline-block size-2 animate-pulse rounded-full bg-primary" />
+											Buscando a melhor mídia para este trecho…
+										</div>
 									</div>
 								)}
+								{block.mediaId && (() => {
+									const asset = mediaAssets.find((item) => item.id === block.mediaId);
+									if (!asset || (asset.type !== "video" && asset.type !== "image")) return null;
+									return (
+										<div className="mt-2 overflow-hidden rounded-md border bg-black">
+											{asset.type === "video" ? (
+												<video
+													src={asset.url}
+													poster={asset.thumbnailUrl}
+													controls
+													preload="metadata"
+													className="aspect-video w-full object-contain"
+												/>
+											) : (
+												<img
+													src={asset.url || asset.thumbnailUrl}
+													alt={block.mediaName || `Mídia do bloco ${block.index}`}
+													className="aspect-video w-full object-contain"
+												/>
+											)}
+											<div className="flex items-center justify-between gap-2 border-t border-white/10 bg-black/80 px-2 py-1.5 text-[0.65rem] text-white/80">
+												<span className="truncate">✓ {block.mediaName || asset.name}</span>
+												<span className="shrink-0">{asset.type === "video" ? "Vídeo encontrado" : "Imagem encontrada"}</span>
+											</div>
+										</div>
+									);
+								})()}
 								{block.error && (
 									<div className="mt-1 text-[0.68rem] text-destructive">
 										{block.error}
