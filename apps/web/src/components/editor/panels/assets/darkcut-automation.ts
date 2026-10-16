@@ -37,6 +37,98 @@ function extractKeywords(text: string, limit = 6) {
 		.map(([word]) => word);
 }
 
+
+const VISUAL_TERM_RULES: Array<{ test: RegExp; terms: string[] }> = [
+	{ test: /\b(acordei|acordar|acordou|levant(ei|ar|ou))\b/, terms: ["waking up", "bedroom"] },
+	{ test: /\b(cinco horas|5 horas|madrugada|amanhecer|cedo|de manha|manhã)\b/, terms: ["early morning", "sunrise"] },
+	{ test: /\b(noite|noturno|anoitecer)\b/, terms: ["night", "city lights"] },
+	{ test: /\b(gripado|gripe|resfriado|doente|febre|febril)\b/, terms: ["sick person", "in bed"] },
+	{ test: /\b(frio|gelado|fria|inverno)\b/, terms: ["cold weather", "winter"] },
+	{ test: /\b(chuva|chovendo|chuvoso)\b/, terms: ["rainy weather"] },
+	{ test: /\b(calor|quente|ensolarado|sol forte)\b/, terms: ["hot sunny weather"] },
+	{ test: /\b(sao paulo|são paulo)\b/, terms: ["Sao Paulo", "city"] },
+	{ test: /\b(rio de janeiro)\b/, terms: ["Rio de Janeiro", "city"] },
+	{ test: /\b(onibus|ônibus|busao|busão)\b/, terms: ["commuting by bus"] },
+	{ test: /\b(metro|metrô)\b/, terms: ["subway commute"] },
+	{ test: /\b(trabalho|trabalhar|empresa|escritorio|escritório)\b/, terms: ["going to work", "office worker"] },
+	{ test: /\b(carro|dirigindo|dirigir|motorista)\b/, terms: ["driving car"] },
+	{ test: /\b(transito|trânsito|engarrafamento)\b/, terms: ["city traffic"] },
+	{ test: /\b(dinheiro|salario|salário|pagamento)\b/, terms: ["money", "personal finance"] },
+	{ test: /\b(banco|agencia bancaria|agência bancária)\b/, terms: ["bank building"] },
+	{ test: /\b(casa|apartamento|quarto)\b/, terms: ["home interior"] },
+	{ test: /\b(rua|avenida|cidade|centro)\b/, terms: ["city street"] },
+	{ test: /\b(celular|telefone|smartphone)\b/, terms: ["using smartphone"] },
+	{ test: /\b(computador|notebook|pc)\b/, terms: ["using laptop"] },
+	{ test: /\b(comer|almoco|almoço|jantar|cafe da manha|café da manhã)\b/, terms: ["eating meal"] },
+	{ test: /\b(mercado|supermercado|compras)\b/, terms: ["grocery shopping"] },
+	{ test: /\b(hospital|medico|médico|consulta)\b/, terms: ["hospital", "doctor visit"] },
+];
+
+const VISUAL_WORD_MAP: Record<string, string> = {
+	homem: "man",
+	mulher: "woman",
+	pessoa: "person",
+	familia: "family",
+	família: "family",
+	crianca: "child",
+	criança: "child",
+	jovem: "young adult",
+	idoso: "elderly person",
+	dormindo: "sleeping",
+	correndo: "running",
+	andando: "walking",
+	caminhando: "walking",
+	esperando: "waiting",
+	comprando: "shopping",
+	vendendo: "selling",
+	pagando: "paying",
+	estudando: "studying",
+	estudar: "studying",
+	escola: "school",
+	faculdade: "university",
+	chuva: "rain",
+	neve: "snow",
+	praia: "beach",
+	campo: "countryside",
+	fabrica: "factory",
+	fábrica: "factory",
+	loja: "store",
+	concessionaria: "car dealership",
+	concessionária: "car dealership",
+};
+
+function normalizeVisualText(text: string) {
+	return text
+		.toLowerCase()
+		.normalize("NFD")
+		.replace(/[\u0300-\u036f]/g, "")
+		.replace(/[^a-z0-9\s]/g, " ")
+		.replace(/\s+/g, " ")
+		.trim();
+}
+
+export function buildVisualSearchQuery(text: string) {
+	const normalized = normalizeVisualText(text);
+	const terms: string[] = [];
+
+	for (const rule of VISUAL_TERM_RULES) {
+		if (rule.test.test(normalized)) terms.push(...rule.terms);
+	}
+
+	for (const token of normalized.split(" ")) {
+		const mapped = VISUAL_WORD_MAP[token];
+		if (mapped) terms.push(mapped);
+	}
+
+	const unique = Array.from(new Set(terms.map((term) => term.trim()).filter(Boolean)));
+	if (unique.length) return unique.slice(0, 6).join(" ");
+
+	const fallback = extractKeywords(text, 4)
+		.map((word) => VISUAL_WORD_MAP[word] ?? word)
+		.filter(Boolean);
+	return fallback.join(" ");
+}
+
 function visualPrompt(text: string, keywords: string[]) {
 	const subject = keywords.slice(0, 4).join(", ");
 	return [
