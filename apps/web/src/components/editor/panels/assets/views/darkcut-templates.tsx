@@ -283,7 +283,6 @@ function TemplatePreview({
 		const crop =
 			demoCrops[template.id] ??
 			demoCrops[template.category === "POV" ? "pov-finance" : "documentary"];
-		let frame = 0;
 		let timer = 0;
 		const start = performance.now();
 		const draw = (now: number) => {
@@ -379,19 +378,12 @@ function TemplatePreview({
 		};
 		draw(start);
 		if (active) {
-			// Use both rAF and a lightweight timer. Electron/CI can throttle rAF
-			// for a backgrounded packaged window, while the real desktop preview
-			// must keep animating reliably.
-			const tick = () => {
-				draw(performance.now());
-				frame = requestAnimationFrame(tick);
-			};
-			frame = requestAnimationFrame(tick);
-			timer = window.setInterval(() => draw(performance.now()), 120);
+			// Template previews are demonstrations, not the main monitor.
+			// ~10 FPS is enough to show motion while keeping CPU/GPU usage low.
+			timer = window.setInterval(() => draw(performance.now()), 100);
 		}
 		if (poster && !active) poster.onload = () => draw(start);
 		return () => {
-			cancelAnimationFrame(frame);
 			if (timer) window.clearInterval(timer);
 			if (poster) poster.onload = null;
 		};
