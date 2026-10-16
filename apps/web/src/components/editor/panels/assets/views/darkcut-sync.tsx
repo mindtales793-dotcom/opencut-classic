@@ -48,6 +48,23 @@ function splitSubtitleChunks(text: string) {
 	return chunks;
 }
 
+async function narrationFingerprint(text: string, narratorId: string) {
+	const source = `${narratorId}\n${text}`;
+	if (globalThis.crypto?.subtle) {
+		const bytes = new TextEncoder().encode(source);
+		const digest = await globalThis.crypto.subtle.digest("SHA-256", bytes);
+		return Array.from(new Uint8Array(digest))
+			.map((byte) => byte.toString(16).padStart(2, "0"))
+			.join("");
+	}
+	let hash = 2166136261;
+	for (let i = 0; i < source.length; i += 1) {
+		hash ^= source.charCodeAt(i);
+		hash = Math.imul(hash, 16777619);
+	}
+	return `fnv-${(hash >>> 0).toString(16)}`;
+}
+
 function buildSrtFromScript({
 	text,
 	durationSeconds,
@@ -115,6 +132,9 @@ export function DarkCutSyncView() {
 		"narration-filename",
 		"darkcut-narracao.mp3",
 	);
+	const [narrationSignature, setNarrationSignature] = useProjectDraft<
+		string | null
+	>("narration-signature", null);
 
 	const mediaAssets = useEditor((e) => e.media.getAssets());
 	useEffect(() => {
@@ -200,6 +220,20 @@ export function DarkCutSyncView() {
 				tab: "sync",
 				status,
 			});
+		const signature = await narrationFingerprint(text, selectedNarratorId);
+		const existingAsset = mediaAssets.find((asset) => asset.id === narrationAssetId);
+		if (
+			narrationSignature === signature &&
+			existingAsset?.url &&
+			narrationAssetId
+		) {
+			setNarrationUrl(existingAsset.url);
+			setJobId(null);
+			task("done", "Narração reutilizada — sem nova geração.");
+			toast.success("Essa narração já estava pronta. Reutilizei o áudio salvo.");
+			return;
+		}
+
 		setIsGenerating(true);
 		task("running", "Enviando roteiro…");
 		try {
@@ -217,20 +251,26 @@ export function DarkCutSyncView() {
 			const job = await creation.json();
 			if (!creation.ok) throw new Error(job.error || "Falha ao criar tarefa.");
 			setJobId(job.id);
-			task("running", "Gerando voz — aguardando Fish Audio…");
-			while (true) {
-				const check = await fetch(`/api/darkcut/narration-jobs?id=${job.id}`);
-				const state = await check.json();
-				if (
-					!check.ok ||
-					state.status === "error" ||
-					state.status === "interrupted"
-				)
-					throw new Error(
-						state.error || "Tarefa interrompida. Clique em Retomar narração.",
+			task("running", "Gerando voz — modo rápido ativo…");
+			if (job.status !== "ready") {
+				while (true) {
+					const check = await fetch(
+						`/api/darkcut/narration-jobs?id=${job.id}`,
+						{ cache: "no-store" },
 					);
-				if (state.status === "ready") break;
-				await new Promise((resolve) => setTimeout(resolve, 1500));
+					const state = await check.json();
+					if (
+						!check.ok ||
+						state.status === "error" ||
+						state.status === "interrupted"
+					)
+						throw new Error(
+							state.error ||
+								"Tarefa interrompida. Clique em Retomar narração.",
+						);
+					if (state.status === "ready") break;
+					await new Promise((resolve) => setTimeout(resolve, 500));
+				}
 			}
 			task("running", "Baixando narração…");
 			const response = await fetch(
@@ -286,6 +326,7 @@ export function DarkCutSyncView() {
 			task("done");
 			setNarrationUrl(asset.url ?? URL.createObjectURL(blob));
 			setNarrationFileName(fileName);
+			setNarrationSignature(signature);
 			toast.success(`Narração gerada com ${selected?.name ?? "Fish Audio"}.`);
 		} catch (error) {
 			task(
@@ -383,7 +424,7 @@ export function DarkCutSyncView() {
 				<h2 className="mt-1 text-lg font-semibold">Sincronização e Narração</h2>
 				<p className="mt-1 text-xs text-muted-foreground">
 					Primeiro o roteiro. Depois a voz. Em seguida, a narração entra na
-					timeline.
+					timeline. O modo rápido reduz esperas locais sem alterar a qualidade da voz.
 				</p>
 			</div>
 
