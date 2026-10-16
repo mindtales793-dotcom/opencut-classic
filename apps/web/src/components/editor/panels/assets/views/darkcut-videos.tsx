@@ -11,6 +11,7 @@ import { processMediaAssets } from "@/media/processing";
 import {
 	assembleScenesOnTimeline,
 	buildDarkCutScenes,
+	buildVisualSearchQuery,
 	type DarkCutScene,
 } from "../darkcut-automation";
 import { useDarkCutProductionStore } from "../darkcut-production-store";
@@ -27,7 +28,7 @@ type VideoBlock = DarkCutScene & {
 function createVideoBlocks(script: string, sceneSeconds: number): VideoBlock[] {
 	return buildDarkCutScenes({ script, sceneSeconds }).map((scene) => ({
 		...scene,
-		searchQuery: scene.keywords.slice(0, 5).join(" "),
+		searchQuery: buildVisualSearchQuery(scene.text),
 		statusLabel: "idle",
 		triedVideoIds: [],
 	}));
@@ -316,11 +317,12 @@ export function DarkCutVideosView() {
 					</Button>
 				)}
 				<p className="text-xs text-muted-foreground">
-					Blocos salvos por projeto. Ao buscar novamente, os clipes concluídos
-					são preservados e os pendentes são retomados.
+					Blocos salvos por projeto. O DarkCut interpreta cada trecho e cria
+					uma busca visual curta em inglês, em vez de pesquisar a frase inteira.
 				</p>
 				<p className="mt-1 text-xs text-muted-foreground">
-					Roteiro → blocos → YouTube API → download → Mídia Local → timeline.
+					Roteiro → interpretação visual → palavra-chave em inglês → YouTube →
+					Mídia Local → timeline.
 				</p>
 			</div>
 
@@ -477,7 +479,7 @@ export function DarkCutVideosView() {
 										})
 									}
 									className="mt-2 h-8 w-full rounded-md border bg-card px-2 text-xs outline-none focus:border-primary"
-									placeholder="Palavra-chave de busca"
+									placeholder="Palavra-chave visual em inglês"
 								/>
 
 								{block.mediaName && (
