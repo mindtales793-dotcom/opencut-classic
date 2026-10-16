@@ -84,6 +84,8 @@ function promptForPlan({
 		"visualQuery deve ser uma busca visual curta em INGLÊS, não uma tradução literal da frase.",
 		"overlayText deve ser curto e só existir quando realmente agregar: número, item de lista, valor, virada, pergunta, palavra-chave.",
 		"Use sceneType apenas entre: hook, context, list, number, emotion, problem, solution, turn, cta.",
+		"Use visualSlot apenas entre: default, location, date, number, quote, document, map, list-item, conflict, reveal, result, cta.",
+		"visualSlot define a linguagem visual da cena: localização, data, dado numérico, citação, documento, mapa, lista, conflito, revelação, resultado ou CTA.",
 		"Use effect apenas none ou blur.",
 		"durationWeight deve ficar entre 0.6 e 1.6.",
 		"Retorne SOMENTE JSON válido no formato:",
@@ -92,6 +94,7 @@ function promptForPlan({
 				{
 					index: 0,
 					sceneType: "hook",
+					visualSlot: "location",
 					summary: "resumo visual curto",
 					visualQuery: "early morning city bedroom",
 					overlayText: "5:00 DA MANHÃ",
