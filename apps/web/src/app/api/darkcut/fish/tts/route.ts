@@ -105,8 +105,15 @@ export async function POST(request: Request) {
 		}
 
 		if (upstream.ok) {
-			const audio = await upstream.arrayBuffer();
-			return new Response(audio, {
+			if (!upstream.body) {
+				return NextResponse.json(
+					{ error: "Fish Audio respondeu sem áudio." },
+					{ status: 502 },
+				);
+			}
+			// Forward Fish's stream instead of buffering the complete MP3 in memory.
+			// This lets the narration job start saving bytes immediately.
+			return new Response(upstream.body, {
 				status: 200,
 				headers: {
 					"Content-Type":
