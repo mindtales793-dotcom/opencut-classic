@@ -337,6 +337,10 @@ function ApiSettingsContent() {
 		setJamendoClientId,
 		freesoundApiKey,
 		setFreesoundApiKey,
+		pexelsApiKey,
+		setPexelsApiKey,
+		pixabayApiKey,
+		setPixabayApiKey,
 		geminiApiKey,
 		setGeminiApiKey,
 		openRouterApiKey,
@@ -385,6 +389,8 @@ function ApiSettingsContent() {
 		}
 		setJamendoClientId("");
 		setFreesoundApiKey("");
+		setPexelsApiKey("");
+		setPixabayApiKey("");
 		setGeminiApiKey("");
 		setOpenRouterApiKey("");
 		for (let index = 0; index < 3; index += 1) {
@@ -447,6 +453,40 @@ function ApiSettingsContent() {
 				))}
 			</section>
 
+
+			<section className="space-y-3 rounded-md border bg-card p-3">
+				<div>
+					<div className="text-sm font-medium">Bancos de mídia</div>
+					<div className="text-[0.68rem] text-muted-foreground">
+						Fallback automático da Cris quando o YouTube não encontrar uma mídia adequada.
+					</div>
+				</div>
+				<div className="space-y-2">
+					<label className="block text-[0.68rem] text-muted-foreground">
+						Pexels API Key
+						<Input
+							type="password"
+							value={pexelsApiKey}
+							onChange={(event) => setPexelsApiKey(event.target.value)}
+							placeholder="Pexels API Key"
+							autoComplete="off"
+						/>
+					</label>
+					<label className="block text-[0.68rem] text-muted-foreground">
+						Pixabay API Key
+						<Input
+							type="password"
+							value={pixabayApiKey}
+							onChange={(event) => setPixabayApiKey(event.target.value)}
+							placeholder="Pixabay API Key"
+							autoComplete="off"
+						/>
+					</label>
+				</div>
+				<p className="text-[0.65rem] text-muted-foreground">
+					Ordem automática: YouTube → Pexels → Pixabay → mídia local/IA.
+				</p>
+			</section>
 
 			<section className="space-y-3 rounded-md border border-primary/30 bg-primary/5 p-3">
 				<div className="flex items-start justify-between gap-2">
