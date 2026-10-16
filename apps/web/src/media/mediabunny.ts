@@ -46,7 +46,9 @@ export async function readVideoFile({
 
 		let thumbnailUrl: string | null = null;
 		if (canDecode) {
-			const sink = new VideoSampleSink(videoTrack);
+			const sink = new VideoSampleSink(videoTrack, {
+				hardwareAcceleration: "prefer-hardware",
+			});
 			const frame = await sink.getSample(1);
 			if (frame) {
 				try {
