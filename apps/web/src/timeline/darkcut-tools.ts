@@ -287,6 +287,12 @@ function transitionAnimations({
 	const baseScaleX = Number(element.params["transform.scaleX"] ?? 1);
 	const baseScaleY = Number(element.params["transform.scaleY"] ?? 1);
 	const existing = element.animations ?? {};
+	const hasMotionTransform = Boolean(
+		existing["transform.positionX"] ||
+			existing["transform.positionY"] ||
+			existing["transform.scaleX"] ||
+			existing["transform.scaleY"],
+	);
 
 	const opacity = (start = 0, finish = 0) =>
 		scalarChannel(element.id, "opacity", [
@@ -298,6 +304,12 @@ function transitionAnimations({
 
 	switch (preset) {
 		case "zoom":
+			if (hasMotionTransform) {
+				return {
+					...existing,
+					opacity: opacity(0.1, 0.1),
+				};
+			}
 			return {
 				...existing,
 				opacity: opacity(0.1, 0.1),
@@ -315,6 +327,12 @@ function transitionAnimations({
 				]),
 			};
 		case "slide-left":
+			if (hasMotionTransform) {
+				return {
+					...existing,
+					opacity: opacity(0, 0),
+				};
+			}
 			return {
 				...existing,
 				opacity: opacity(0, 0),
@@ -326,6 +344,12 @@ function transitionAnimations({
 				]),
 			};
 		case "slide-right":
+			if (hasMotionTransform) {
+				return {
+					...existing,
+					opacity: opacity(0, 0),
+				};
+			}
 			return {
 				...existing,
 				opacity: opacity(0, 0),
@@ -337,6 +361,12 @@ function transitionAnimations({
 				]),
 			};
 		case "ken-burns":
+			if (hasMotionTransform) {
+				return {
+					...existing,
+					opacity: opacity(0.25, 0.25),
+				};
+			}
 			return {
 				...existing,
 				opacity: opacity(0.25, 0.25),
@@ -350,6 +380,12 @@ function transitionAnimations({
 				]),
 			};
 		case "pop":
+			if (hasMotionTransform) {
+				return {
+					...existing,
+					opacity: opacity(0, 0),
+				};
+			}
 			return {
 				...existing,
 				opacity: opacity(0, 0),
@@ -665,12 +701,26 @@ export function clearDarkCutTransitions({
 	});
 	if (targets.length === 0) return 0;
 
-	const darkcutKeys = new Set([
-		"opacity",
-		"transform.positionX",
-		"transform.scaleX",
-		"transform.scaleY",
-	]);
+	const isTransitionChannel = (
+		key: string,
+		channel: ScalarAnimationChannel,
+	) => {
+		if (key === "opacity") return true;
+		if (
+			key !== "transform.positionX" &&
+			key !== "transform.scaleX" &&
+			key !== "transform.scaleY"
+		) {
+			return false;
+		}
+		const firstKeyId = channel.keys[0]?.id ?? "";
+		return (
+			firstKeyId.includes("-positionX-") ||
+			firstKeyId.includes("-scaleX-") ||
+			firstKeyId.includes("-scaleY-")
+		);
+	};
+
 	editor.timeline.updateElements({
 		updates: targets.map((target) => ({
 			trackId: target.trackId,
@@ -678,7 +728,8 @@ export function clearDarkCutTransitions({
 			patch: {
 				animations: Object.fromEntries(
 					Object.entries(target.element.animations ?? {}).filter(
-						([key]) => !darkcutKeys.has(key),
+						([key, channel]) =>
+							!isTransitionChannel(key, channel as ScalarAnimationChannel),
 					),
 				),
 			},
