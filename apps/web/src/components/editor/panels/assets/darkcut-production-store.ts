@@ -78,7 +78,7 @@ export const useDarkCutProductionStore = create<DarkCutProductionState>()(
 			openRouterApiKey: "",
 			crisPrimaryProvider: "gemini",
 			crisFallbackProvider: "openrouter",
-			geminiModel: "gemini-2.5-flash-lite",
+			geminiModel: "gemini-3.5-flash-lite",
 			openRouterModel: "openrouter/free",
 			useFlowZika: true,
 			useYoutube: true,
