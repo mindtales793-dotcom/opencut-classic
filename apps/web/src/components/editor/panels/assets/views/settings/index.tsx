@@ -35,10 +35,15 @@ import { OcSquarePlusIcon } from "@/components/icons";
 import type { TCanvasSize } from "@/project/types";
 import { useDarkCutProductionStore } from "@/components/editor/panels/assets/darkcut-production-store";
 
-type SettingsView = "project-info" | "background" | "apis";
+type SettingsView = "project-info" | "background" | "performance" | "apis";
 
 function isSettingsView(value: string): value is SettingsView {
-	return value === "project-info" || value === "background" || value === "apis";
+	return (
+		value === "project-info" ||
+		value === "background" ||
+		value === "performance" ||
+		value === "apis"
+	);
 }
 
 const PRESET_LABELS: Record<string, string> = {
@@ -227,6 +232,7 @@ export function SettingsView() {
 					<TabsList>
 						<TabsTrigger value="project-info">Projeto</TabsTrigger>
 						<TabsTrigger value="background">Fundo</TabsTrigger>
+						<TabsTrigger value="performance">Desempenho</TabsTrigger>
 						<TabsTrigger value="apis">APIs</TabsTrigger>
 					</TabsList>
 				</Tabs>
@@ -321,8 +327,168 @@ export function SettingsView() {
 				</div>
 			)}
 			{view === "background" && <BackgroundContent />}
+			{view === "performance" && <PerformanceSettingsContent />}
 			{view === "apis" && <ApiSettingsContent />}
 		</PanelView>
+	);
+}
+
+
+type PerformanceProbe = {
+	ok: boolean;
+	cpu: string;
+	logicalCores: number;
+	ramGb: number;
+	freeRamGb: number;
+	gpuNames: string[];
+	capabilities: {
+		ffmpeg: boolean;
+		h264Qsv: boolean;
+		hevcQsv: boolean;
+		h264Nvenc: boolean;
+		hevcNvenc: boolean;
+		h264Amf: boolean;
+		hevcAmf: boolean;
+		qsv: boolean;
+		cuda: boolean;
+		d3d11va: boolean;
+		dxva2: boolean;
+	};
+	recommendation: {
+		mode: string;
+		preferredEncoder: string;
+		previewHeight: number;
+		proxyHeight: number;
+		maxHeavyJobs: number;
+		useProxies: boolean;
+		useRenderCache: boolean;
+		remotionPreviewFps: number;
+	};
+};
+
+function PerformanceSettingsContent() {
+	const [probe, setProbe] = useState<PerformanceProbe | null>(null);
+	const [loading, setLoading] = useState(false);
+	const [error, setError] = useState("");
+
+	const refresh = async () => {
+		setLoading(true);
+		setError("");
+		try {
+			const response = await fetch("/api/darkcut/performance", {
+				cache: "no-store",
+			});
+			const data = (await response.json()) as PerformanceProbe & { error?: string };
+			if (!response.ok || !data.ok) {
+				throw new Error(data.error || "Não foi possível analisar o hardware.");
+			}
+			setProbe(data);
+		} catch (err) {
+			setError(
+				err instanceof Error ? err.message : "Falha ao analisar o hardware.",
+			);
+		} finally {
+			setLoading(false);
+		}
+	};
+
+	useEffect(() => {
+		void refresh();
+	}, []);
+
+	const gpu = probe?.gpuNames?.length
+		? probe.gpuNames.join(" • ")
+		: "GPU não identificada pelo runtime";
+	const encoderLabel =
+		probe?.recommendation.preferredEncoder === "h264_qsv"
+			? "Intel Quick Sync (QSV)"
+			: probe?.recommendation.preferredEncoder === "h264_nvenc"
+				? "NVIDIA NVENC"
+				: probe?.recommendation.preferredEncoder === "h264_amf"
+					? "AMD AMF"
+					: "CPU / WebCodecs";
+
+	return (
+		<div className="space-y-4 p-4">
+			<section className="rounded-md border border-primary/30 bg-primary/5 p-3">
+				<div className="flex items-start justify-between gap-3">
+					<div>
+						<div className="text-sm font-semibold">Motor Automático DarkCut</div>
+						<p className="mt-1 text-[0.7rem] leading-relaxed text-muted-foreground">
+							O DarkCut intercala compositor, WebCodecs e FFmpeg conforme o
+							hardware disponível. Em PCs mais leves ele reduz o preview,
+							usa proxy/cache e evita várias tarefas pesadas ao mesmo tempo.
+						</p>
+					</div>
+					<span className="rounded bg-primary/15 px-2 py-1 text-[0.65rem] font-medium text-primary">
+						AUTO
+					</span>
+				</div>
+			</section>
+
+			<section className="space-y-2 rounded-md border bg-card p-3 text-xs">
+				<div className="flex items-center justify-between">
+					<span className="font-medium">Hardware detectado</span>
+					<Button size="sm" variant="secondary" onClick={refresh} disabled={loading}>
+						{loading ? "Analisando..." : "Analisar novamente"}
+					</Button>
+				</div>
+				{error && <p className="text-destructive">{error}</p>}
+				{probe && (
+					<div className="grid gap-2">
+						<div className="rounded border bg-background p-2">
+							<div className="text-muted-foreground">CPU</div>
+							<div className="mt-0.5 font-medium">{probe.cpu}</div>
+							<div className="mt-1 text-[0.68rem] text-muted-foreground">
+								{probe.logicalCores} thread(s) • {probe.ramGb} GB RAM • {probe.freeRamGb} GB livres agora
+							</div>
+						</div>
+						<div className="rounded border bg-background p-2">
+							<div className="text-muted-foreground">GPU</div>
+							<div className="mt-0.5 font-medium">{gpu}</div>
+						</div>
+						<div className="grid grid-cols-2 gap-2">
+							<div className="rounded border bg-background p-2">
+								<div className="text-muted-foreground">Encoder preferido</div>
+								<div className="mt-0.5 font-medium">{encoderLabel}</div>
+							</div>
+							<div className="rounded border bg-background p-2">
+								<div className="text-muted-foreground">FFmpeg</div>
+								<div className="mt-0.5 font-medium">
+									{probe.capabilities.ffmpeg ? "Disponível" : "Não detectado"}
+								</div>
+							</div>
+						</div>
+						<div className="rounded border bg-background p-2">
+							<div className="font-medium">Perfil automático aplicado</div>
+							<div className="mt-1 grid grid-cols-2 gap-x-3 gap-y-1 text-[0.68rem] text-muted-foreground">
+								<span>Preview: {probe.recommendation.previewHeight}p</span>
+								<span>Proxy: {probe.recommendation.proxyHeight}p</span>
+								<span>Tarefas pesadas: {probe.recommendation.maxHeavyJobs}</span>
+								<span>Remotion: {probe.recommendation.remotionPreviewFps} FPS</span>
+								<span>Proxy: {probe.recommendation.useProxies ? "ativo" : "desligado"}</span>
+								<span>Cache: {probe.recommendation.useRenderCache ? "ativo" : "desligado"}</span>
+							</div>
+						</div>
+						<div className="rounded border bg-background p-2 text-[0.68rem] text-muted-foreground">
+							QSV H.264: {probe.capabilities.h264Qsv ? "sim" : "não"} •
+							NVENC H.264: {probe.capabilities.h264Nvenc ? "sim" : "não"} •
+							AMF H.264: {probe.capabilities.h264Amf ? "sim" : "não"} •
+							D3D11VA: {probe.capabilities.d3d11va ? "sim" : "não"}
+						</div>
+					</div>
+				)}
+			</section>
+
+			<section className="rounded-md border bg-card p-3">
+				<div className="text-sm font-medium">Remotion Composer</div>
+				<p className="mt-1 text-[0.7rem] leading-relaxed text-muted-foreground">
+					Ativo para motion graphics e cenas especiais. O preview usa FPS
+					reduzido em hardware mais fraco; a qualidade final continua sendo
+					definida na exportação.
+				</p>
+			</section>
+		</div>
 	);
 }
 
