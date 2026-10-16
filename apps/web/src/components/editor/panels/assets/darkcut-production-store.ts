@@ -25,6 +25,8 @@ interface DarkCutProductionState {
 	freesoundApiKey: string;
 	geminiApiKey: string;
 	openRouterApiKey: string;
+	geminiApiKeys: string[];
+	openRouterApiKeys: string[];
 	crisPrimaryProvider: CrisProvider;
 	crisFallbackProvider: CrisProvider;
 	geminiModel: string;
@@ -48,6 +50,8 @@ interface DarkCutProductionState {
 	setFreesoundApiKey: (value: string) => void;
 	setGeminiApiKey: (value: string) => void;
 	setOpenRouterApiKey: (value: string) => void;
+	setGeminiApiKeyAt: (index: number, value: string) => void;
+	setOpenRouterApiKeyAt: (index: number, value: string) => void;
 	setCrisPrimaryProvider: (value: CrisProvider) => void;
 	setCrisFallbackProvider: (value: CrisProvider) => void;
 	setGeminiModel: (value: string) => void;
@@ -76,6 +80,8 @@ export const useDarkCutProductionStore = create<DarkCutProductionState>()(
 			freesoundApiKey: "",
 			geminiApiKey: "",
 			openRouterApiKey: "",
+			geminiApiKeys: ["", "", ""],
+			openRouterApiKeys: ["", "", ""],
 			crisPrimaryProvider: "gemini",
 			crisFallbackProvider: "openrouter",
 			geminiModel: "gemini-3.5-flash-lite",
@@ -119,6 +125,20 @@ export const useDarkCutProductionStore = create<DarkCutProductionState>()(
 			setFreesoundApiKey: (freesoundApiKey) => set({ freesoundApiKey }),
 			setGeminiApiKey: (geminiApiKey) => set({ geminiApiKey }),
 			setOpenRouterApiKey: (openRouterApiKey) => set({ openRouterApiKey }),
+			setGeminiApiKeyAt: (index, value) =>
+				set((state) => {
+					const geminiApiKeys = [...(state.geminiApiKeys?.length ? state.geminiApiKeys : ["", "", ""])];
+					while (geminiApiKeys.length < 3) geminiApiKeys.push("");
+					geminiApiKeys[index] = value;
+					return { geminiApiKeys: geminiApiKeys.slice(0, 3) };
+				}),
+			setOpenRouterApiKeyAt: (index, value) =>
+				set((state) => {
+					const openRouterApiKeys = [...(state.openRouterApiKeys?.length ? state.openRouterApiKeys : ["", "", ""])];
+					while (openRouterApiKeys.length < 3) openRouterApiKeys.push("");
+					openRouterApiKeys[index] = value;
+					return { openRouterApiKeys: openRouterApiKeys.slice(0, 3) };
+				}),
 			setCrisPrimaryProvider: (crisPrimaryProvider) =>
 				set({ crisPrimaryProvider }),
 			setCrisFallbackProvider: (crisFallbackProvider) =>
