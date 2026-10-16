@@ -4,6 +4,10 @@ const fs = require("node:fs");
 const http = require("node:http");
 const { spawn } = require("node:child_process");
 
+// Prefer the discrete GPU on notebooks/dual-GPU systems. Electron documents this
+// switch and it must be set before the ready event.
+app.commandLine.appendSwitch("force_high_performance_gpu");
+
 let serverProcess = null;
 let mainWindow = null;
 let serverFailure = null;
@@ -46,6 +50,17 @@ function runtimeRoot() {
   return app.isPackaged
     ? path.join(process.resourcesPath, "runtime")
     : path.join(__dirname, "runtime");
+}
+
+async function logGpuState() {
+  try {
+    log(`Hardware acceleration enabled: ${app.isHardwareAccelerationEnabled()}`);
+    log(`GPU feature status: ${JSON.stringify(app.getGPUFeatureStatus())}`);
+    const gpuInfo = await app.getGPUInfo("basic");
+    log(`GPU info: ${JSON.stringify(gpuInfo)}`);
+  } catch (error) {
+    log(`GPU probe failed: ${error instanceof Error ? error.message : String(error)}`);
+  }
 }
 
 function findServer() {
@@ -222,6 +237,7 @@ async function createWindow() {
 
 if (hasLock) app.whenReady().then(async () => {
   try {
+    await logGpuState();
     const win = await createWindow();
     await ensurePortAvailable();
     startServer();
