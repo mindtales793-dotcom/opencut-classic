@@ -19,11 +19,21 @@ type Candidate = {
 	contentType: string;
 };
 
+function checkSearchResponse(response: Response, provider: string) {
+	if (response.ok) return;
+	const reason = response.status === 401 || response.status === 403
+		? "chave recusada; confira Configurações > APIs"
+		: response.status === 429
+			? "limite de requisições atingido; tente novamente mais tarde"
+			: `serviço indisponível (HTTP ${response.status})`;
+	throw new Error(`${provider}: ${reason}.`);
+}
+
 function clean(value: unknown) {
 	return typeof value === "string" ? value.trim() : "";
 }
 
-async function searchPexels(query: string, apiKey: string): Promise<Candidate[]> {
+async function searchPexels(query: string, apiKey: string, errors: string[]): Promise<Candidate[]> {
 	if (!apiKey) return [];
 	const headers = { Authorization: apiKey };
 	const candidates: Candidate[] = [];
@@ -33,6 +43,7 @@ async function searchPexels(query: string, apiKey: string): Promise<Candidate[]>
 			`https://api.pexels.com/videos/search?query=${encodeURIComponent(query)}&per_page=8&orientation=landscape`,
 			{ headers, cache: "no-store", signal: AbortSignal.timeout(20000) },
 		);
+		checkSearchResponse(response, "Pexels");
 		if (response.ok) {
 			const data = (await response.json()) as {
 				videos?: Array<{
@@ -70,13 +81,16 @@ async function searchPexels(query: string, apiKey: string): Promise<Candidate[]>
 				});
 			}
 		}
-	} catch {}
+	} catch (error) {
+		errors.push(error instanceof Error && error.name === "Error" ? error.message : "Pexels: falha de conexão ou tempo limite excedido.");
+	}
 
 	try {
 		const response = await fetch(
 			`https://api.pexels.com/v1/search?query=${encodeURIComponent(query)}&per_page=10&orientation=landscape`,
 			{ headers, cache: "no-store", signal: AbortSignal.timeout(20000) },
 		);
+		checkSearchResponse(response, "Pexels");
 		if (response.ok) {
 			const data = (await response.json()) as {
 				photos?: Array<{
@@ -101,12 +115,14 @@ async function searchPexels(query: string, apiKey: string): Promise<Candidate[]>
 				});
 			}
 		}
-	} catch {}
+	} catch (error) {
+		errors.push(error instanceof Error && error.name === "Error" ? error.message : "Pexels: falha de conexão ou tempo limite excedido.");
+	}
 
 	return candidates;
 }
 
-async function searchPixabay(query: string, apiKey: string): Promise<Candidate[]> {
+async function searchPixabay(query: string, apiKey: string, errors: string[]): Promise<Candidate[]> {
 	if (!apiKey) return [];
 	const candidates: Candidate[] = [];
 
@@ -122,6 +138,7 @@ async function searchPixabay(query: string, apiKey: string): Promise<Candidate[]
 			cache: "no-store",
 			signal: AbortSignal.timeout(20000),
 		});
+		checkSearchResponse(response, "Pixabay");
 		if (response.ok) {
 			const data = (await response.json()) as {
 				hits?: Array<{
@@ -150,7 +167,9 @@ async function searchPixabay(query: string, apiKey: string): Promise<Candidate[]
 				});
 			}
 		}
-	} catch {}
+	} catch (error) {
+		errors.push(error instanceof Error && error.name === "Error" ? error.message : "Pixabay: falha de conexão ou tempo limite excedido.");
+	}
 
 	try {
 		const params = new URLSearchParams({
@@ -166,6 +185,7 @@ async function searchPixabay(query: string, apiKey: string): Promise<Candidate[]
 			cache: "no-store",
 			signal: AbortSignal.timeout(20000),
 		});
+		checkSearchResponse(response, "Pixabay");
 		if (response.ok) {
 			const data = (await response.json()) as {
 				hits?: Array<{
@@ -191,7 +211,9 @@ async function searchPixabay(query: string, apiKey: string): Promise<Candidate[]
 				});
 			}
 		}
-	} catch {}
+	} catch (error) {
+		errors.push(error instanceof Error && error.name === "Error" ? error.message : "Pixabay: falha de conexão ou tempo limite excedido.");
+	}
 
 	return candidates;
 }
@@ -228,6 +250,10 @@ export async function POST(request: Request) {
 		return NextResponse.json({ error: "JSON inválido." }, { status: 400 });
 	}
 
+	if (!body || typeof body !== "object" || Array.isArray(body)) {
+		return NextResponse.json({ error: "Informe um objeto JSON válido." }, { status: 400 });
+	}
+
 	const query = clean(body.query);
 	const pexelsApiKey = clean(body.pexelsApiKey);
 	const pixabayApiKey = clean(body.pixabayApiKey);
@@ -243,12 +269,12 @@ export async function POST(request: Request) {
 		);
 	}
 
+	const errors: string[] = [];
 	const providers: Array<() => Promise<Candidate[]>> = [
-		() => searchPexels(query, pexelsApiKey),
-		() => searchPixabay(query, pixabayApiKey),
+		() => searchPexels(query, pexelsApiKey, errors),
+		() => searchPixabay(query, pixabayApiKey, errors),
 	];
 
-	const errors: string[] = [];
 	for (const search of providers) {
 		try {
 			const candidates = await search();
@@ -273,7 +299,7 @@ export async function POST(request: Request) {
 	return NextResponse.json(
 		{
 			error: "Nenhuma mídia de banco compatível foi encontrada.",
-			detail: errors.join(" | ").slice(0, 600),
+			detail: [...new Set(errors)].join(" | ").slice(0, 600),
 		},
 		{ status: 404 },
 	);

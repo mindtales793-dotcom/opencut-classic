@@ -169,7 +169,10 @@ export function DarkCutVideosView() {
 				prefer: "video",
 			}),
 		});
-		if (!response.ok) return false;
+		if (!response.ok) {
+			const data = await response.json().catch(() => null) as { error?: string; detail?: string } | null;
+			throw new Error(data?.detail || data?.error || `Bancos de mídia: HTTP ${response.status}`);
+		}
 		const sourceHeader = response.headers.get("X-DarkCut-Source");
 		const source =
 			sourceHeader === "pixabay" ? "pixabay" : "pexels";
@@ -335,9 +338,9 @@ export function DarkCutVideosView() {
 					success,
 					currentBlocks.length,
 				);
-				toast.success(
-					`${success} de ${currentBlocks.length} blocos receberam vídeos.`,
-				);
+				const message = `${success} de ${currentBlocks.length} blocos receberam mídia.`;
+				if (success === currentBlocks.length) toast.success(message);
+				else toast.error(`${message} Confira os erros nos blocos pendentes.`);
 			}
 		} finally {
 			setIsRunning(false);
