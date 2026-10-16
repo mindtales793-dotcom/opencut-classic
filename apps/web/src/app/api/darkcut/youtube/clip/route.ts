@@ -99,10 +99,12 @@ async function searchWithYouTubeApi({
 	query,
 	apiKeys,
 	excluded,
+	videoDuration = "medium",
 }: {
 	query: string;
 	apiKeys: string[];
 	excluded: Set<string>;
+	videoDuration?: "any" | "short" | "medium" | "long";
 }): Promise<{ entries: SearchEntry[]; keyIndex: number }> {
 	let lastError = "A busca do YouTube falhou.";
 
@@ -113,6 +115,9 @@ async function searchWithYouTubeApi({
 			maxResults: "25",
 			q: query,
 			safeSearch: "moderate",
+			videoDuration,
+			order: "relevance",
+			relevanceLanguage: "en",
 			key: apiKeys[keyIndex],
 		});
 
@@ -145,7 +150,8 @@ async function searchWithYouTubeApi({
 					(entry) =>
 						entry.id &&
 						/^[a-zA-Z0-9_-]{3,32}$/.test(entry.id) &&
-						!excluded.has(entry.id),
+						!excluded.has(entry.id) &&
+						!/(^|\s)#?shorts?\b|youtube shorts?/i.test(entry.title),
 				);
 
 			return { entries, keyIndex };
@@ -214,11 +220,23 @@ export async function POST(request: Request) {
 	let lastDownloadError: unknown = null;
 
 	try {
-		const { entries, keyIndex } = await searchWithYouTubeApi({
+		let { entries, keyIndex } = await searchWithYouTubeApi({
 			query,
 			apiKeys,
 			excluded,
+			videoDuration: "medium",
 		});
+
+		if (!entries.length) {
+			const fallback = await searchWithYouTubeApi({
+				query,
+				apiKeys,
+				excluded,
+				videoDuration: "any",
+			});
+			entries = fallback.entries;
+			keyIndex = fallback.keyIndex;
+		}
 
 		if (!entries.length) {
 			return NextResponse.json(
