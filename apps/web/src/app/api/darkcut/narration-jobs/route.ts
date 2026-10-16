@@ -1,4 +1,4 @@
-import { mkdir, readFile, writeFile, rename } from "node:fs/promises";
+import { mkdir, open, readFile, writeFile, rename } from "node:fs/promises";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
 import { randomUUID } from "node:crypto";
@@ -24,6 +24,22 @@ async function save(job: Job) {
 }
 async function read(id: string): Promise<Job> {
 	return JSON.parse(await readFile(join(root(), id + ".json"), "utf8"));
+}
+
+async function streamToFile(response: Response, path: string) {
+	if (!response.body) throw new Error("Fish Audio respondeu sem áudio.");
+	const handle = await open(path, "w");
+	const reader = response.body.getReader();
+	try {
+		while (true) {
+			const { done, value } = await reader.read();
+			if (done) break;
+			if (value?.byteLength) await handle.write(value);
+		}
+	} finally {
+		reader.releaseLock();
+		await handle.close();
+	}
 }
 export async function GET(request: Request) {
 	const url = new URL(request.url),
@@ -107,10 +123,7 @@ export async function POST(request: Request) {
 				throw new Error(data.error ?? "Falha na narração.");
 			}
 			const output = join(root(), id + ".mp3");
-			await writeFile(
-				output + ".tmp",
-				Buffer.from(await response.arrayBuffer()),
-			);
+			await streamToFile(response, output + ".tmp");
 			await rename(output + ".tmp", output);
 			await save({ ...job, status: "ready" });
 		} catch (error) {
