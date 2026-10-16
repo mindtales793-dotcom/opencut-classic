@@ -337,10 +337,23 @@ function ApiSettingsContent() {
 		setJamendoClientId,
 		freesoundApiKey,
 		setFreesoundApiKey,
+		geminiApiKey,
+		setGeminiApiKey,
+		openRouterApiKey,
+		setOpenRouterApiKey,
+		crisPrimaryProvider,
+		setCrisPrimaryProvider,
+		crisFallbackProvider,
+		setCrisFallbackProvider,
+		geminiModel,
+		setGeminiModel,
+		openRouterModel,
+		setOpenRouterModel,
 	} = useDarkCutProductionStore();
 
 	const youtubeCount = youtubeApiKeys.filter((key) => key.trim()).length;
 	const fishCount = fishApiKeys.filter((key) => key.trim()).length;
+	const [isTestingCris, setIsTestingCris] = useState(false);
 
 	const clearAll = () => {
 		for (let index = 0; index < 3; index += 1) {
@@ -349,6 +362,8 @@ function ApiSettingsContent() {
 		}
 		setJamendoClientId("");
 		setFreesoundApiKey("");
+		setGeminiApiKey("");
+		setOpenRouterApiKey("");
 		toast.success("APIs removidas deste dispositivo.");
 	};
 
@@ -403,6 +418,138 @@ function ApiSettingsContent() {
 						autoComplete="off"
 					/>
 				))}
+			</section>
+
+
+			<section className="space-y-3 rounded-md border border-primary/30 bg-primary/5 p-3">
+				<div className="flex items-start justify-between gap-2">
+					<div>
+						<div className="text-sm font-medium">Cris • Inteligência do Editor</div>
+						<div className="text-[0.68rem] text-muted-foreground">
+							Analisa o roteiro depois que suas imagens/vídeos estiverem prontos e monta o template automaticamente.
+						</div>
+					</div>
+					<span className="rounded bg-primary/15 px-2 py-1 text-[0.62rem] font-medium text-primary">
+						IA + fallback local
+					</span>
+				</div>
+
+				<div className="grid grid-cols-2 gap-2">
+					<label className="text-[0.68rem] text-muted-foreground">
+						Provedor principal
+						<select
+							value={crisPrimaryProvider}
+							onChange={(event) =>
+								setCrisPrimaryProvider(
+									event.target.value === "openrouter" ? "openrouter" : "gemini",
+								)
+							}
+							className="mt-1 h-9 w-full rounded-md border bg-background px-2 text-xs text-foreground"
+						>
+							<option value="gemini">Gemini</option>
+							<option value="openrouter">OpenRouter</option>
+						</select>
+					</label>
+					<label className="text-[0.68rem] text-muted-foreground">
+						Fallback
+						<select
+							value={crisFallbackProvider}
+							onChange={(event) =>
+								setCrisFallbackProvider(
+									event.target.value === "gemini" ? "gemini" : "openrouter",
+								)
+							}
+							className="mt-1 h-9 w-full rounded-md border bg-background px-2 text-xs text-foreground"
+						>
+							<option value="openrouter">OpenRouter</option>
+							<option value="gemini">Gemini</option>
+						</select>
+					</label>
+				</div>
+
+				<div className="space-y-2 rounded-md border bg-background p-2">
+					<div className="text-xs font-medium">Google Gemini</div>
+					<Input
+						type="password"
+						value={geminiApiKey}
+						onChange={(event) => setGeminiApiKey(event.target.value)}
+						placeholder="Gemini API Key"
+						autoComplete="off"
+					/>
+					<Input
+						value={geminiModel}
+						onChange={(event) => setGeminiModel(event.target.value)}
+						placeholder="Modelo Gemini"
+						autoComplete="off"
+					/>
+				</div>
+
+				<div className="space-y-2 rounded-md border bg-background p-2">
+					<div className="text-xs font-medium">OpenRouter</div>
+					<Input
+						type="password"
+						value={openRouterApiKey}
+						onChange={(event) => setOpenRouterApiKey(event.target.value)}
+						placeholder="OpenRouter API Key"
+						autoComplete="off"
+					/>
+					<Input
+						value={openRouterModel}
+						onChange={(event) => setOpenRouterModel(event.target.value)}
+						placeholder="Modelo OpenRouter"
+						autoComplete="off"
+					/>
+				</div>
+
+				<Button
+					variant="secondary"
+					disabled={isTestingCris}
+					onClick={async () => {
+						setIsTestingCris(true);
+						try {
+							const response = await fetch("/api/darkcut/cris", {
+								method: "POST",
+								headers: { "Content-Type": "application/json" },
+								body: JSON.stringify({
+									mode: "test",
+									primaryProvider: crisPrimaryProvider,
+									fallbackProvider: crisFallbackProvider,
+									geminiApiKey,
+									openRouterApiKey,
+									geminiModel,
+									openRouterModel,
+								}),
+							});
+							const data = (await response.json()) as {
+								ok?: boolean;
+								provider?: string;
+								fallbackUsed?: boolean;
+								error?: string;
+							};
+							if (!response.ok || !data.ok)
+								throw new Error(data.error || "Falha ao testar a Cris.");
+							toast.success("Cris conectada.", {
+								description: data.fallbackUsed
+									? `Conectou usando o fallback: ${data.provider}.`
+									: `Provedor ativo: ${data.provider}.`,
+							});
+						} catch (error) {
+							toast.error(
+								error instanceof Error
+									? error.message
+									: "Falha ao testar a Cris.",
+							);
+						} finally {
+							setIsTestingCris(false);
+						}
+					}}
+				>
+					{isTestingCris ? "Testando Cris..." : "Testar conexão da Cris"}
+				</Button>
+
+				<p className="text-[0.65rem] leading-relaxed text-muted-foreground">
+					Se as APIs estiverem sem cota ou indisponíveis, o DarkCut usa o analisador local para não interromper a montagem.
+				</p>
 			</section>
 
 			<section className="space-y-2 rounded-md border bg-card p-3">
