@@ -177,6 +177,32 @@
 .studio-workspace > .panel {
 	border-radius: 9px;
 }
+
+.studio-assets-scroll {
+	overflow-y: auto;
+	overflow-x: hidden;
+	overscroll-behavior: contain;
+	scrollbar-gutter: stable;
+	scroll-behavior: smooth;
+}
+.studio-assets-scroll::-webkit-scrollbar {
+	width: 9px;
+}
+.studio-assets-scroll::-webkit-scrollbar-track {
+	background: transparent;
+}
+.studio-assets-scroll::-webkit-scrollbar-thumb {
+	background: #35373b;
+	border: 2px solid transparent;
+	border-radius: 999px;
+	background-clip: padding-box;
+}
+.studio-assets-scroll::-webkit-scrollbar-thumb:hover {
+	background: #4a4d52;
+	border: 2px solid transparent;
+	background-clip: padding-box;
+}
+
 .studio-assets {
 	border: 1px solid #28292b;
 	border-radius: 9px;
