@@ -19,9 +19,24 @@ export type CrisSceneType =
 
 export type CrisVisualEffect = "none" | "blur";
 
+export type CrisVisualSlot =
+	| "default"
+	| "location"
+	| "date"
+	| "number"
+	| "quote"
+	| "document"
+	| "map"
+	| "list-item"
+	| "conflict"
+	| "reveal"
+	| "result"
+	| "cta";
+
 export type CrisScenePlan = {
 	index: number;
 	sceneType: CrisSceneType;
+	visualSlot: CrisVisualSlot;
 	summary: string;
 	visualQuery: string;
 	overlayText: string;
@@ -84,6 +99,21 @@ const SCENE_TYPES: CrisSceneType[] = [
 	"cta",
 ];
 
+const VISUAL_SLOTS: CrisVisualSlot[] = [
+	"default",
+	"location",
+	"date",
+	"number",
+	"quote",
+	"document",
+	"map",
+	"list-item",
+	"conflict",
+	"reveal",
+	"result",
+	"cta",
+];
+
 function cleanText(value: unknown, max = 80) {
 	return typeof value === "string"
 		? value.replace(/\s+/g, " ").trim().slice(0, max)
@@ -123,6 +153,28 @@ function sceneTypeFor(text: string, index: number, total: number): CrisSceneType
 	if (index === total - 1 || /inscreva|comenta|compartilha|e voce|e você/.test(lower))
 		return "cta";
 	return "context";
+}
+
+function visualSlotFor(text: string, sceneType: CrisSceneType): CrisVisualSlot {
+	const lower = text.toLocaleLowerCase("pt-BR");
+	if (/\b(são paulo|rio de janeiro|cidade|estado|país|pais|bairro|rua|avenida|local|lugar)\b/.test(lower))
+		return "location";
+	if (/\b(19|20)\d{2}\b|\b(hoje|ontem|amanhã|amanha|ano|mês|mes|data)\b/.test(lower))
+		return "date";
+	if (/r\$|\b\d+[.,]?\d*\b|por cento|%|mil|milhao|milhão/.test(lower))
+		return "number";
+	if (/\b(segundo|disse|afirmou|declarou|frase|citação|citacao)\b/.test(lower))
+		return "quote";
+	if (/\b(documento|contrato|relatório|relatorio|arquivo|prova|registro)\b/.test(lower))
+		return "document";
+	if (/\b(map[a]?|rota|trajeto|região|regiao|distância|distancia)\b/.test(lower))
+		return "map";
+	if (sceneType === "list") return "list-item";
+	if (sceneType === "problem") return "conflict";
+	if (sceneType === "turn") return "reveal";
+	if (sceneType === "solution") return "result";
+	if (sceneType === "cta") return "cta";
+	return "default";
 }
 
 function localOverlay(text: string, type: CrisSceneType, index: number) {
@@ -212,6 +264,7 @@ export function buildLocalCrisPlan({
 			return {
 				index,
 				sceneType,
+				visualSlot: visualSlotFor(text, sceneType),
 				summary: cleanText(text, 90),
 				visualQuery: localVisualQuery(text),
 				overlayText: localOverlay(text, sceneType, index),
@@ -277,6 +330,9 @@ export function normalizeCrisPlan({
 		const sceneType = SCENE_TYPES.includes(item.sceneType as CrisSceneType)
 			? (item.sceneType as CrisSceneType)
 			: base.sceneType;
+		const visualSlot = VISUAL_SLOTS.includes(item.visualSlot as CrisVisualSlot)
+			? (item.visualSlot as CrisVisualSlot)
+			: base.visualSlot;
 		const effect: CrisVisualEffect =
 			item.effect === "blur" && template.effects.includes("blur")
 				? "blur"
@@ -285,6 +341,7 @@ export function normalizeCrisPlan({
 		return {
 			index,
 			sceneType,
+			visualSlot,
 			summary: cleanText(item.summary, 90) || base.summary,
 			visualQuery: cleanText(item.visualQuery, 100) || base.visualQuery,
 			overlayText: cleanText(item.overlayText, 42),
