@@ -20,9 +20,24 @@ export type DarkCutComposerSceneType =
 	| "turn"
 	| "cta";
 
+export type DarkCutComposerVisualSlot =
+	| "default"
+	| "location"
+	| "date"
+	| "number"
+	| "quote"
+	| "document"
+	| "map"
+	| "list-item"
+	| "conflict"
+	| "reveal"
+	| "result"
+	| "cta";
+
 type ComposerProps = {
 	templateTitle: string;
 	sceneType: DarkCutComposerSceneType;
+	visualSlot: DarkCutComposerVisualSlot;
 	overlayText: string;
 	summary: string;
 };
@@ -30,6 +45,7 @@ type ComposerProps = {
 function DarkCutComposerScene({
 	templateTitle,
 	sceneType,
+	visualSlot,
 	overlayText,
 	summary,
 }: ComposerProps) {
@@ -47,9 +63,14 @@ function DarkCutComposerScene({
 	const x = interpolate(enter, [0, 1], [80, 0]);
 	const scale = interpolate(enter, [0, 1], [0.94, 1]);
 
-	const isNumber = sceneType === "number";
-	const isList = sceneType === "list";
-	const isTurn = sceneType === "turn" || sceneType === "hook";
+	const isNumber = sceneType === "number" || visualSlot === "number";
+	const isList = sceneType === "list" || visualSlot === "list-item";
+	const isTurn =
+		sceneType === "turn" ||
+		sceneType === "hook" ||
+		visualSlot === "reveal";
+	const isLocation = visualSlot === "location" || visualSlot === "map";
+	const isDocument = visualSlot === "document" || visualSlot === "quote";
 
 	return (
 		<AbsoluteFill
@@ -97,6 +118,30 @@ function DarkCutComposerScene({
 					opacity,
 				}}
 			>
+				{isLocation && (
+					<div
+						style={{
+							fontSize: 18,
+							fontWeight: 800,
+							letterSpacing: 6,
+							opacity: 0.52,
+							marginBottom: 14,
+						}}
+					>
+						LOCALIZAÇÃO • CONTEXTO
+					</div>
+				)}
+				{isDocument && (
+					<div
+						style={{
+							width: 84,
+							height: 7,
+							borderRadius: 999,
+							background: "rgba(255,255,255,.72)",
+							marginBottom: 18,
+						}}
+					/>
+				)}
 				{isList && (
 					<div
 						style={{
@@ -156,6 +201,7 @@ function DarkCutComposerScene({
 export function DarkCutRemotionPreview({
 	templateTitle,
 	sceneType = "hook",
+	visualSlot = "default",
 	overlayText = "Cris Composer",
 	summary = "Motion graphics avançado controlado pelo plano de edição.",
 	fps = 15,
@@ -164,7 +210,13 @@ export function DarkCutRemotionPreview({
 		<div className="overflow-hidden rounded-lg border bg-black">
 			<Player
 				component={DarkCutComposerScene}
-				inputProps={{ templateTitle, sceneType, overlayText, summary }}
+				inputProps={{
+					templateTitle,
+					sceneType,
+					visualSlot,
+					overlayText,
+					summary,
+				}}
 				durationInFrames={Math.max(60, fps * 6)}
 				fps={fps}
 				compositionWidth={960}
