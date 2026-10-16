@@ -39,6 +39,7 @@ import { cn } from "@/utils/ui";
 import { toast } from "sonner";
 import { useProjectDraft } from "@/darkcut/project-draft";
 import { useDarkCutProductionStore } from "../darkcut-production-store";
+import { DarkCutRemotionPreview } from "@/remotion/darkcut-composer";
 import {
 	buildLocalCrisPlan,
 	type CrisEditPlan,
@@ -500,6 +501,12 @@ export function DarkCutTemplatesView({
 			return bFavorite - aFavorite;
 		});
 	}, [category, favorites, query]);
+
+	const composerTemplate =
+		TEMPLATES.find((template) => template.id === selectedTemplate) ??
+		TEMPLATES.find((template) => template.id === previewId) ??
+		TEMPLATES.find((template) => template.id === "documentary")!;
+	const composerScene = crisPlan?.scenes?.[0];
 
 	const toggleFavorite = (id: string) => {
 		setFavorites((current) => {
@@ -1136,6 +1143,28 @@ export function DarkCutTemplatesView({
 						))}
 					</div>
 				</div>
+			</div>
+
+			<div className="mb-3 rounded-xl border border-primary/30 bg-primary/5 p-3">
+				<div className="mb-2 flex items-center justify-between gap-2">
+					<div>
+						<div className="text-xs font-semibold">Remotion Composer • Preview avançado</div>
+						<div className="text-[0.68rem] text-muted-foreground">
+							A Cris escolhe a linguagem visual; o Remotion anima números, localização, listas, viradas e títulos sem abrir vários players ao mesmo tempo.
+						</div>
+					</div>
+					<span className="rounded bg-primary/15 px-2 py-1 text-[0.62rem] font-medium text-primary">
+						PRO
+					</span>
+				</div>
+				<DarkCutRemotionPreview
+					templateTitle={composerTemplate.title}
+					sceneType={composerScene?.sceneType ?? "hook"}
+					visualSlot={composerScene?.visualSlot ?? "default"}
+					overlayText={composerScene?.overlayText || opening || composerTemplate.title}
+					summary={composerScene?.summary || composerTemplate.description}
+					fps={15}
+				/>
 			</div>
 
 			<div className="min-h-0 flex-1 overflow-y-auto pr-1">
