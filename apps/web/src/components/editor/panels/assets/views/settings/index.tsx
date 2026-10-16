@@ -341,6 +341,10 @@ function ApiSettingsContent() {
 		setGeminiApiKey,
 		openRouterApiKey,
 		setOpenRouterApiKey,
+		geminiApiKeys,
+		setGeminiApiKeyAt,
+		openRouterApiKeys,
+		setOpenRouterApiKeyAt,
 		crisPrimaryProvider,
 		setCrisPrimaryProvider,
 		crisFallbackProvider,
@@ -353,6 +357,14 @@ function ApiSettingsContent() {
 
 	const youtubeCount = youtubeApiKeys.filter((key) => key.trim()).length;
 	const fishCount = fishApiKeys.filter((key) => key.trim()).length;
+	const effectiveGeminiKeys = (geminiApiKeys?.length ? geminiApiKeys : ["", "", ""]).map(
+		(key, index) => key || (index === 0 ? geminiApiKey : ""),
+	);
+	const effectiveOpenRouterKeys = (
+		openRouterApiKeys?.length ? openRouterApiKeys : ["", "", ""]
+	).map((key, index) => key || (index === 0 ? openRouterApiKey : ""));
+	const geminiCount = effectiveGeminiKeys.filter((key) => key.trim()).length;
+	const openRouterCount = effectiveOpenRouterKeys.filter((key) => key.trim()).length;
 	const [isTestingCris, setIsTestingCris] = useState(false);
 
 	useEffect(() => {
@@ -375,6 +387,10 @@ function ApiSettingsContent() {
 		setFreesoundApiKey("");
 		setGeminiApiKey("");
 		setOpenRouterApiKey("");
+		for (let index = 0; index < 3; index += 1) {
+			setGeminiApiKeyAt(index, "");
+			setOpenRouterApiKeyAt(index, "");
+		}
 		toast.success("APIs removidas deste dispositivo.");
 	};
 
@@ -479,14 +495,26 @@ function ApiSettingsContent() {
 				</div>
 
 				<div className="space-y-2 rounded-md border bg-background p-2">
-					<div className="text-xs font-medium">Google Gemini</div>
-					<Input
-						type="password"
-						value={geminiApiKey}
-						onChange={(event) => setGeminiApiKey(event.target.value)}
-						placeholder="Gemini API Key"
-						autoComplete="off"
-					/>
+					<div className="flex items-center justify-between">
+						<div className="text-xs font-medium">Google Gemini</div>
+						<span className="text-[0.65rem] text-muted-foreground">{geminiCount}/3 chaves</span>
+					</div>
+					{[0, 1, 2].map((index) => (
+						<Input
+							key={`gemini-${index}`}
+							type="password"
+							value={effectiveGeminiKeys[index] ?? ""}
+							onChange={(event) => {
+								setGeminiApiKeyAt(index, event.target.value);
+								if (index === 0) setGeminiApiKey(event.target.value);
+							}}
+							placeholder={`Gemini API Key ${index + 1}`}
+							autoComplete="off"
+						/>
+					))}
+					<p className="text-[0.65rem] text-muted-foreground">
+						A Cris tenta a próxima chave automaticamente quando uma atingir limite ou falhar.
+					</p>
 					<Input
 						value={geminiModel}
 						onChange={(event) => setGeminiModel(event.target.value)}
@@ -496,14 +524,26 @@ function ApiSettingsContent() {
 				</div>
 
 				<div className="space-y-2 rounded-md border bg-background p-2">
-					<div className="text-xs font-medium">OpenRouter</div>
-					<Input
-						type="password"
-						value={openRouterApiKey}
-						onChange={(event) => setOpenRouterApiKey(event.target.value)}
-						placeholder="OpenRouter API Key"
-						autoComplete="off"
-					/>
+					<div className="flex items-center justify-between">
+						<div className="text-xs font-medium">OpenRouter</div>
+						<span className="text-[0.65rem] text-muted-foreground">{openRouterCount}/3 chaves</span>
+					</div>
+					{[0, 1, 2].map((index) => (
+						<Input
+							key={`openrouter-${index}`}
+							type="password"
+							value={effectiveOpenRouterKeys[index] ?? ""}
+							onChange={(event) => {
+								setOpenRouterApiKeyAt(index, event.target.value);
+								if (index === 0) setOpenRouterApiKey(event.target.value);
+							}}
+							placeholder={`OpenRouter API Key ${index + 1}`}
+							autoComplete="off"
+						/>
+					))}
+					<p className="text-[0.65rem] text-muted-foreground">
+						Rotação automática entre as chaves antes de usar o provedor de fallback.
+					</p>
 					<Input
 						value={openRouterModel}
 						onChange={(event) => setOpenRouterModel(event.target.value)}
@@ -527,6 +567,8 @@ function ApiSettingsContent() {
 									fallbackProvider: crisFallbackProvider,
 									geminiApiKey,
 									openRouterApiKey,
+									geminiApiKeys: effectiveGeminiKeys,
+									openRouterApiKeys: effectiveOpenRouterKeys,
 									geminiModel,
 									openRouterModel,
 								}),
