@@ -90,6 +90,7 @@ function DegradedRendererBanner() {
 function EditorLayout() {
 	usePasteMedia();
 	const { panels, setPanel, showProperties } = usePanelStore();
+	const [toolsHidden, setToolsHidden] = useState(false);
 
 	return (
 		<ResizablePanelGroup
@@ -116,34 +117,53 @@ function EditorLayout() {
 					direction="horizontal"
 					className="studio-workspace"
 					onLayout={(sizes) => {
-						setPanel({ panel: "preview", size: sizes[0] ?? 50 });
-						setPanel({ panel: "tools", size: sizes[1] ?? 50 });
+						setPanel({ panel: "preview", size: sizes[0] ?? panels.preview });
+						if (sizes[1] !== undefined) {
+							setPanel({ panel: "tools", size: sizes[1] });
+						}
 					}}
 				>
 					<ResizablePanel
 						id="preview"
 						order={1}
-						defaultSize={50}
-						minSize={30}
+						defaultSize={toolsHidden ? 100 : panels.preview}
+						minSize={toolsHidden ? 100 : 30}
 						className="min-w-0 min-h-0"
 					>
-						<EditorPreview />
+						<div className="relative size-full">
+							<EditorPreview />
+							<Button
+								type="button"
+								variant="secondary"
+								size="sm"
+								className="absolute right-3 top-3 z-40 h-8 border border-border/80 bg-background/90 px-3 text-xs shadow-md backdrop-blur"
+								onClick={() => setToolsHidden((hidden) => !hidden)}
+								title={toolsHidden ? "Mostrar painel de ferramentas" : "Ocultar painel e ampliar monitor"}
+								aria-pressed={toolsHidden}
+							>
+								{toolsHidden ? "▤ Mostrar painel" : "▥ Ampliar monitor"}
+							</Button>
+						</div>
 					</ResizablePanel>
-					<ResizableHandle withHandle />
-					<ResizablePanel
-						id="assets"
-						order={2}
-						defaultSize={50}
-						minSize={30}
-						className="min-w-0 min-h-0 relative"
-					>
-						<AssetsPanel />
-						{showProperties && (
-							<div className="studio-properties-overlay">
-								<PropertiesPanel />
-							</div>
-						)}
-					</ResizablePanel>
+					{!toolsHidden && (
+						<>
+							<ResizableHandle withHandle />
+							<ResizablePanel
+								id="assets"
+								order={2}
+								defaultSize={panels.tools}
+								minSize={30}
+								className="min-w-0 min-h-0 relative"
+							>
+								<AssetsPanel />
+								{showProperties && (
+									<div className="studio-properties-overlay">
+										<PropertiesPanel />
+									</div>
+								)}
+							</ResizablePanel>
+						</>
+					)}
 				</ResizablePanelGroup>
 			</ResizablePanel>
 
