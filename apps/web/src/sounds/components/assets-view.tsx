@@ -696,6 +696,7 @@ function AudioItem({
 					size="icon"
 					className="text-muted-foreground hover:text-foreground w-auto !opacity-100"
 					onClick={handleAddToTimeline}
+					aria-label={`Adicionar ${sound.name} à timeline`}
 					disabled={isAdding}
 					title={isAdding ? "Adicionando..." : "Adicionar à timeline"}
 				>

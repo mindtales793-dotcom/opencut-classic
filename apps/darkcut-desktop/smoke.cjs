@@ -61,9 +61,13 @@ async function run(win) {
 	);
 	await execute(
 		win,
-		`localStorage.setItem('darkcut-production', JSON.stringify({state:{jamendoClientId:'smoke-fixture'},version:0})); location.reload()`,
+		`localStorage.setItem('darkcut-production', JSON.stringify({state:{jamendoClientId:'smoke-fixture'},version:0}));`,
 		"fixtures:configure",
 	);
+	await new Promise((resolve) => {
+		win.webContents.once("did-finish-load", resolve);
+		win.webContents.reload();
+	});
 	await until(
 		win,
 		`Array.from(document.querySelectorAll('button')).some(b=>b.textContent.includes('Create your first project'))`,
@@ -283,7 +287,7 @@ async function run(win) {
 	);
 	await execute(
 		win,
-		`document.querySelector('button[title="Adicionar à timeline"]').click()`,
+		`document.querySelector('button[aria-label="Adicionar Smoke Music à timeline"]').click()`,
 		"music:add",
 	);
 	await until(
