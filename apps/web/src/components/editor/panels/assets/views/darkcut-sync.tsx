@@ -15,6 +15,78 @@ import { addNarrationAssetToTimeline } from "../darkcut-automation";
 import { useDarkCutProductionStore } from "../darkcut-production-store";
 import { useAssetsPanelStore } from "../assets-panel-store";
 
+
+function formatSrtTime(totalSeconds: number) {
+	const safe = Math.max(0, totalSeconds);
+	const hours = Math.floor(safe / 3600);
+	const minutes = Math.floor((safe % 3600) / 60);
+	const seconds = Math.floor(safe % 60);
+	const milliseconds = Math.floor((safe - Math.floor(safe)) * 1000);
+	return `${String(hours).padStart(2, "0")}:${String(minutes).padStart(2, "0")}:${String(seconds).padStart(2, "0")},${String(milliseconds).padStart(3, "0")}`;
+}
+
+function splitSubtitleChunks(text: string) {
+	const sentences =
+		text
+			.replace(/\s+/g, " ")
+			.trim()
+			.match(/[^.!?…]+[.!?…]?/g)
+			?.map((part) => part.trim())
+			.filter(Boolean) ?? [];
+
+	const chunks: string[] = [];
+	for (const sentence of sentences) {
+		const words = sentence.split(/\s+/).filter(Boolean);
+		if (words.length <= 12) {
+			chunks.push(sentence);
+			continue;
+		}
+		for (let i = 0; i < words.length; i += 10) {
+			chunks.push(words.slice(i, i + 10).join(" "));
+		}
+	}
+	return chunks;
+}
+
+function buildSrtFromScript({
+	text,
+	durationSeconds,
+}: {
+	text: string;
+	durationSeconds: number;
+}) {
+	const chunks = splitSubtitleChunks(text);
+	if (!chunks.length) return "";
+
+	const weights = chunks.map((chunk) =>
+		Math.max(1, chunk.split(/\s+/).filter(Boolean).length),
+	);
+	const totalWeight = weights.reduce((sum, weight) => sum + weight, 0);
+	const effectiveDuration =
+		durationSeconds > 0
+			? durationSeconds
+			: Math.max(2, totalWeight / 2.7);
+
+	let cursor = 0;
+	return chunks
+		.map((chunk, index) => {
+			const share = weights[index] / totalWeight;
+			const rawDuration = effectiveDuration * share;
+			const clipDuration = Math.max(0.9, rawDuration);
+			const start = cursor;
+			let end =
+				index === chunks.length - 1
+					? effectiveDuration
+					: Math.min(effectiveDuration, start + clipDuration);
+
+			if (end <= start) end = Math.min(effectiveDuration, start + 0.9);
+			cursor = end;
+
+			return `${index + 1}\n${formatSrtTime(start)} --> ${formatSrtTime(end)}\n${chunk}\n`;
+		})
+		.join("\n");
+}
+
 export function DarkCutSyncView() {
 	const editor = useEditor();
 	const setActiveTab = useAssetsPanelStore((state) => state.setActiveTab);
@@ -34,6 +106,7 @@ export function DarkCutSyncView() {
 		string | null
 	>("narration-asset", null);
 	const [narrationUrl, setNarrationUrl] = useState<string | null>(null);
+	const [narrationDurationSeconds, setNarrationDurationSeconds] = useState(0);
 	const [jobId, setJobId] = useProjectDraft<string | null>(
 		"narration-job",
 		null,
@@ -254,11 +327,49 @@ export function DarkCutSyncView() {
 	};
 
 	const downloadNarration = () => {
-		if (!narrationUrl) return;
+		if (!narrationUrl) {
+			toast.error("Gere a narração primeiro.");
+			return;
+		}
 		const link = document.createElement("a");
 		link.href = narrationUrl;
-		link.download = narrationFileName;
+		link.download = narrationFileName.endsWith(".mp3")
+			? narrationFileName
+			: `${narrationFileName}.mp3`;
+		document.body.appendChild(link);
 		link.click();
+		link.remove();
+		toast.success("Download da narração iniciado.");
+	};
+
+	const downloadNarrationSrt = () => {
+		const text = script.trim();
+		if (!text) {
+			toast.error("O roteiro está vazio.");
+			return;
+		}
+
+		const srt = buildSrtFromScript({
+			text,
+			durationSeconds: narrationDurationSeconds,
+		});
+		if (!srt) {
+			toast.error("Não foi possível gerar o SRT.");
+			return;
+		}
+
+		const blob = new Blob([srt], {
+			type: "application/x-subrip;charset=utf-8",
+		});
+		const url = URL.createObjectURL(blob);
+		const link = document.createElement("a");
+		link.href = url;
+		link.download = narrationFileName.replace(/\.mp3$/i, "") + ".srt";
+		document.body.appendChild(link);
+		link.click();
+		link.remove();
+		window.setTimeout(() => URL.revokeObjectURL(url), 1000);
+		toast.success("SRT gerado e enviado para download.");
 	};
 
 	const words = script.trim() ? script.trim().split(/\s+/).length : 0;
@@ -429,14 +540,32 @@ export function DarkCutSyncView() {
 							controls
 							preload="metadata"
 							src={narrationUrl}
+							onLoadedMetadata={(event) => {
+								const duration = event.currentTarget.duration;
+								if (Number.isFinite(duration) && duration > 0) {
+									setNarrationDurationSeconds(duration);
+								}
+							}}
 						/>
-						<div className="grid grid-cols-2 gap-2">
-							<Button variant="secondary" onClick={downloadNarration}>
-								↓ Baixar
-							</Button>
-							<Button variant="secondary" onClick={addNarrationToTimeline}>
-								+ Timeline
-							</Button>
+						<div className="rounded-md border border-primary/20 bg-primary/5 p-2">
+							<div className="text-xs font-medium text-foreground">
+								Arquivos da narração
+							</div>
+							<div className="mt-0.5 text-[0.68rem] text-muted-foreground">
+								Baixe o áudio e a legenda antes de gerar suas imagens. Os dois
+								arquivos ficam independentes do projeto e podem ser usados depois.
+							</div>
+							<div className="mt-2 grid grid-cols-3 gap-2">
+								<Button variant="secondary" onClick={downloadNarration}>
+									↓ MP3
+								</Button>
+								<Button variant="secondary" onClick={downloadNarrationSrt}>
+									↓ SRT
+								</Button>
+								<Button variant="secondary" onClick={addNarrationToTimeline}>
+									+ Timeline
+								</Button>
+							</div>
 						</div>
 					</div>
 				)}
