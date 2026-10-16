@@ -6,6 +6,12 @@ export type FishNarrator = {
 };
 
 export const FISH_NARRATORS: FishNarrator[] = [
+	{ name: "Narrador de Histórias e Ciências", id: "0ba1afd27db44eb2b4cb27fd331b93aa", language: "pt", provider: "fish" },
+	{ name: "Narração Contos de Terror", id: "4d72497e3ceb4c75a7c5563900975afd", language: "pt", provider: "fish" },
+	{ name: "Narrador Fish e2b7", id: "e2b7e279f9ee47138bdf0b6d62356e8b", language: "pt", provider: "fish" },
+	{ name: "Narração Grave", id: "0be7a95f81df42419fa94fc6b6bf5fe9", language: "pt", provider: "fish" },
+	{ name: "Narrador Fish 1144", id: "1144e96e33694aae97cee8860f367897", language: "pt", provider: "fish" },
+	{ name: "Narrador Fish 39ba", id: "39ba7b1ab5d44e5dab4ab09d6a0354ad", language: "pt", provider: "fish" },
 	{ name: "Waldo Morais", id: "04736e4d6a644abab81e601a7d2ae4b9", language: "pt", provider: "fish" },
 	{ name: "Capitão Nascimento", id: "102bccca7dc64b6b8f8494c199c5d153", language: "pt", provider: "fish" },
 	{ name: "Ethan", id: "536d3a5e000945adb7038665781a4aca", language: "en", provider: "fish" },
