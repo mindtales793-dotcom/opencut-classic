@@ -23,6 +23,8 @@ interface DarkCutProductionState {
 	fishApiKeys: string[];
 	jamendoClientId: string;
 	freesoundApiKey: string;
+	pexelsApiKey: string;
+	pixabayApiKey: string;
 	geminiApiKey: string;
 	openRouterApiKey: string;
 	geminiApiKeys: string[];
@@ -48,6 +50,8 @@ interface DarkCutProductionState {
 	setFishApiKey: (index: number, value: string) => void;
 	setJamendoClientId: (value: string) => void;
 	setFreesoundApiKey: (value: string) => void;
+	setPexelsApiKey: (value: string) => void;
+	setPixabayApiKey: (value: string) => void;
 	setGeminiApiKey: (value: string) => void;
 	setOpenRouterApiKey: (value: string) => void;
 	setGeminiApiKeyAt: (index: number, value: string) => void;
@@ -78,6 +82,8 @@ export const useDarkCutProductionStore = create<DarkCutProductionState>()(
 			fishApiKeys: ["", "", ""],
 			jamendoClientId: "",
 			freesoundApiKey: "",
+			pexelsApiKey: "",
+			pixabayApiKey: "",
 			geminiApiKey: "",
 			openRouterApiKey: "",
 			geminiApiKeys: ["", "", ""],
@@ -123,6 +129,8 @@ export const useDarkCutProductionStore = create<DarkCutProductionState>()(
 				}),
 			setJamendoClientId: (jamendoClientId) => set({ jamendoClientId }),
 			setFreesoundApiKey: (freesoundApiKey) => set({ freesoundApiKey }),
+			setPexelsApiKey: (pexelsApiKey) => set({ pexelsApiKey }),
+			setPixabayApiKey: (pixabayApiKey) => set({ pixabayApiKey }),
 			setGeminiApiKey: (geminiApiKey) => set({ geminiApiKey }),
 			setOpenRouterApiKey: (openRouterApiKey) => set({ openRouterApiKey }),
 			setGeminiApiKeyAt: (index, value) =>
