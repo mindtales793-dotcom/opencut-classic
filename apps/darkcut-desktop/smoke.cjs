@@ -59,6 +59,18 @@ async function run(win) {
 		60000,
 		"projects:create-button",
 	);
+	await execute(
+		win,
+		`localStorage.setItem('darkcut-production', JSON.stringify({state:{jamendoClientId:'smoke-fixture'},version:0})); location.reload()`,
+		"fixtures:configure",
+	);
+	await until(
+		win,
+		`Array.from(document.querySelectorAll('button')).some(b=>b.textContent.includes('Create your first project'))`,
+		60000,
+		"fixtures:reload",
+	);
+
 	await clickByText(win, "Create your first project", "projects:create");
 
 	await until(
@@ -168,6 +180,7 @@ async function run(win) {
     const str=(offset,s)=>{for(let i=0;i<s.length;i++)v.setUint8(offset+i,s.charCodeAt(i));};
     str(0,'RIFF');v.setUint32(4,36+frames*2,true);str(8,'WAVE');str(12,'fmt ');v.setUint32(16,16,true);v.setUint16(20,1,true);v.setUint16(22,1,true);v.setUint32(24,rate,true);v.setUint32(28,rate*2,true);v.setUint16(32,2,true);v.setUint16(34,16,true);str(36,'data');v.setUint32(40,frames*2,true);
     for(let i=0;i<frames;i++)v.setInt16(44+i*2,(i<rate||i>=2*rate)?Math.round(Math.sin(i*2*Math.PI*440/rate)*8192):0,true);
+    window.__smokeAudioBytes=bytes;
     const transfer=new DataTransfer();
     transfer.items.add(new File([bytes],'silence-smoke.wav',{type:'audio/wav'}));
     const input=document.querySelector('input[aria-label="Importar narração"]');
@@ -250,6 +263,45 @@ async function run(win) {
 
 	await execute(
 		win,
+		`(()=>{
+        const original=window.fetch.bind(window);
+        window.fetch=async(input,init)=>{
+            const url=String(input);
+            if(url==='/api/darkcut/music/search')return Response.json({results:[{id:123,name:'Smoke Music',username:'Fixture',tags:['jamendo'],duration:3,previewUrl:'/__smoke_audio',downloadUrl:'/__smoke_audio',license:'CC0'}],hasMore:false});
+            if(url==='/__smoke_audio'){await new Promise(r=>setTimeout(r,1500));return new Response(window.__smokeAudioBytes,{headers:{'Content-Type':'audio/wav'}});}
+            return original(input,init);
+        };
+    })()`,
+		"music:fixture",
+	);
+	await clickByAria(win, "Áudio", "music:open");
+	await until(
+		win,
+		`document.body.innerText.includes('Smoke Music')`,
+		20000,
+		"music:loaded",
+	);
+	await execute(
+		win,
+		`document.querySelector('button[title="Adicionar à timeline"]').click()`,
+		"music:add",
+	);
+	await until(
+		win,
+		`!!document.querySelector('progress[aria-label="Smoke Music"]:not([value])')`,
+		10000,
+		"music:progress",
+	);
+	await until(
+		win,
+		`document.body.innerText.includes('Música adicionada à faixa A2.')`,
+		30000,
+		"music:timeline",
+	);
+	await clickByAria(win, "Sincronização", "music:leave");
+
+	await execute(
+		win,
 		`new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve)))`,
 		"renderer:responsive",
 	);
@@ -279,6 +331,8 @@ async function run(win) {
 			"animation frames responsive",
 			"properties panel hidden and toggle works",
 			"ten template previews and live animation",
+			"music fixture downloaded, decoded and inserted in A2",
+			"indeterminate import progress visible",
 		],
 	});
 }

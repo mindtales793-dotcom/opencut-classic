@@ -106,7 +106,6 @@ function EditorLayout() {
 				className="min-h-0"
 			>
 				<ResizablePanelGroup
-					key={showProperties ? "with-properties" : "wide-preview"}
 					direction="horizontal"
 					className="size-full gap-[0.19rem] px-3"
 					onLayout={(sizes) => {
@@ -119,6 +118,8 @@ function EditorLayout() {
 					}}
 				>
 					<ResizablePanel
+						id="assets"
+						order={1}
 						defaultSize={panels.tools}
 						minSize={15}
 						maxSize={40}
@@ -130,6 +131,8 @@ function EditorLayout() {
 					<ResizableHandle withHandle />
 
 					<ResizablePanel
+						id="preview"
+						order={2}
 						defaultSize={
 							100 - panels.tools - (showProperties ? panels.properties : 0)
 						}
@@ -143,6 +146,8 @@ function EditorLayout() {
 						<>
 							<ResizableHandle withHandle />
 							<ResizablePanel
+								id="properties"
+								order={3}
 								defaultSize={panels.properties}
 								minSize={15}
 								maxSize={40}
