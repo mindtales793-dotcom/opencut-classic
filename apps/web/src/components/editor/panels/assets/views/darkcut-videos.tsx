@@ -46,7 +46,11 @@ export function DarkCutVideosView() {
 	} = useDarkCutProductionStore();
 	const [blocks, setBlocks] = useProjectDraft<VideoBlock[]>("video-blocks", []);
 	const [isRunning, setIsRunning] = useState(false);
-	const pause = useRef(false);
+	const [isPaused, setIsPaused] = useProjectDraft<boolean>(
+		"video-search-paused",
+		false,
+	);
+	const pause = useRef(isPaused);
 	const usedVideoIds = useRef(new Set<string>());
 	const task = (
 		status: "running" | "paused" | "done" | "error",
@@ -228,6 +232,7 @@ export function DarkCutVideosView() {
 
 		if (isRunning) return;
 		pause.current = false;
+		setIsPaused(false);
 		setIsRunning(true);
 		let success = currentBlocks.filter(
 			(b) => b.statusLabel === "ready" && b.mediaId,
@@ -246,18 +251,28 @@ export function DarkCutVideosView() {
 				if (await downloadForBlock(block)) success += 1;
 				task("running", success, currentBlocks.length);
 			}
-			task(
-				pause.current
-					? "paused"
-					: success === currentBlocks.length
-						? "done"
-						: "error",
-				success,
-				currentBlocks.length,
-			);
-			toast.success(
-				`${success} de ${currentBlocks.length} blocos receberam vídeos.`,
-			);
+			if (pause.current) {
+				setIsPaused(true);
+				task(
+					"paused",
+					success,
+					currentBlocks.length,
+					`Pausado em ${success}/${currentBlocks.length}. Clique em Retomar busca.`,
+				);
+				toast.info(
+					`Busca pausada. ${success} de ${currentBlocks.length} blocos já estão prontos.`,
+				);
+			} else {
+				setIsPaused(false);
+				task(
+					success === currentBlocks.length ? "done" : "error",
+					success,
+					currentBlocks.length,
+				);
+				toast.success(
+					`${success} de ${currentBlocks.length} blocos receberam vídeos.`,
+				);
+			}
 		} finally {
 			setIsRunning(false);
 		}
@@ -306,16 +321,38 @@ export function DarkCutVideosView() {
 					DarkCut Studio
 				</p>
 				<h2 className="mt-1 text-lg font-semibold">Busca automática de vídeos</h2>
-				{isRunning && (
-					<Button
-						variant="secondary"
-						onClick={() => {
-							pause.current = true;
-						}}
-					>
-						Pausar após este clipe
-					</Button>
-				)}
+				<div className="mt-2 flex flex-wrap items-center gap-2">
+					{isRunning && (
+						<Button
+							variant="secondary"
+							onClick={() => {
+								pause.current = true;
+								setIsPaused(true);
+								task(
+									"paused",
+									readyCount,
+									blocks.length,
+									"Pausa solicitada — finalizando o clipe atual…",
+								);
+							}}
+						>
+							⏸ Pausar busca
+						</Button>
+					)}
+					{!isRunning && isPaused && (
+						<Button
+							onClick={searchAll}
+							disabled={!script.trim() || !configuredApiKeys}
+						>
+							▶ Retomar busca
+						</Button>
+					)}
+					{isPaused && (
+						<span className="rounded-full border border-caution/40 bg-caution/10 px-2 py-1 text-[0.68rem] text-caution">
+							Fila pausada · {readyCount}/{blocks.length} prontos
+						</span>
+					)}
+				</div>
 				<p className="text-xs text-muted-foreground">
 					Blocos salvos por projeto. O DarkCut interpreta cada trecho e cria
 					uma busca visual curta em inglês, em vez de pesquisar a frase inteira.
@@ -419,7 +456,9 @@ export function DarkCutVideosView() {
 					>
 						{isRunning
 							? "Buscando e baixando..."
-							: "▶ Buscar vídeos automático"}
+							: isPaused
+								? "▶ Retomar busca"
+								: "▶ Buscar vídeos automático"}
 					</Button>
 				</div>
 			</section>
@@ -428,9 +467,16 @@ export function DarkCutVideosView() {
 				<section className="mt-3 rounded-md border bg-card p-3">
 					<div className="mb-2 flex items-center justify-between">
 						<div className="text-sm font-medium">Fila de vídeos</div>
-						<span className="text-[0.7rem] text-muted-foreground">
-							{readyCount}/{blocks.length} prontos
-						</span>
+						<div className="flex items-center gap-2">
+							{isPaused && (
+								<span className="rounded bg-caution/15 px-1.5 py-0.5 text-[0.65rem] text-caution">
+									Pausado
+								</span>
+							)}
+							<span className="text-[0.7rem] text-muted-foreground">
+								{readyCount}/{blocks.length} prontos
+							</span>
+						</div>
 					</div>
 
 					<div className="max-h-[30rem] space-y-2 overflow-y-auto pr-1">
