@@ -75,7 +75,7 @@ export function DarkCutVideosView() {
 	const analyze = () => {
 		const next = createVideoBlocks(script, sceneSeconds);
 		if (!next.length) {
-			toast.error("Cole o roteiro na aba Roteiro antes de analisar.");
+			toast.error("Cole o roteiro na aba Produção antes de analisar.");
 			setActiveTab("production");
 			return;
 		}
@@ -219,7 +219,7 @@ export function DarkCutVideosView() {
 			? blocks
 			: createVideoBlocks(script, sceneSeconds);
 		if (!currentBlocks.length) {
-			toast.error("Cole o roteiro na aba Roteiro antes de buscar vídeos.");
+			toast.error("Cole o roteiro na aba Produção antes de buscar vídeos.");
 			setActiveTab("production");
 			return;
 		}
@@ -304,7 +304,7 @@ export function DarkCutVideosView() {
 				<p className="text-xs font-medium uppercase tracking-[0.18em] text-primary">
 					DarkCut Studio
 				</p>
-				<h2 className="mt-1 text-lg font-semibold">Vídeos com Vídeos</h2>
+				<h2 className="mt-1 text-lg font-semibold">Busca automática de vídeos</h2>
 				{isRunning && (
 					<Button
 						variant="secondary"
@@ -378,7 +378,7 @@ export function DarkCutVideosView() {
 					<div>
 						<div className="text-sm font-medium">Analisar roteiro</div>
 						<div className="text-[0.7rem] text-muted-foreground">
-							Usa o mesmo roteiro salvo na aba Roteiro.
+							Usa o mesmo roteiro salvo na aba Produção.
 						</div>
 					</div>
 					<label className="flex items-center gap-2 text-xs text-muted-foreground">
