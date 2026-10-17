@@ -161,6 +161,24 @@ function ToolbarLeftSection() {
 
 	return (
 		<div className="flex items-center gap-1">
+			{selectedMediaAsset && (
+				<div
+					className="mr-2 flex min-w-0 max-w-[230px] items-center gap-2 rounded-md border border-primary/40 bg-primary/5 px-2 py-1"
+					title={selectedMediaAsset.name}
+				>
+					{(selectedMediaAsset.thumbnailUrl || (selectedMediaAsset.type === "image" && selectedMediaAsset.url)) && (
+						<img
+							src={selectedMediaAsset.thumbnailUrl || selectedMediaAsset.url}
+							alt=""
+							className="h-7 w-11 shrink-0 rounded object-cover"
+						/>
+					)}
+					<div className="min-w-0">
+						<div className="text-[0.62rem] font-semibold text-primary">Clipe selecionado</div>
+						<div className="truncate text-[0.68rem] text-foreground">{selectedMediaAsset.name}</div>
+					</div>
+				</div>
+			)}
 			<TooltipProvider delayDuration={500}>
 				<ToolbarButton
 					icon={<HugeiconsIcon icon={ScissorIcon} />}
