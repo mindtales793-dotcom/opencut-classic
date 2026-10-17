@@ -27,6 +27,7 @@ export type CrisVisualSlot =
 	| "quote"
 	| "document"
 	| "map"
+	| "comparison"
 	| "list-item"
 	| "conflict"
 	| "reveal"
@@ -107,6 +108,7 @@ const VISUAL_SLOTS: CrisVisualSlot[] = [
 	"quote",
 	"document",
 	"map",
+	"comparison",
 	"list-item",
 	"conflict",
 	"reveal",
@@ -169,6 +171,8 @@ function visualSlotFor(text: string, sceneType: CrisSceneType): CrisVisualSlot {
 		return "document";
 	if (/\b(map[a]?|rota|trajeto|região|regiao|distância|distancia)\b/.test(lower))
 		return "map";
+	if (/\b(comparar|comparação|comparacao|comparativo|versus|vs\.?|em vez de|ao invés de|ao inves de|de um lado|do outro lado|mais barato|mais caro)\b/.test(lower))
+		return "comparison";
 	if (sceneType === "list") return "list-item";
 	if (sceneType === "problem") return "conflict";
 	if (sceneType === "turn") return "reveal";
