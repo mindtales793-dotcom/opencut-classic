@@ -37,13 +37,13 @@ export function resolveRetroVisual({
 	sceneIndex?: number;
 }): RetroVisualResolved {
 	if (mode !== "auto") return mode;
+	if (visualSlot === "comparison" || visualSlot === "reveal" || visualSlot === "result" || sceneType === "solution")
+		return "comparison";
 	if (visualSlot === "number" || visualSlot === "date" || sceneType === "number")
 		return "impact";
 	if (visualSlot === "location" || visualSlot === "map") return "map";
 	if (visualSlot === "document" || visualSlot === "quote") return "file-card";
 	if (visualSlot === "conflict" || sceneType === "problem") return "evidence";
-	if (visualSlot === "comparison" || visualSlot === "reveal" || visualSlot === "result" || sceneType === "solution")
-		return "comparison";
 	if (visualSlot === "list-item" || sceneType === "list") return "file-card";
 	if (sceneType === "hook") return "split-screen";
 	return sceneIndex % 3 === 0 ? "split-screen" : "file-card";
