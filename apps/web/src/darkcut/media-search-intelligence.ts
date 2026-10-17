@@ -162,6 +162,7 @@ export function sortMediaCandidates<T extends RankedMediaCandidate>(
 			score:scoreMediaCandidate({query,title:c.title}) +
 				(c.kind=== (options.prefer??"video") ? 2:0),
 		}))
+		.filter(item => item.score > -90)
 		.sort((a,b)=>b.score-a.score || a.i-b.i)
 		.map(x=>x.c);
 }
