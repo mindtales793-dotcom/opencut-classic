@@ -2,6 +2,7 @@ import { describe, expect, test } from "bun:test";
 import {
 	analyzeSceneSrt,
 	makeSrtTimingGroups,
+	resolveSrtSyncStrategy,
 	sceneNumberFromName,
 } from "../srt-scene-sync";
 
@@ -108,4 +109,48 @@ Cena 4`;
 		expect(sceneNumberFromName("HB20.jpg")).toBeNull();
 		expect(sceneNumberFromName("Gol 1996.png")).toBeNull();
 	});
+	test("handles different SRT quantities on every import", () => {
+		const initial = analyzeSceneSrt(sample).cues;
+		expect(resolveSrtSyncStrategy({
+			strategy: "auto", cueCount: 4, visualCount: 4,
+		})).toBe("one-per-cue");
+		expect(resolveSrtSyncStrategy({
+			strategy: "auto", cueCount: 4, visualCount: 2,
+		})).toBe("fit-to-media");
+		expect(resolveSrtSyncStrategy({
+			strategy: "auto", cueCount: 4, visualCount: 6,
+		})).toBe("one-per-cue");
+
+		const short = makeSrtTimingGroups({
+			cues: initial, visualCount: 2, strategy: "auto",
+		});
+		expect(short).toHaveLength(2);
+		expect(short[1].endSeconds).toBeCloseTo(22.4);
+		expect(short.reduce((sum, item) => sum + item.cueCount, 0)).toBe(4);
+
+		// Another uploaded SRT may have fewer cues than the existing visuals.
+		const excess = makeSrtTimingGroups({
+			cues: initial.slice(0, 2), visualCount: 6, strategy: "auto",
+		});
+		expect(excess).toHaveLength(2);
+		expect(excess[0].startSeconds).toBe(0);
+		expect(excess[1].endSeconds).toBeCloseTo(13.2);
+	});
+
+	test("rebuilds an auto plan for a SRT with hundreds of cues", () => {
+		const cues = Array.from({ length: 240 }, (_, index) => ({
+			index: index + 1,
+			startSeconds: index * 3.5,
+			endSeconds: (index + 1) * 3.5,
+			text: `Cena ${index + 1}`,
+		}));
+		const matching = makeSrtTimingGroups({ cues, visualCount: 240, strategy: "auto" });
+		expect(matching).toHaveLength(240);
+		expect(matching[239].endSeconds).toBeCloseTo(840);
+		const grouped = makeSrtTimingGroups({ cues, visualCount: 120, strategy: "auto" });
+		expect(grouped).toHaveLength(120);
+		expect(grouped.reduce((sum, item) => sum + item.cueCount, 0)).toBe(240);
+		expect(grouped.at(-1)?.endSeconds).toBeCloseTo(840);
+	});
+
 });
