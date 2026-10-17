@@ -200,6 +200,81 @@ function getNarrationDurationSeconds({ editor }: { editor: EditorCore }) {
 	});
 }
 
+export type DarkCutSrtTiming = {
+	startSeconds: number;
+	endSeconds: number;
+};
+
+export function syncVisualsToSrt({
+	editor,
+	refs = [],
+	cues,
+}: {
+	editor: EditorCore;
+	refs?: ElementRef[];
+	cues: DarkCutSrtTiming[];
+}) {
+	const targets = getVisualTargets({
+		editor,
+		refs,
+		fallbackToAll: true,
+	});
+	const validCues = cues
+		.filter(
+			(cue) =>
+				Number.isFinite(cue.startSeconds) &&
+				Number.isFinite(cue.endSeconds) &&
+				cue.startSeconds >= 0 &&
+				cue.endSeconds > cue.startSeconds,
+		)
+		.sort((a, b) => a.startSeconds - b.startSeconds);
+
+	const pairCount = Math.min(targets.length, validCues.length);
+	if (pairCount === 0) {
+		return {
+			changed: 0,
+			visualCount: targets.length,
+			cueCount: validCues.length,
+			unmatchedVisuals: targets.length,
+			unmatchedCues: validCues.length,
+			clamped: 0,
+		};
+	}
+
+	let clamped = 0;
+	const updates = targets.slice(0, pairCount).map((target, index) => {
+		const cue = validCues[index];
+		const requestedSeconds = Math.max(
+			0.1,
+			cue.endSeconds - cue.startSeconds,
+		);
+		const duration = targetDurationPatch({
+			element: target.element,
+			seconds: requestedSeconds,
+		});
+		if (duration.wasClamped) clamped += 1;
+
+		return {
+			trackId: target.trackId,
+			elementId: target.elementId,
+			patch: {
+				...duration.patch,
+				startTime: mediaTimeFromSeconds({ seconds: cue.startSeconds }),
+			} as Partial<TimelineElement>,
+		};
+	});
+
+	editor.timeline.updateElements({ updates });
+	return {
+		changed: pairCount,
+		visualCount: targets.length,
+		cueCount: validCues.length,
+		unmatchedVisuals: Math.max(0, targets.length - pairCount),
+		unmatchedCues: Math.max(0, validCues.length - pairCount),
+		clamped,
+	};
+}
+
 export function syncVisualsToNarration({
 	editor,
 	refs,
