@@ -4,6 +4,7 @@ import { mkdtemp, readFile, readdir, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { NextResponse } from "next/server";
+import { sortMediaCandidates, scoreMediaCandidate } from "@/darkcut/media-search-intelligence";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -154,7 +155,9 @@ async function searchWithYouTubeApi({
 						!/(^|\s)#?shorts?\b|youtube shorts?/i.test(entry.title),
 				);
 
-			return { entries, keyIndex };
+			const ranked = sortMediaCandidates(entries, query)
+				.filter((entry) => scoreMediaCandidate({ query, title: entry.title }) > -100);
+			return { entries: ranked, keyIndex };
 		} catch (error) {
 			lastError =
 				error instanceof Error ? error.message : "Falha ao acessar o YouTube.";
@@ -220,23 +223,14 @@ export async function POST(request: Request) {
 	let lastDownloadError: unknown = null;
 
 	try {
-		let { entries, keyIndex } = await searchWithYouTubeApi({
+		const { entries, keyIndex } = await searchWithYouTubeApi({
 			query,
 			apiKeys,
 			excluded,
-			videoDuration: "medium",
+			// A single broad search avoids spending YouTube quota twice per block.
+			// The relevance classifier filters mismatched car models before download.
+			videoDuration: "any",
 		});
-
-		if (!entries.length) {
-			const fallback = await searchWithYouTubeApi({
-				query,
-				apiKeys,
-				excluded,
-				videoDuration: "any",
-			});
-			entries = fallback.entries;
-			keyIndex = fallback.keyIndex;
-		}
 
 		if (!entries.length) {
 			return NextResponse.json(
