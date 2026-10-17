@@ -42,7 +42,7 @@ export function resolveRetroVisual({
 	if (visualSlot === "location" || visualSlot === "map") return "map";
 	if (visualSlot === "document" || visualSlot === "quote") return "file-card";
 	if (visualSlot === "conflict" || sceneType === "problem") return "evidence";
-	if (visualSlot === "reveal" || visualSlot === "result" || sceneType === "solution")
+	if (visualSlot === "comparison" || visualSlot === "reveal" || visualSlot === "result" || sceneType === "solution")
 		return "comparison";
 	if (visualSlot === "list-item" || sceneType === "list") return "file-card";
 	if (sceneType === "hook") return "split-screen";
