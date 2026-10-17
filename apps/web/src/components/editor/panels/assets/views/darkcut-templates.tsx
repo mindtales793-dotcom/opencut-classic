@@ -41,6 +41,11 @@ import { useProjectDraft } from "@/darkcut/project-draft";
 import { useDarkCutProductionStore } from "../darkcut-production-store";
 import { DarkCutRemotionPreview } from "@/remotion/darkcut-composer";
 import {
+	RETRO_VISUAL_MODES,
+	retroTextStyle,
+	type RetroVisualMode,
+} from "@/darkcut/retro-automotive";
+import {
 	buildLocalCrisPlan,
 	type CrisEditPlan,
 	type CrisTemplateContext,
@@ -69,6 +74,22 @@ type DarkCutTemplate = {
 const FAVORITES_KEY = "darkcut-template-favorites";
 
 const TEMPLATES: DarkCutTemplate[] = [
+	{
+		id: "retro-automotive",
+		title: "Arquivo Automotivo Premium",
+		tagline: "ARQUIVOS • COMPARAÇÕES • DADOS",
+		description:
+			"Documentário investigativo inspirado em cartões de arquivo retrô: números gigantes, comparações, mapas técnicos, evidências e tela dividida. A Cris escolhe a composição conforme a fala.",
+		category: "Documentário",
+		idealFor: "listas de carros, regras, comparações, financiamento, histórias automotivas",
+		durationSeconds: 4.5,
+		motions: ["documentary", "push-in", "pan-left-right", "ken-burns"],
+		transitions: ["fade", "slide-left", "slide-right"],
+		intensity: "normal",
+		effects: ["none"],
+		badge: "🗂️",
+		accent: "from-[#a81818]/25 via-[#f4eedb]/10 to-[#d4a359]/25",
+	},
 	{
 		id: "pov-finance",
 		title: "POV Financeiro",
@@ -454,6 +475,10 @@ export function DarkCutTemplatesView({
 	const scene = useEditor((e) => e.scenes.getActiveSceneOrNull());
 	const activeTab = useAssetsPanelStore((s) => s.activeTab);
 	const [previewId, setPreviewId] = useState<string | null>(null);
+	const [retroPreviewMode, setRetroPreviewMode] = useState<RetroVisualMode>("auto");
+	const [intensityChoice, setIntensityChoice] = useProjectDraft<
+		DarkCutEffectIntensity | "template"
+	>("template-intensity-choice", "template");
 	const [addTitles, setAddTitles] = useState(true);
 	const [opening, setOpening] = useState("Uma decisão muda tudo");
 	const [ending, setEnding] = useState("E você, o que faria?");
@@ -507,6 +532,10 @@ export function DarkCutTemplatesView({
 		TEMPLATES.find((template) => template.id === previewId) ??
 		TEMPLATES.find((template) => template.id === "documentary")!;
 	const composerScene = crisPlan?.scenes?.[0];
+	const composerIntensity =
+		intensityChoice === "template"
+			? composerTemplate.intensity
+			: intensityChoice;
 
 	const toggleFavorite = (id: string) => {
 		setFavorites((current) => {
@@ -754,7 +783,11 @@ export function DarkCutTemplatesView({
 		}
 	};
 
-	const applyTemplate = async (template: DarkCutTemplate) => {
+	const applyTemplate = async (sourceTemplate: DarkCutTemplate) => {
+		const template: DarkCutTemplate = {
+			...sourceTemplate,
+			intensity: intensityChoice === "template" ? sourceTemplate.intensity : intensityChoice,
+		};
 		if (applyingRef.current) return;
 		if (!scene) {
 			toast.error("Abra um projeto antes de aplicar o template.");
@@ -1001,6 +1034,7 @@ export function DarkCutTemplatesView({
 					{[
 						"pov-finance",
 						"pov-car",
+						"retro-automotive",
 						"dark-channel",
 						"storytelling",
 						"documentary",
@@ -1112,6 +1146,27 @@ export function DarkCutTemplatesView({
 							/>
 						</>
 					)}
+					<div className="space-y-1.5">
+						<label htmlFor="darkcut-template-intensity" className="block text-xs font-semibold">
+							Intensidade das animações
+						</label>
+						<select
+							id="darkcut-template-intensity"
+							value={intensityChoice}
+							disabled={isCrisAnalyzing}
+							onChange={(event) => setIntensityChoice(event.target.value as DarkCutEffectIntensity | "template")}
+							className="h-9 w-full rounded border bg-background px-2 text-xs"
+						>
+							<option value="template">Padrão do template</option>
+							<option value="soft">Discreta • animações suaves</option>
+							<option value="normal">Equilibrada • ritmo editorial</option>
+							<option value="strong">Cinematográfica • mais movimento</option>
+						</select>
+						<p className="text-[0.68rem] text-muted-foreground">
+							O ajuste vale para novos planos da Cris e movimentos da timeline.
+							A prévia usa só um player de 15 FPS para economizar CPU.
+						</p>
+					</div>
 					<p className="text-muted-foreground">
 						Fluxo: roteiro → narração → mídias → template → Cris monta a edição.
 						Se a API estiver sem cota, o analisador local assume
@@ -1157,7 +1212,27 @@ export function DarkCutTemplatesView({
 						PRO
 					</span>
 				</div>
+				{composerTemplate.id === "retro-automotive" && (
+					<div className="mb-2 flex items-center gap-2">
+						<label htmlFor="retro-preview-type" className="shrink-0 text-[0.7rem] text-muted-foreground">
+							Cena:
+						</label>
+						<select
+							id="retro-preview-type"
+							className="h-8 min-w-0 flex-1 rounded-md border bg-background px-2 text-xs"
+							value={retroPreviewMode}
+							onChange={(event) => setRetroPreviewMode(event.target.value as RetroVisualMode)}
+						>
+							{RETRO_VISUAL_MODES.map(({ id, label }) => (
+								<option key={id} value={id}>{label}</option>
+							))}
+						</select>
+					</div>
+				)}
 				<DarkCutRemotionPreview
+					templateId={composerTemplate.id}
+					intensity={composerIntensity}
+					retroMode={retroPreviewMode}
 					templateTitle={composerTemplate.title}
 					sceneType={composerScene?.sceneType ?? "hook"}
 					visualSlot={composerScene?.visualSlot ?? "default"}
