@@ -98,7 +98,7 @@ export const tabs = {
 >;
 
 export type MediaViewMode = "grid" | "list";
-export type MediaSortKey = "name" | "type" | "duration" | "size";
+export type MediaSortKey = "name" | "type" | "duration" | "size" | "date" | "scene";
 export type MediaSortOrder = "asc" | "desc";
 
 interface AssetsPanelStore {
@@ -127,7 +127,7 @@ export const useAssetsPanelStore = create<AssetsPanelStore>()(
 			clearHighlight: () => set({ highlightMediaId: null }),
 			mediaViewMode: "grid",
 			setMediaViewMode: (mode) => set({ mediaViewMode: mode }),
-			mediaSortBy: "name",
+			mediaSortBy: "scene",
 			mediaSortOrder: "asc",
 			setMediaSort: ({ key, order }) =>
 				set({ mediaSortBy: key, mediaSortOrder: order }),
