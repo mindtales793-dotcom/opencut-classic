@@ -14,7 +14,8 @@ import { FISH_NARRATORS } from "@/darkcut/fish-narrators";
 import { addNarrationAssetToTimeline } from "../darkcut-automation";
 import { useDarkCutProductionStore } from "../darkcut-production-store";
 import { useAssetsPanelStore } from "../assets-panel-store";
-import { syncVisualsToSrt } from "@/timeline/darkcut-tools";
+import { syncVisualsToSrt, type DarkCutSrtScope, type DarkCutSrtOrder } from "@/timeline/darkcut-tools";
+import { analyzeSceneSrt, makeSrtTimingGroups, sceneNumberFromName, type SrtSyncStrategy } from "@/darkcut/srt-scene-sync";
 import type { TimelineElement } from "@/timeline/types";
 
 
@@ -25,74 +26,6 @@ function formatSrtTime(totalSeconds: number) {
 	const seconds = Math.floor(safe % 60);
 	const milliseconds = Math.floor((safe - Math.floor(safe)) * 1000);
 	return `${String(hours).padStart(2, "0")}:${String(minutes).padStart(2, "0")}:${String(seconds).padStart(2, "0")},${String(milliseconds).padStart(3, "0")}`;
-}
-
-type SrtSyncCue = {
-	index: number;
-	startSeconds: number;
-	endSeconds: number;
-	text: string;
-};
-
-function parseSrtTimestamp(value: string) {
-	const match = value
-		.trim()
-		.match(/^(\d{1,3}):([0-5]\d):([0-5]\d)[,.](\d{1,4})$/);
-	if (!match) return null;
-	const hours = Number(match[1]);
-	const minutes = Number(match[2]);
-	const seconds = Number(match[3]);
-	// Older generators sometimes emit ",1000" instead of carrying one
-	// second. Treat this as 1000 ms, rather than silently dropping the cue.
-	const fraction = match[4];
-	const milliseconds = Number(
-		fraction.length <= 3 ? fraction.padEnd(3, "0") : fraction,
-	);
-	const total = hours * 3600 + minutes * 60 + seconds + milliseconds / 1000;
-	return Number.isFinite(total) ? total : null;
-}
-
-function parseSrtSyncCues(source: string): SrtSyncCue[] {
-	const normalized = source
-		.replace(/^\uFEFF/, "")
-		.replace(/\r\n/g, "\n")
-		.replace(/\r/g, "\n")
-		.trim();
-	if (!normalized) return [];
-
-	const cues: SrtSyncCue[] = [];
-	for (const block of normalized.split(/\n{2,}/)) {
-		const lines = block.split("\n");
-		const timingLineIndex = lines.findIndex((line) => line.includes("-->"));
-		if (timingLineIndex < 0) continue;
-		const timing = lines[timingLineIndex].match(
-			/^\s*(\d{1,3}:\d{2}:\d{2}[,.]\d{1,4})\s*-->\s*(\d{1,3}:\d{2}:\d{2}[,.]\d{1,4})\s*$/,
-		);
-		if (!timing) continue;
-		const startSeconds = parseSrtTimestamp(timing[1]);
-		const endSeconds = parseSrtTimestamp(timing[2]);
-		if (
-			startSeconds == null ||
-			endSeconds == null ||
-			endSeconds <= startSeconds
-		) {
-			continue;
-		}
-		const rawIndex = timingLineIndex > 0 ? Number(lines[timingLineIndex - 1].trim()) : NaN;
-		cues.push({
-			index: Number.isFinite(rawIndex) ? rawIndex : cues.length + 1,
-			startSeconds,
-			endSeconds,
-			text: lines
-				.slice(timingLineIndex + 1)
-				.join(" ")
-				.replace(/<[^>]+>/g, "")
-				.replace(/\s+/g, " ")
-				.trim(),
-		});
-	}
-
-	return cues.sort((a, b) => a.startSeconds - b.startSeconds);
 }
 
 function splitSubtitleChunks(text: string) {
@@ -211,24 +144,61 @@ export function DarkCutSyncView() {
 		"",
 	);
 	const srtInputRef = useRef<HTMLInputElement>(null);
-	const srtCues = useMemo(() => parseSrtSyncCues(syncSrtText), [syncSrtText]);
+	const [srtStrategy, setSrtStrategy] = useProjectDraft<SrtSyncStrategy>(
+		"sync-srt-strategy", "one-per-cue",
+	);
+	const [srtOrder, setSrtOrder] = useProjectDraft<DarkCutSrtOrder>(
+		"sync-srt-order", "timeline",
+	);
+	const [srtScope, setSrtScope] = useProjectDraft<DarkCutSrtScope>(
+		"sync-srt-scope", "main",
+	);
+	const [confirmSrtPlan, setConfirmSrtPlan] = useState(false);
+	const srtAnalysis = useMemo(() => analyzeSceneSrt(syncSrtText), [syncSrtText]);
+	const srtCues = srtAnalysis.cues;
 
 	const mediaAssets = useEditor((e) => e.media.getAssets());
 	const activeScene = useEditor((e) => e.scenes.getActiveSceneOrNull());
-	const timelineVisualCount = useMemo(() => {
-		if (!activeScene) return 0;
-		const tracks = [
-			activeScene.tracks.main,
-			...activeScene.tracks.overlay,
-		] as Array<{ elements: readonly TimelineElement[] }>;
-		let count = 0;
+	const visualTimeline = useMemo(() => {
+		if (!activeScene) return [] as Array<{ name: string; startTime: number }>;
+		const tracks = (
+			srtScope === "main"
+				? [activeScene.tracks.main]
+				: [activeScene.tracks.main, ...activeScene.tracks.overlay]
+		) as Array<{ elements: readonly TimelineElement[] }>;
+		const visuals: Array<{ name: string; startTime: number }> = [];
 		for (const track of tracks) {
 			for (const element of track.elements) {
-				if (element.type === "image" || element.type === "video") count += 1;
+				if (element.type !== "image" && element.type !== "video") continue;
+				visuals.push({ name: element.name, startTime: element.startTime });
 			}
 		}
-		return count;
-	}, [activeScene]);
+		return visuals.sort((a, b) => a.startTime - b.startTime);
+	}, [activeScene, srtScope]);
+	const timelineVisualCount = visualTimeline.length;
+	const namedVisualCount = visualTimeline.filter(
+		(item) => sceneNumberFromName(item.name) != null,
+	).length;
+	const groupedPreview = useMemo(
+		() => makeSrtTimingGroups({
+			cues: srtCues,
+			visualCount: timelineVisualCount,
+			strategy: srtStrategy,
+		}),
+		[srtCues, timelineVisualCount, srtStrategy],
+	);
+	const hasSrtMismatch = srtCues.length !== timelineVisualCount;
+	const needsPlanConfirmation =
+		srtAnalysis.invalidBlocks > 0 ||
+		(srtStrategy === "one-per-cue" && hasSrtMismatch) ||
+		(srtStrategy === "fit-to-media" && timelineVisualCount > srtCues.length);
+	const canApplySrt =
+		srtCues.length > 0 &&
+		timelineVisualCount > 0 &&
+		srtAnalysis.overlaps === 0 &&
+		(!needsPlanConfirmation || confirmSrtPlan) &&
+		(srtOrder !== "scene-number" || namedVisualCount > 0);
+
 	useEffect(() => {
 		const asset = mediaAssets.find((a) => a.id === narrationAssetId);
 		if (asset?.url) setNarrationUrl(asset.url);
@@ -509,15 +479,16 @@ export function DarkCutSyncView() {
 		if (!file) return;
 		try {
 			const text = await file.text();
-			const cues = parseSrtSyncCues(text);
-			if (!cues.length) {
+			const analysis = analyzeSceneSrt(text);
+			if (!analysis.cues.length) {
 				throw new Error(
 					"Não encontrei marcações de tempo válidas nesse arquivo SRT.",
 				);
 			}
 			setSyncSrtText(text);
 			setSyncSrtFileName(file.name);
-			toast.success(`SRT carregado: ${cues.length} marcações de tempo.`);
+			setConfirmSrtPlan(false);
+			toast.success(`SRT carregado: ${analysis.cues.length} marcações de tempo.`);
 		} catch (error) {
 			toast.error(
 				error instanceof Error ? error.message : "Falha ao ler o arquivo SRT.",
@@ -526,51 +497,49 @@ export function DarkCutSyncView() {
 	};
 
 	const applySrtToTimeline = () => {
-		if (!srtCues.length) {
-			toast.error("Faça upload de um arquivo SRT primeiro.");
+		if (!srtCues.length || !timelineVisualCount) {
+			toast.error("Importe um SRT e coloque as imagens na timeline primeiro.");
 			return;
 		}
-		if (!timelineVisualCount) {
-			toast.error("Adicione as imagens ou vídeos à timeline antes de sincronizar.");
+		if (srtAnalysis.overlaps > 0) {
+			toast.error("O SRT possui tempos sobrepostos. Corrija antes de sincronizar.");
+			return;
+		}
+		if (needsPlanConfirmation && !confirmSrtPlan) {
+			toast.error("Confira e confirme as diferenças antes de modificar a timeline.");
+			return;
+		}
+		if (srtOrder === "scene-number" && !namedVisualCount) {
+			toast.error("Nenhum arquivo tem número de cena reconhecível.");
 			return;
 		}
 
 		const result = syncVisualsToSrt({
 			editor,
-			cues: srtCues.map((cue) => ({
-				startSeconds: cue.startSeconds,
-				endSeconds: cue.endSeconds,
-			})),
+			cues: srtCues,
+			strategy: srtStrategy,
+			scope: srtScope,
+			order: srtStrategy === "fit-to-media" ? "timeline" : srtOrder,
 		});
 
 		if (!result.changed) {
-			toast.error("Não encontrei mídias visuais para sincronizar.");
+			toast.error("Nenhuma mídia pôde ser associada aos trechos do SRT.");
 			return;
 		}
 
-		const details: string[] = [];
-		if (result.unmatchedVisuals > 0) {
-			details.push(`${result.unmatchedVisuals} mídia(s) ficaram sem marcação SRT`);
-		}
-		if (result.unmatchedCues > 0) {
-			details.push(`${result.unmatchedCues} marcação(ões) SRT ficaram sem mídia`);
-		}
-		if (result.clamped > 0) {
-			details.push(
-				`${result.clamped} vídeo(s) precisaram respeitar o limite de retime`,
-			);
-		}
-
-		toast.success(
-			`${result.changed} mídia(s) sincronizadas exatamente pelos tempos do SRT.`,
-			{
-				description:
-					details.length > 0
-						? details.join(" · ")
-						: "Início e duração das imagens/vídeos foram ajustados na timeline.",
-			},
-		);
+		const warnings = [
+			result.unmatchedVisuals ? `${result.unmatchedVisuals} mídia(s) não modificadas` : "",
+			result.unmatchedCues ? `${result.unmatchedCues} trecho(s) sem imagem` : "",
+			result.clamped ? `${result.clamped} vídeo(s) com ajuste limitado` : "",
+			result.groupedCues ? `${result.groupedCues} trechos combinados` : "",
+		].filter(Boolean);
+		toast.success(`${result.changed} mídia(s) ajustadas pelos tempos do SRT.`, {
+			description: warnings.length
+				? warnings.join(" · ")
+				: "Início e duração aplicados; narração e outras trilhas foram preservadas.",
+		});
 	};
+
 
 	const words = script.trim() ? script.trim().split(/\s+/).length : 0;
 
@@ -774,15 +743,14 @@ export function DarkCutSyncView() {
 			<section className="mt-3 space-y-3 rounded-md border border-primary/30 bg-primary/5 p-3">
 				<div className="flex items-start justify-between gap-3">
 					<div>
-						<div className="text-sm font-medium">Sincronizar imagens pelo SRT</div>
-						<div className="mt-0.5 text-[0.7rem] leading-relaxed text-muted-foreground">
-							Faça upload do SRT que contém o tempo de cada imagem. O DarkCut lê
-							cada início/fim e reposiciona as mídias visuais da timeline na mesma
-							ordem.
-						</div>
+						<div className="text-sm font-medium">Sincronização inteligente • SRT</div>
+						<p className="mt-1 text-[0.7rem] leading-relaxed text-muted-foreground">
+							O SRT define o começo e o fim de cada cena. Analise o plano
+							antes de reposicionar imagens; áudio, narração e legendas não são movidos.
+						</p>
 					</div>
-					<span className="rounded bg-primary/15 px-2 py-1 text-[0.62rem] font-medium text-primary">
-						SRT → TIMELINE
+					<span className="shrink-0 rounded bg-primary/15 px-2 py-1 text-[0.62rem] font-medium text-primary">
+						SRT → CENAS
 					</span>
 				</div>
 
@@ -797,85 +765,176 @@ export function DarkCutSyncView() {
 						event.currentTarget.value = "";
 					}}
 				/>
-
-				<div className="grid grid-cols-2 gap-2">
-					<Button
-						variant="secondary"
-						onClick={() => srtInputRef.current?.click()}
-					>
-						↑ Upload SRT
-					</Button>
-					<Button
-						disabled={!srtCues.length || !timelineVisualCount}
-						onClick={applySrtToTimeline}
-					>
-						Sincronizar timeline
-					</Button>
-				</div>
-
-				<div className="grid grid-cols-2 gap-2 text-[0.68rem]">
+				<Button variant="secondary" className="w-full" onClick={() => srtInputRef.current?.click()}>
+					↑ Importar arquivo SRT
+				</Button>
+				<div className="grid grid-cols-3 gap-2 text-[0.68rem]">
 					<div className="rounded border bg-background p-2">
-						<div className="text-muted-foreground">Marcações no SRT</div>
-						<div className="mt-0.5 text-sm font-semibold">{srtCues.length}</div>
+						<div className="text-muted-foreground">Trechos SRT</div>
+						<div className="mt-1 text-base font-semibold">{srtCues.length}</div>
 					</div>
 					<div className="rounded border bg-background p-2">
-						<div className="text-muted-foreground">Imagens/vídeos na timeline</div>
-						<div className="mt-0.5 text-sm font-semibold">{timelineVisualCount}</div>
+						<div className="text-muted-foreground">Mídias visuais</div>
+						<div className="mt-1 text-base font-semibold">{timelineVisualCount}</div>
+					</div>
+					<div className="rounded border bg-background p-2">
+						<div className="text-muted-foreground">Duração SRT</div>
+						<div className="mt-1 text-sm font-semibold">
+							{formatSrtTime(srtAnalysis.durationSeconds).slice(0, 8)}
+						</div>
 					</div>
 				</div>
+
+				<div className="grid gap-2 sm:grid-cols-2">
+					<label className="text-[0.68rem] text-muted-foreground">
+						Como distribuir os tempos?
+						<select
+							value={srtStrategy}
+							onChange={(event) => {
+								setSrtStrategy(event.target.value === "fit-to-media" ? "fit-to-media" : "one-per-cue");
+								setSrtOrder("timeline");
+								setConfirmSrtPlan(false);
+							}}
+							className="mt-1 h-9 w-full rounded-md border bg-background px-2 text-xs text-foreground"
+						>
+							<option value="one-per-cue">1 trecho = 1 imagem (exato)</option>
+							<option value="fit-to-media">Adaptar a menos imagens</option>
+						</select>
+					</label>
+					<label className="text-[0.68rem] text-muted-foreground">
+						Quais trilhas ajustar?
+						<select
+							value={srtScope}
+							onChange={(event) => {
+								setSrtScope(event.target.value === "all" ? "all" : "main");
+								setConfirmSrtPlan(false);
+							}}
+							className="mt-1 h-9 w-full rounded-md border bg-background px-2 text-xs text-foreground"
+						>
+							<option value="main">Somente trilha principal</option>
+							<option value="all">Todas as trilhas visuais</option>
+						</select>
+					</label>
+				</div>
+
+				{srtStrategy === "one-per-cue" && (
+					<label className="block text-[0.68rem] text-muted-foreground">
+						Como identificar cada imagem?
+						<select
+							value={srtOrder}
+							onChange={(event) => {
+								setSrtOrder(event.target.value === "scene-number" ? "scene-number" : "timeline");
+								setConfirmSrtPlan(false);
+							}}
+							className="mt-1 h-9 w-full rounded-md border bg-background px-2 text-xs text-foreground"
+						>
+							<option value="timeline">Ordem atual da timeline</option>
+							<option value="scene-number">Número no nome (Cena 001, Imagem 002...)</option>
+						</select>
+						{srtOrder === "scene-number" && (
+							<span className="mt-1 block">
+								{namedVisualCount} de {timelineVisualCount} mídia(s) com número reconhecido.
+								As outras ficam intactas.
+							</span>
+						)}
+					</label>
+				)}
 
 				{syncSrtFileName && (
-					<div className="rounded-md border bg-background p-2">
+					<div className="rounded-md border bg-background p-2 text-[0.68rem]">
 						<div className="flex items-center justify-between gap-2">
-							<div className="min-w-0">
-								<div className="truncate text-xs font-medium">{syncSrtFileName}</div>
-								<div className="text-[0.65rem] text-muted-foreground">
-									{srtCues.length === timelineVisualCount
-										? "Quantidade perfeita: uma marcação para cada mídia."
-										: `Diferença de ${Math.abs(srtCues.length - timelineVisualCount)} entre SRT e mídias. O DarkCut sincroniza os pares disponíveis.`}
-								</div>
-							</div>
-							<Button
-								variant="ghost"
-								size="sm"
-								onClick={() => {
-									setSyncSrtText("");
-									setSyncSrtFileName("");
-								}}
-							>
-								Remover
-							</Button>
+							<span className="min-w-0 truncate font-medium">{syncSrtFileName}</span>
+							<Button size="sm" variant="ghost" onClick={() => {
+								setSyncSrtText("");
+								setSyncSrtFileName("");
+								setConfirmSrtPlan(false);
+							}}>Remover</Button>
 						</div>
-
-						{srtCues.length > 0 && (
-							<div className="mt-2 max-h-36 space-y-1 overflow-y-auto">
-								{srtCues.slice(0, 6).map((cue) => (
-									<div
-										key={`${cue.index}-${cue.startSeconds}`}
-										className="grid grid-cols-[74px_1fr] gap-2 rounded border px-2 py-1.5 text-[0.65rem]"
-									>
-										<span className="font-medium text-primary">
-											{formatSrtTime(cue.startSeconds).slice(3, 8)}
-										</span>
-										<span className="truncate text-muted-foreground">
-											{cue.text || `Cena ${cue.index}`}
-										</span>
-									</div>
-								))}
-								{srtCues.length > 6 && (
-									<div className="pt-1 text-center text-[0.62rem] text-muted-foreground">
-										+ {srtCues.length - 6} marcações
-									</div>
-								)}
-							</div>
-						)}
+						<div className="mt-1 space-y-1 text-muted-foreground">
+							{srtAnalysis.nonStandardTimestamps > 0 && (
+								<p>{srtAnalysis.nonStandardTimestamps} marcação(ões) com milissegundos incomuns, interpretadas automaticamente.</p>
+							)}
+							{srtAnalysis.gaps > 0 && (
+								<p>{srtAnalysis.gaps} intervalo(s) sem fala. O DarkCut respeita esses espaços.</p>
+							)}
+							{srtAnalysis.invalidBlocks > 0 && (
+								<p className="text-destructive">{srtAnalysis.invalidBlocks} bloco(s) inválido(s) serão ignorados.</p>
+							)}
+							{srtAnalysis.overlaps > 0 && (
+								<p className="text-destructive">{srtAnalysis.overlaps} trecho(s) sobrepostos. Corrija o SRT antes de aplicar.</p>
+							)}
+						</div>
 					</div>
 				)}
 
+				{srtCues.length > 0 && (
+					<div className="rounded-md border bg-background p-2">
+						<div className="text-xs font-semibold">Prévia das primeiras cenas</div>
+						<div className="mt-2 max-h-44 space-y-1 overflow-y-auto">
+							{(srtOrder === "scene-number" && srtStrategy === "one-per-cue"
+								? srtCues.slice(0, 6).map((cue) => ({
+									firstCue: cue.index,
+									lastCue: cue.index,
+									startSeconds: cue.startSeconds,
+									endSeconds: cue.endSeconds,
+									text: cue.text,
+								}))
+								: groupedPreview.slice(0, 6)
+							).map((group, i) => (
+								<div key={`${group.firstCue}-${group.startSeconds}`} className="rounded border p-2 text-[0.68rem]">
+									<div className="flex justify-between gap-2 font-medium">
+										<span className="truncate">
+											{group.firstCue === group.lastCue
+												? `Cena ${group.firstCue}`
+												: `Cenas ${group.firstCue}–${group.lastCue}`}
+											{srtOrder === "timeline" && visualTimeline[i] ? ` · ${visualTimeline[i].name}` : ""}
+										</span>
+										<span className="shrink-0 tabular-nums text-primary">
+											{formatSrtTime(group.startSeconds).slice(3, 11)} → {formatSrtTime(group.endSeconds).slice(3, 11)}
+										</span>
+									</div>
+									<p className="mt-1 truncate text-muted-foreground">{group.text}</p>
+								</div>
+							))}
+							{groupedPreview.length > 6 && (
+								<p className="text-center text-[0.65rem] text-muted-foreground">
+									+ {groupedPreview.length - 6} mídias no plano
+								</p>
+							)}
+						</div>
+					</div>
+				)}
+
+				{srtCues.length > 0 && (
+					<p className="text-[0.68rem] leading-relaxed text-muted-foreground">
+						{srtStrategy === "fit-to-media" && timelineVisualCount < srtCues.length
+							? `Modo adaptativo: ${srtCues.length} falas organizadas para ${timelineVisualCount} mídia(s), mantendo os intervalos consecutivos.`
+							: hasSrtMismatch
+								? `Há ${srtCues.length} trechos e ${timelineVisualCount} mídias. No modo exato, somente as correspondências existentes são alteradas.`
+								: "Quantidade correspondente: os tempos do SRT podem ser aplicados cena a cena."}
+					</p>
+				)}
+
+				{needsPlanConfirmation && srtCues.length > 0 && (
+					<label className="flex items-start gap-2 text-[0.68rem] text-muted-foreground">
+						<input
+							type="checkbox"
+							className="mt-0.5"
+							checked={confirmSrtPlan}
+							onChange={(event) => setConfirmSrtPlan(event.target.checked)}
+						/>
+						Confirmo aplicar apenas os pares válidos, preservando as mídias que não tiverem correspondência.
+					</label>
+				)}
+
+				<Button className="w-full" disabled={!canApplySrt} onClick={applySrtToTimeline}>
+					{canApplySrt ? `Aplicar SRT na timeline (${groupedPreview.length} mídias)` : "Confira o SRT e a timeline"}
+				</Button>
 				<p className="text-[0.65rem] leading-relaxed text-muted-foreground">
-					O pareamento é sequencial: primeira mídia = primeira marcação SRT,
-					segunda mídia = segunda marcação, e assim por diante. Imagens recebem o
-					tempo exato; vídeos respeitam os limites seguros de velocidade.
+					O DarkCut muda somente tempo e posição dos visuais escolhidos.
+					O conteúdo da imagem não é analisado por IA nesta etapa;
+					o pareamento é pela ordem ou pelo número explícito no nome.
+					Se algum vídeo não puder atingir a duração pedida, o editor avisa.
 				</p>
 			</section>
 
