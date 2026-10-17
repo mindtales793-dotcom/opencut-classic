@@ -39,45 +39,61 @@ const getStorageLimitDescription = ({
 	})} is safely available in browser storage.`;
 };
 
+/**
+ * Decode in Chromium's image decoder rather than forcing hundreds of
+ * full-size HTMLImageElements through the main thread.
+ * The original File is never rescaled: only its small library thumbnail is.
+ */
 async function generateImageThumbnail({
 	imageFile,
 }: {
 	imageFile: File;
 }): Promise<{ thumbnailUrl: string; width: number; height: number }> {
+	const makeThumbnail = (image: CanvasImageSource, width: number, height: number) => {
+		const scale = Math.min(1, 720 / width, 405 / height);
+		const thumbnailUrl = renderThumbnailDataUrl({
+			width: Math.max(1, Math.round(width * scale)),
+			height: Math.max(1, Math.round(height * scale)),
+			draw: ({ context, width: targetWidth, height: targetHeight }) => {
+				context.drawImage(image, 0, 0, targetWidth, targetHeight);
+			},
+		});
+		return { thumbnailUrl, width, height };
+	};
+
+	if (typeof createImageBitmap === "function") {
+		try {
+			const bitmap = await createImageBitmap(imageFile);
+			try {
+				return makeThumbnail(bitmap, bitmap.width, bitmap.height);
+			} finally {
+				bitmap.close();
+			}
+		} catch {
+			// Some image formats need the classic browser image decoder.
+		}
+	}
+
 	return new Promise((resolve, reject) => {
 		const image = new window.Image();
 		const objectUrl = URL.createObjectURL(imageFile);
-
-		image.addEventListener("load", () => {
-			try {
-				const thumbnailUrl = renderThumbnailDataUrl({
-					width: image.naturalWidth,
-					height: image.naturalHeight,
-					draw: ({ context, width, height }) => {
-						context.drawImage(image, 0, 0, width, height);
-					},
-				});
-				resolve({
-					thumbnailUrl,
-					width: image.naturalWidth,
-					height: image.naturalHeight,
-				});
-			} catch (error) {
-				reject(
-					error instanceof Error ? error : new Error("Could not render image"),
-				);
-			} finally {
-				URL.revokeObjectURL(objectUrl);
-				image.remove();
-			}
-		});
-
-		image.addEventListener("error", () => {
+		const cleanup = () => {
 			URL.revokeObjectURL(objectUrl);
 			image.remove();
+		};
+		image.addEventListener("load", () => {
+			try {
+				resolve(makeThumbnail(image, image.naturalWidth, image.naturalHeight));
+			} catch (error) {
+				reject(error);
+			} finally {
+				cleanup();
+			}
+		}, { once: true });
+		image.addEventListener("error", () => {
+			cleanup();
 			reject(new Error("Could not load image"));
-		});
-
+		}, { once: true });
 		image.src = objectUrl;
 	});
 }
@@ -90,17 +106,22 @@ export async function processMediaAssets({
 	onProgress?: ({ progress }: { progress: number }) => void;
 }): Promise<ProcessedMediaAsset[]> {
 	const fileArray = Array.from(files);
-	const processedAssets: ProcessedMediaAsset[] = [];
-
+	if (!fileArray.length) return [];
 	const total = fileArray.length;
+	const processedAssets: Array<ProcessedMediaAsset | undefined> = new Array(total);
 	let completed = 0;
+	// Two concurrent image decoders give the low-power Intel/HDD computer
+	// responsiveness without thrashing memory. Complex video/audio stays serial.
+	const imageOnly = fileArray.every((file) => getMediaTypeFromFile({ file }) === "image");
+	const concurrency = imageOnly ? Math.min(2, total) : 1;
+	let cursor = 0;
 
-	for (const file of fileArray) {
+	const processOne = async (file: File, index: number) => {
 		const fileType = getMediaTypeFromFile({ file });
 
 		if (!fileType) {
 			toast.error(`Unsupported file type: ${file.name}`);
-			continue;
+			return;
 		}
 
 		const storageCheck = await storageService.canStoreFile({
@@ -114,7 +135,7 @@ export async function processMediaAssets({
 					availableBytes: storageCheck.availableBytes,
 				}),
 			});
-			continue;
+			return;
 		}
 
 		const url = URL.createObjectURL(file);
@@ -164,7 +185,7 @@ export async function processMediaAssets({
 				duration = await getMediaDuration({ file });
 			}
 
-			processedAssets.push({
+			processedAssets[index] = {
 				name: file.name,
 				type: fileType,
 				file,
@@ -175,23 +196,33 @@ export async function processMediaAssets({
 				height,
 				fps,
 				hasAudio,
-			});
+			};
 
-			await new Promise((resolve) => setTimeout(resolve, 0));
 
-			completed += 1;
-			if (onProgress) {
-				const percent = Math.round((completed / total) * 100);
-				onProgress({ progress: percent });
-			}
 		} catch (error) {
 			console.error("Error processing file:", file.name, error);
 			toast.error(`Failed to process ${file.name}`);
 			URL.revokeObjectURL(url);
 		}
-	}
+	};
 
-	return processedAssets;
+	const workers = Array.from({ length: concurrency }, async () => {
+		while (cursor < total) {
+			const index = cursor++;
+			try {
+				await processOne(fileArray[index], index);
+			} finally {
+				completed += 1;
+				onProgress?.({ progress: Math.round((completed / total) * 100) });
+				// Let the UI render periodically during very large folder imports.
+				if (completed % 10 === 0) {
+					await new Promise<void>((resolve) => setTimeout(resolve, 0));
+				}
+			}
+		}
+	});
+	await Promise.all(workers);
+	return processedAssets.filter((item): item is ProcessedMediaAsset => item !== undefined);
 }
 
 const getMediaDuration = ({ file }: { file: File }): Promise<number> => {
