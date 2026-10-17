@@ -1,8 +1,12 @@
 "use client";
 
 import { Separator } from "@/components/ui/separator";
-import { type Tab, useAssetsPanelStore } from "@/components/editor/panels/assets/assets-panel-store";
-import { TabBar } from "./tabbar";
+import {
+	type Tab,
+	useAssetsPanelStore,
+} from "@/components/editor/panels/assets/assets-panel-store";
+import { StudioWorkflow } from "@/darkcut/studio-workflow";
+import { PropertiesPanel } from "@/components/editor/panels/properties";
 import { Captions } from "@/subtitles/components/assets-view";
 import { MediaView } from "./views/assets";
 import { SettingsView } from "./views/settings";
@@ -10,35 +14,39 @@ import { SoundsView } from "@/sounds/components/assets-view";
 import { StickersView } from "@/stickers/components/assets-view";
 import { TextView } from "@/text/components/assets-view";
 import { EffectsView } from "@/effects/components/assets-view";
+import { DarkCutProductionView } from "./views/darkcut-production";
+import { DarkCutSyncView } from "./views/darkcut-sync";
+import { DarkCutVideosView } from "./views/darkcut-videos";
+import { DarkCutTemplatesView } from "./views/darkcut-templates";
+import { DarkCutTransitionsView } from "./views/darkcut-transitions";
 
 export function AssetsPanel() {
 	const { activeTab } = useAssetsPanelStore();
 
 	const viewMap: Record<Tab, React.ReactNode> = {
+		production: <DarkCutProductionView />,
+		sync: <DarkCutSyncView />,
+		videos: <DarkCutVideosView />,
 		media: <MediaView />,
 		sounds: <SoundsView />,
 		text: <TextView />,
 		stickers: <StickersView />,
 		effects: <EffectsView />,
-		transitions: (
-			<div className="text-muted-foreground p-4">
-				Transitions view coming soon...
-			</div>
-		),
+		templates: <DarkCutTemplatesView />,
+		transitions: <DarkCutTransitionsView />,
 		captions: <Captions />,
-		adjustment: (
-			<div className="text-muted-foreground p-4">
-				Adjustment view coming soon...
-			</div>
-		),
+		adjustment: <PropertiesPanel />,
 		settings: <SettingsView />,
 	};
 
 	return (
-		<div className="panel bg-background flex h-full rounded-sm border overflow-hidden">
-			<TabBar />
-			<Separator orientation="vertical" />
-			<div className="flex-1 overflow-hidden">{viewMap[activeTab]}</div>
+		<div className="studio-assets panel flex h-full flex-col overflow-hidden">
+			<StudioWorkflow />
+			<div className="studio-assets-scroll min-h-0 flex-1 overflow-y-auto overscroll-contain">
+				<div className="min-h-full min-w-0">
+					{viewMap[activeTab]}
+				</div>
+			</div>
 		</div>
 	);
 }

@@ -102,6 +102,12 @@ export class SceneExporter extends EventEmitter<SceneExporterEvents> {
 		const videoSource = new CanvasSource(this.renderer.getOutputCanvas(), {
 			codec: this.format === "webm" ? "vp9" : "avc",
 			bitrate: qualityMap[this.quality],
+			// Ask Chromium/WebCodecs to use the hardware encoder whenever the
+			// installed GPU/driver supports this codec. It safely falls back to
+			// software when hardware encode is unavailable.
+			hardwareAcceleration: "prefer-hardware",
+			latencyMode: "quality",
+			contentHint: "motion",
 		});
 
 		output.addVideoTrack(videoSource, { frameRate: fpsFloat });

@@ -11,16 +11,20 @@ import {
 	TextIcon,
 	Settings01Icon,
 	SlidersHorizontalIcon,
-	ColorsIcon,
+	Video01Icon,
 } from "@hugeicons/core-free-icons";
 import { HugeiconsIcon, type IconSvgElement } from "@hugeicons/react";
 
 export const TAB_KEYS = [
+	"production",
+	"sync",
+	"videos",
 	"media",
 	"sounds",
 	"text",
 	"stickers",
 	"effects",
+	"templates",
 	"transitions",
 	"captions",
 	"adjustment",
@@ -36,17 +40,29 @@ const createHugeiconsIcon =
 	);
 
 export const tabs = {
+	production: {
+		icon: createHugeiconsIcon({ icon: MagicWand05Icon }),
+		label: "Produção",
+	},
+	sync: {
+		icon: createHugeiconsIcon({ icon: ArrowRightDoubleIcon }),
+		label: "Sincronização",
+	},
+	videos: {
+		icon: createHugeiconsIcon({ icon: Video01Icon }),
+		label: "Vídeos",
+	},
 	media: {
 		icon: createHugeiconsIcon({ icon: Folder03Icon }),
-		label: "Media",
+		label: "Mídia",
 	},
 	sounds: {
 		icon: createHugeiconsIcon({ icon: HeadphonesIcon }),
-		label: "Sounds",
+		label: "Áudio",
 	},
 	text: {
 		icon: createHugeiconsIcon({ icon: TextIcon }),
-		label: "Text",
+		label: "Texto",
 	},
 	stickers: {
 		icon: createHugeiconsIcon({ icon: Happy01Icon }),
@@ -54,23 +70,27 @@ export const tabs = {
 	},
 	effects: {
 		icon: createHugeiconsIcon({ icon: MagicWand05Icon }),
-		label: "Effects",
+		label: "Efeitos",
+	},
+	templates: {
+		icon: createHugeiconsIcon({ icon: MagicWand05Icon }),
+		label: "Templates",
 	},
 	transitions: {
 		icon: createHugeiconsIcon({ icon: ArrowRightDoubleIcon }),
-		label: "Transitions",
+		label: "Transições",
 	},
 	captions: {
 		icon: createHugeiconsIcon({ icon: ClosedCaptionIcon }),
-		label: "Captions",
+		label: "Legendas",
 	},
 	adjustment: {
 		icon: createHugeiconsIcon({ icon: SlidersHorizontalIcon }),
-		label: "Adjustment",
+		label: "Ajustes",
 	},
 	settings: {
 		icon: createHugeiconsIcon({ icon: Settings01Icon }),
-		label: "Settings",
+		label: "Configurações",
 	},
 } satisfies Record<
 	Tab,
@@ -78,7 +98,7 @@ export const tabs = {
 >;
 
 export type MediaViewMode = "grid" | "list";
-export type MediaSortKey = "name" | "type" | "duration" | "size";
+export type MediaSortKey = "name" | "type" | "duration" | "size" | "date" | "scene";
 export type MediaSortOrder = "asc" | "desc";
 
 interface AssetsPanelStore {
@@ -99,7 +119,7 @@ interface AssetsPanelStore {
 export const useAssetsPanelStore = create<AssetsPanelStore>()(
 	persist(
 		(set) => ({
-			activeTab: "media",
+			activeTab: "production",
 			setActiveTab: (tab) => set({ activeTab: tab }),
 			highlightMediaId: null,
 			requestRevealMedia: (mediaId) =>
@@ -107,7 +127,7 @@ export const useAssetsPanelStore = create<AssetsPanelStore>()(
 			clearHighlight: () => set({ highlightMediaId: null }),
 			mediaViewMode: "grid",
 			setMediaViewMode: (mode) => set({ mediaViewMode: mode }),
-			mediaSortBy: "name",
+			mediaSortBy: "scene",
 			mediaSortOrder: "asc",
 			setMediaSort: ({ key, order }) =>
 				set({ mediaSortBy: key, mediaSortOrder: order }),

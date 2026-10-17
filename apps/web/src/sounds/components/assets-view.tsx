@@ -1,6 +1,8 @@
 "use client";
 
+import { useSoundPreview, stopSoundPreview } from "@/sounds/use-sound-preview";
 import { useEffect, useState } from "react";
+import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import {
 	Dialog,
@@ -24,6 +26,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { useInfiniteScroll } from "@/hooks/use-infinite-scroll";
 import { useSoundSearch } from "@/sounds/use-sound-search";
 import { useSoundsStore } from "@/sounds/sounds-store";
+import { useDarkCutProductionStore } from "@/components/editor/panels/assets/darkcut-production-store";
 import type { SavedSound, SoundEffect } from "@/sounds/types";
 import { cn } from "@/utils/ui";
 import {
@@ -38,14 +41,21 @@ import { HugeiconsIcon } from "@hugeicons/react";
 export function SoundsView() {
 	return (
 		<div className="flex h-full flex-col">
-			<Tabs defaultValue="sound-effects" className="flex h-full flex-col">
+			<Tabs defaultValue="music" className="flex h-full flex-col">
 				<div className="px-3 pt-4 pb-0">
-					<TabsList>
-						<TabsTrigger value="sound-effects">Sound effects</TabsTrigger>
-						<TabsTrigger value="saved">Saved</TabsTrigger>
+					<TabsList className="w-full">
+						<TabsTrigger value="music">Músicas</TabsTrigger>
+						<TabsTrigger value="sound-effects">Efeitos</TabsTrigger>
+						<TabsTrigger value="saved">Favoritos</TabsTrigger>
 					</TabsList>
 				</div>
 				<Separator className="my-4" />
+				<TabsContent
+					value="music"
+					className="mt-0 flex min-h-0 flex-1 flex-col p-5 pt-0"
+				>
+					<MusicLibraryView />
+				</TabsContent>
 				<TabsContent
 					value="sound-effects"
 					className="mt-0 flex min-h-0 flex-1 flex-col p-5 pt-0"
@@ -59,6 +69,184 @@ export function SoundsView() {
 					<SavedSoundsView />
 				</TabsContent>
 			</Tabs>
+		</div>
+	);
+}
+
+function MusicLibraryView() {
+	const [query, setQuery] = useState("");
+	const [sounds, setSounds] = useState<SoundEffect[]>([]);
+	const [page, setPage] = useState(1);
+	const [hasMore, setHasMore] = useState(false);
+	const [isLoading, setIsLoading] = useState(false);
+	const { playingId, playSound } = useSoundPreview();
+	const jamendoClientId = useDarkCutProductionStore(
+		(state) => state.jamendoClientId,
+	);
+	const loadSavedSounds = useSoundsStore((state) => state.loadSavedSounds);
+
+	const categories = [
+		{ label: "Documental", query: "documentary instrumental" },
+		{ label: "Calma", query: "calm ambient instrumental" },
+		{ label: "Esperança", query: "hopeful inspirational instrumental" },
+		{ label: "Cinemática", query: "cinematic instrumental" },
+		{ label: "Lo-fi", query: "lofi background music" },
+		{ label: "Tecnologia", query: "technology corporate instrumental" },
+	];
+
+	const fetchMusic = async ({
+		search,
+		nextPage = 1,
+		append = false,
+	}: {
+		search: string;
+		nextPage?: number;
+		append?: boolean;
+	}) => {
+		setIsLoading(true);
+		try {
+			if (!jamendoClientId.trim()) {
+				setSounds([]);
+				setHasMore(false);
+				return;
+			}
+
+			const response = await fetch("/api/darkcut/music/search", {
+				method: "POST",
+				headers: { "Content-Type": "application/json" },
+				body: JSON.stringify({
+					clientId: jamendoClientId,
+					query: search,
+					page: nextPage,
+					limit: 30,
+				}),
+			});
+			const data = await response.json();
+			if (!response.ok) {
+				throw new Error(
+					data.error || `Falha ao carregar músicas: ${response.status}`,
+				);
+			}
+			setSounds((current) =>
+				append ? [...current, ...(data.results ?? [])] : (data.results ?? []),
+			);
+			setPage(nextPage);
+			setHasMore(Boolean(data.hasMore));
+		} catch (error) {
+			console.error("Failed to load background music:", error);
+			setSounds((current) => (append ? current : []));
+		} finally {
+			setIsLoading(false);
+		}
+	};
+
+	useEffect(() => {
+		void loadSavedSounds();
+	}, [loadSavedSounds]);
+
+	useEffect(() => {
+		const timeout = setTimeout(
+			() => {
+				void fetchMusic({ search: query, nextPage: 1 });
+			},
+			query.trim() ? 350 : 0,
+		);
+		return () => clearTimeout(timeout);
+	}, [query, jamendoClientId]);
+
+	return (
+		<div className="mt-1 flex h-full min-h-0 flex-col gap-3">
+			<div>
+				<h3 className="text-sm font-semibold">Músicas de fundo</h3>
+				<p className="mt-1 text-[0.68rem] text-muted-foreground">
+					Ouça uma prévia e adicione a música em uma faixa de áudio da timeline.
+				</p>
+			</div>
+
+			<div className="flex items-center gap-2">
+				<Input
+					placeholder="Buscar: calma, documental, lo-fi..."
+					className="w-full"
+					containerClassName="w-full"
+					value={query}
+					onChange={({ currentTarget }) => setQuery(currentTarget.value)}
+					showClearIcon
+					onClear={() => setQuery("")}
+				/>
+				<span
+					className="shrink-0 rounded-md border px-2 py-2 text-[0.65rem] text-muted-foreground"
+					title="Fonte da biblioteca"
+				>
+					Jamendo
+				</span>
+			</div>
+
+			<div className="flex gap-1 overflow-x-auto pb-1 scrollbar-thin">
+				{categories.map((category) => (
+					<Button
+						key={category.label}
+						variant="outline"
+						size="sm"
+						className="h-7 shrink-0 px-2 text-[0.65rem]"
+						onClick={() => setQuery(category.query)}
+					>
+						{category.label}
+					</Button>
+				))}
+			</div>
+
+			<div className="min-h-0 flex-1 overflow-hidden">
+				<ScrollArea className="h-full">
+					<div className="flex flex-col gap-3 pr-1">
+						{isLoading && sounds.length === 0 && (
+							<div className="py-6 text-center text-xs text-muted-foreground">
+								Carregando músicas...
+							</div>
+						)}
+
+						{!jamendoClientId.trim() && (
+							<div className="rounded-md border border-primary/30 bg-primary/5 p-3 text-xs text-muted-foreground">
+								Configure o Jamendo Client ID em Configurações &gt; APIs para
+								carregar as músicas.
+							</div>
+						)}
+
+						{jamendoClientId.trim() && !isLoading && sounds.length === 0 && (
+							<div className="rounded-md border bg-background p-3 text-xs text-muted-foreground">
+								Nenhuma música encontrada. Tente outro estilo ou termo.
+							</div>
+						)}
+
+						{sounds.map((sound) => (
+							<AudioItem
+								key={sound.id}
+								sound={sound}
+								isPlaying={playingId === sound.id}
+								onPlay={playSound}
+								showDuration
+							/>
+						))}
+
+						{hasMore && (
+							<Button
+								variant="outline"
+								size="sm"
+								className="mb-2 w-full"
+								disabled={isLoading}
+								onClick={() =>
+									void fetchMusic({
+										search: query,
+										nextPage: page + 1,
+										append: true,
+									})
+								}
+							>
+								{isLoading ? "Carregando..." : "Carregar mais músicas"}
+							</Button>
+						)}
+					</div>
+				</ScrollArea>
+			</div>
 		</div>
 	);
 }
@@ -94,10 +282,7 @@ function SoundEffectsView() {
 		commercialOnly: showCommercialOnly,
 	});
 
-	const [playingId, setPlayingId] = useState<number | null>(null);
-	const [audioElement, setAudioElement] = useState<HTMLAudioElement | null>(
-		null,
-	);
+	const { playingId, playSound } = useSoundPreview();
 
 	const { scrollAreaRef, handleScroll } = useInfiniteScroll({
 		onLoadMore: loadMore,
@@ -196,33 +381,6 @@ function SoundEffectsView() {
 
 	const displayedSounds = searchQuery ? searchResults : topSoundEffects;
 
-	const playSound = ({ sound }: { sound: SoundEffect }) => {
-		if (playingId === sound.id) {
-			audioElement?.pause();
-			setPlayingId(null);
-			return;
-		}
-
-		audioElement?.pause();
-
-		if (sound.previewUrl) {
-			const audio = new Audio(sound.previewUrl);
-			audio.addEventListener("ended", () => {
-				setPlayingId(null);
-			});
-			audio.addEventListener("error", () => {
-				setPlayingId(null);
-			});
-			audio.play().catch((error) => {
-				console.error("Failed to play sound preview:", error);
-				setPlayingId(null);
-			});
-
-			setAudioElement(audio);
-			setPlayingId(sound.id);
-		}
-	};
-
 	return (
 		<div className="mt-1 flex h-full flex-col gap-5">
 			<div className="flex items-center gap-3">
@@ -312,43 +470,13 @@ function SavedSoundsView() {
 		clearSavedSounds,
 	} = useSoundsStore();
 
-	const [playingId, setPlayingId] = useState<number | null>(null);
-	const [audioElement, setAudioElement] = useState<HTMLAudioElement | null>(
-		null,
-	);
+	const { playingId, playSound } = useSoundPreview();
 
 	const [showClearDialog, setShowClearDialog] = useState(false);
 
 	useEffect(() => {
 		loadSavedSounds();
 	}, [loadSavedSounds]);
-
-	const playSound = ({ sound }: { sound: SoundEffect }) => {
-		if (playingId === sound.id) {
-			audioElement?.pause();
-			setPlayingId(null);
-			return;
-		}
-
-		audioElement?.pause();
-
-		if (sound.previewUrl) {
-			const audio = new Audio(sound.previewUrl);
-			audio.addEventListener("ended", () => {
-				setPlayingId(null);
-			});
-			audio.addEventListener("error", () => {
-				setPlayingId(null);
-			});
-			audio.play().catch((error) => {
-				console.error("Failed to play sound preview:", error);
-				setPlayingId(null);
-			});
-
-			setAudioElement(audio);
-			setPlayingId(sound.id);
-		}
-	};
 
 	const convertToSoundEffect = ({
 		savedSound,
@@ -482,37 +610,65 @@ interface AudioItemProps {
 	sound: SoundEffect;
 	isPlaying: boolean;
 	onPlay: ({ sound }: { sound: SoundEffect }) => void;
+	showDuration?: boolean;
 }
 
-function AudioItem({ sound, isPlaying, onPlay }: AudioItemProps) {
+function formatSoundDuration(seconds: number) {
+	if (!Number.isFinite(seconds) || seconds <= 0) return "";
+	const minutes = Math.floor(seconds / 60);
+	const rest = Math.floor(seconds % 60);
+	return `${minutes}:${String(rest).padStart(2, "0")}`;
+}
+
+function AudioItem({
+	sound,
+	isPlaying,
+	onPlay,
+	showDuration = false,
+}: AudioItemProps) {
 	const { addSoundToTimeline, isSoundSaved, toggleSavedSound } =
 		useSoundsStore();
+	const [isAdding, setIsAdding] = useState(false);
+	const [isSaving, setIsSaving] = useState(false);
 	const isSaved = isSoundSaved({ soundId: sound.id });
 
 	const handleClick = () => {
 		onPlay({ sound });
 	};
 
-	const handleSaveClick = ({
-		stopPropagation,
-	}: React.MouseEvent<HTMLButtonElement>) => {
-		stopPropagation();
-		toggleSavedSound({ soundEffect: sound });
+	const handleSaveClick = async (
+		event: React.MouseEvent<HTMLButtonElement>,
+	) => {
+		event.stopPropagation();
+		if (isSaving) return;
+		setIsSaving(true);
+		try {
+			await toggleSavedSound({ soundEffect: sound });
+		} finally {
+			setIsSaving(false);
+		}
 	};
 
-	const handleAddToTimeline = async ({
-		stopPropagation,
-	}: React.MouseEvent<HTMLButtonElement>) => {
-		stopPropagation();
-		await addSoundToTimeline({ sound });
+	const handleAddToTimeline = async (
+		event: React.MouseEvent<HTMLButtonElement>,
+	) => {
+		event.stopPropagation();
+		if (isAdding) return;
+		setIsAdding(true);
+		try {
+			stopSoundPreview();
+			await addSoundToTimeline({ sound });
+		} finally {
+			setIsAdding(false);
+		}
 	};
-
 	return (
 		<div className="group flex items-center gap-3 opacity-100 hover:opacity-75">
 			<button
 				type="button"
 				className="flex min-w-0 flex-1 items-center gap-3 text-left"
 				onClick={handleClick}
+				aria-label={`${isPlaying ? "Pausar" : "Ouvir"} ${sound.name}`}
 			>
 				<div className="bg-accent relative flex size-12 shrink-0 items-center justify-center overflow-hidden rounded-md">
 					<div className="from-primary/20 absolute inset-0 bg-gradient-to-br to-transparent" />
@@ -527,6 +683,9 @@ function AudioItem({ sound, isPlaying, onPlay }: AudioItemProps) {
 					<p className="truncate text-sm font-medium">{sound.name}</p>
 					<span className="text-muted-foreground block truncate text-xs">
 						{sound.username}
+						{showDuration && sound.duration
+							? ` · ${formatSoundDuration(sound.duration)}`
+							: ""}
 					</span>
 				</div>
 			</button>
@@ -537,9 +696,15 @@ function AudioItem({ sound, isPlaying, onPlay }: AudioItemProps) {
 					size="icon"
 					className="text-muted-foreground hover:text-foreground w-auto !opacity-100"
 					onClick={handleAddToTimeline}
-					title="Add to timeline"
+					aria-label={`Adicionar ${sound.name} à timeline`}
+					disabled={isAdding}
+					title={isAdding ? "Adicionando..." : "Adicionar à timeline"}
 				>
-					<HugeiconsIcon icon={PlusSignIcon} />
+					{isAdding ? (
+						<span className="px-1 text-[0.65rem]">...</span>
+					) : (
+						<HugeiconsIcon icon={PlusSignIcon} />
+					)}
 				</Button>
 				<Button
 					variant="text"
@@ -550,7 +715,14 @@ function AudioItem({ sound, isPlaying, onPlay }: AudioItemProps) {
 							: "text-muted-foreground"
 					}`}
 					onClick={handleSaveClick}
-					title={isSaved ? "Remove from saved" : "Save sound"}
+					disabled={isSaving}
+					title={
+						isSaving
+							? "Salvando..."
+							: isSaved
+								? "Remover dos favoritos"
+								: "Salvar nos favoritos"
+					}
 				>
 					<HugeiconsIcon
 						icon={FavouriteIcon}

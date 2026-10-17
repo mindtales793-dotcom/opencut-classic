@@ -87,6 +87,12 @@ import { DragLine } from "./drag-line";
 import { invokeAction } from "@/actions";
 import { resolveTimelineElementIntersections } from "./selection-hit-testing";
 import { cn } from "@/utils/ui";
+import { toast } from "sonner";
+import {
+	ApplySilenceCuts,
+	findTrackGaps,
+	loadAudioCore,
+} from "@/darkcut/silence";
 
 const TRACKS_CONTAINER_MAX_HEIGHT = 800;
 const FALLBACK_CONTAINER_WIDTH = 1000;
@@ -135,6 +141,44 @@ export function Timeline() {
 		[scene],
 	);
 	const mainTrackId = scene?.tracks.main.id ?? null;
+
+	const initializedScenes = useRef(new Set<string>());
+	useEffect(() => {
+		if (!scene?.isMain || initializedScenes.current.has(scene.id)) return;
+		// Initialize once; deleting or undoing a lane must not recreate it.
+		initializedScenes.current.add(scene.id);
+
+		const allTracks = [
+			...scene.tracks.overlay,
+			scene.tracks.main,
+			...scene.tracks.audio,
+		];
+		const hasNamedTrack = (name: string) =>
+			allTracks.some((track) => track.name === name);
+
+		const requiredTracks: Array<{
+			type: TimelineTrack["type"];
+			name: string;
+		}> = [
+			{ type: "video", name: "V2 • Sobreposição" },
+			{ type: "text", name: "T1 • Textos / Legendas" },
+			{ type: "graphic", name: "G1 • Stickers / Gráficos" },
+			{ type: "effect", name: "FX1 • Efeitos visuais" },
+			{ type: "audio", name: "A1 • Narração" },
+			{ type: "audio", name: "A2 • Música de fundo" },
+			{ type: "audio", name: "A3 • Efeitos sonoros" },
+		];
+
+		for (const required of requiredTracks) {
+			if (!hasNamedTrack(required.name)) {
+				timeline.addTrack({
+					type: required.type,
+					name: required.name,
+				});
+			}
+		}
+	}, [scene, timeline]);
+
 	const seek = (time: MediaTime) => editor.playback.seek({ time });
 
 	const timelineRef = useRef<HTMLDivElement>(null);
@@ -619,7 +663,37 @@ function TrackLabelsPanel({
 				: [],
 		[scene],
 	);
-	const { selectedElements } = useElementSelection();
+	const { selectedElements, setElementSelection, clearElementSelection } = useElementSelection();
+
+	const selectTrackElements = (track: TimelineTrack) => {
+		if (!track.elements.length) {
+			toast.info(`A faixa ${track.name} está vazia.`);
+			return;
+		}
+		const allSelected =
+			selectedElements.length === track.elements.length &&
+			track.elements.every((element) =>
+				selectedElements.some(
+					(selected) =>
+						selected.trackId === track.id &&
+						selected.elementId === element.id,
+				),
+			);
+		if (allSelected) {
+			clearElementSelection();
+			toast.info(`Seleção da faixa ${track.name} desfeita.`);
+			return;
+		}
+		setElementSelection({
+			elements: track.elements.map((element) => ({
+				trackId: track.id,
+				elementId: element.id,
+			})),
+		});
+		toast.success(`${track.elements.length} clipe(s) selecionados em ${track.name}.`, {
+			description: "Somente os clipes desta faixa foram selecionados.",
+		});
+	};
 	const tracksWithSelection = useMemo(
 		() => new Set(selectedElements.map((el) => el.trackId)),
 		[selectedElements],
@@ -640,9 +714,46 @@ function TrackLabelsPanel({
 			style={{ width: `${TIMELINE_TRACK_LABELS_COLUMN_WIDTH_PX}px` }}
 		>
 			<div
-				className="shrink-0"
+				className="flex shrink-0 items-center justify-between gap-1 border-b px-2"
 				style={{ height: timelineHeaderHeight || 48 }}
-			/>
+			>
+				<span className="text-[0.62rem] font-semibold tracking-wide text-muted-foreground">
+					FAIXAS
+				</span>
+				<div className="flex items-center gap-1">
+					<button
+						type="button"
+						className="rounded border px-1.5 py-0.5 text-[0.6rem] text-muted-foreground hover:bg-muted"
+						title="Adicionar faixa visual"
+						onClick={() => {
+							const visualCount =
+								1 +
+								(scene?.tracks.overlay.filter((track) => track.type === "video")
+									.length ?? 0);
+							editor.timeline.addTrack({
+								type: "video",
+								name: `V${visualCount + 1} • Vídeo / Imagem`,
+							});
+						}}
+					>
+						+V
+					</button>
+					<button
+						type="button"
+						className="rounded border px-1.5 py-0.5 text-[0.6rem] text-muted-foreground hover:bg-muted"
+						title="Adicionar faixa de áudio"
+						onClick={() => {
+							const audioCount = scene?.tracks.audio.length ?? 0;
+							editor.timeline.addTrack({
+								type: "audio",
+								name: `A${audioCount + 1} • Áudio`,
+							});
+						}}
+					>
+						+A
+					</button>
+				</div>
+			</div>
 			<div ref={trackLabelsRef} className="flex-1 overflow-hidden">
 				<div ref={trackLabelsScrollRef} className="size-full overflow-hidden">
 					{tracks.length > 0 && (
@@ -667,9 +778,39 @@ function TrackLabelsPanel({
 										}}
 									>
 										<div
-											className="flex shrink-0 items-center justify-end gap-2 px-3"
+											className="flex shrink-0 items-center justify-between gap-2 px-2"
 											style={{ height: `${baseHeight}px` }}
 										>
+											<span
+												className="min-w-0 flex-1 truncate text-[0.67rem] font-medium text-muted-foreground"
+												title={track.name}
+											>
+												{track.name === "Main Track"
+													? "V1 • Vídeo / Imagens"
+													: track.name}
+											</span>
+											<div className="flex shrink-0 items-center gap-1">
+											<button
+												type="button"
+												disabled={track.elements.length === 0}
+												onClick={() => selectTrackElements(track)}
+												title={`Selecionar todos os ${track.elements.length} clipes de ${track.name}. Clique novamente para desfazer.`}
+												aria-label={`Selecionar somente clipes da faixa ${track.name}`}
+												className={cn(
+													"rounded border px-1.5 py-0.5 text-[0.63rem] font-semibold transition-colors disabled:opacity-40",
+													track.elements.length > 0 &&
+														selectedElements.length === track.elements.length &&
+														track.elements.every((element) =>
+															selectedElements.some((selected) =>
+																selected.trackId === track.id && selected.elementId === element.id,
+															),
+														)
+														? "border-primary bg-primary/20 text-primary"
+														: "border-border/70 text-muted-foreground hover:border-primary hover:bg-primary/10 hover:text-primary",
+												)}
+											>
+												☑
+											</button>
 											{canTrackHaveAudio(track) && (
 												<TrackToggleIcon
 													isOff={track.muted}
@@ -699,6 +840,7 @@ function TrackLabelsPanel({
 												/>
 											)}
 											<TrackIcon track={track} />
+											</div>
 										</div>
 										{expandedRows.length > 0 && (
 											<PropertyTree rows={expandedRows} />
@@ -751,7 +893,8 @@ function TimelineTrackRows({
 	isDragOver: boolean;
 	dropTarget: DropTarget | null;
 }) {
-	const timeline = useEditor((e) => e.timeline);
+	const editor = useEditor();
+	const timeline = editor.timeline;
 	const scene = useEditor((e) => e.scenes.getActiveSceneOrNull());
 	const tracks = useMemo<TimelineTrack[]>(
 		() =>
@@ -760,7 +903,7 @@ function TimelineTrackRows({
 				: [],
 		[scene],
 	);
-	const { selectedElements } = useElementSelection();
+	const { selectedElements, setElementSelection } = useElementSelection();
 	const tracksWithSelection = useMemo(
 		() => new Set(selectedElements.map((el) => el.trackId)),
 		[selectedElements],
@@ -784,6 +927,46 @@ function TimelineTrackRows({
 			: (null as ReadonlyMap<string, MediaTime> | null),
 		[dragView],
 	);
+	const removeSpacesFromTrack = async (track: TimelineTrack) => {
+		if (!scene) return;
+
+		const gaps = findTrackGaps(scene, track.id);
+		if (!gaps.length) {
+			toast.info(`Não encontrei espaços vazios em ${track.name}.`);
+			return;
+		}
+
+		const toastId = `remove-gaps-${track.id}`;
+		toast.loading("Fechando espaços vazios...", { id: toastId });
+		try {
+			const core = await loadAudioCore();
+			editor.playback.pause();
+			const previousRipple = editor.command.isRippleEnabled;
+			try {
+				editor.command.isRippleEnabled = false;
+				editor.command.execute({
+					command: new ApplySilenceCuts(editor, scene, gaps, core),
+				});
+			} finally {
+				editor.command.isRippleEnabled = previousRipple;
+			}
+
+			const removedSeconds = gaps.reduce((sum, [start, end]) => sum + end - start, 0);
+			toast.success(`${gaps.length} espaço(s) removido(s).`, {
+				id: toastId,
+				description: `${removedSeconds.toFixed(
+					2,
+				)}s fechados em todas as faixas para manter a sincronização. Ctrl+Z desfaz.`,
+			});
+		} catch (error) {
+			toast.error("Falha ao remover espaços.", {
+				id: toastId,
+				description:
+					error instanceof Error ? error.message : "Erro desconhecido.",
+			});
+		}
+	};
+
 	const sortedTracks = useMemo(() => {
 		if (!draggingElementIds)
 			return tracks.map((track, index) => ({ track, index }));
@@ -835,7 +1018,21 @@ function TimelineTrackRows({
 							/>
 						</div>
 					</ContextMenuTrigger>
-					<ContextMenuContent className="w-40">
+					<ContextMenuContent className="w-48">
+						<ContextMenuItem
+							disabled={track.elements.length === 0}
+							onClick={() => {
+								setElementSelection({
+									elements: track.elements.map((element) => ({
+										trackId: track.id,
+										elementId: element.id,
+									})),
+								});
+								toast.success(`${track.elements.length} clipes selecionados em ${track.name}.`);
+							}}
+						>
+							☑ Selecionar todos desta faixa
+						</ContextMenuItem>
 						<ContextMenuItem
 							icon={<HugeiconsIcon icon={TaskAdd02Icon} />}
 							onClick={(event: React.MouseEvent) => {
@@ -844,6 +1041,15 @@ function TimelineTrackRows({
 							}}
 						>
 							Paste elements
+						</ContextMenuItem>
+						<ContextMenuItem
+							icon={<HugeiconsIcon icon={MagicWand05Icon} />}
+							onClick={(event: React.MouseEvent) => {
+								event.stopPropagation();
+								void removeSpacesFromTrack(track);
+							}}
+						>
+							🧲 Remover espaços vazios
 						</ContextMenuItem>
 						<ContextMenuItem
 							icon={<HugeiconsIcon icon={VolumeHighIcon} />}

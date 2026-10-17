@@ -1,0 +1,40 @@
+name: DarkCut Checks
+
+on:
+  pull_request:
+    branches: [main]
+  push:
+    branches: [darkcut-studio]
+
+jobs:
+  web:
+    runs-on: ubuntu-latest
+    env:
+      NEXT_TELEMETRY_DISABLED: "1"
+      NEXT_PUBLIC_SITE_URL: "http://127.0.0.1:3217"
+      NEXT_PUBLIC_MARBLE_API_URL: "http://127.0.0.1:3217"
+      DATABASE_URL: "postgresql://darkcut:darkcut@127.0.0.1:5432/darkcut"
+      BETTER_AUTH_SECRET: "darkcut-ci-build-secret-2026"
+      UPSTASH_REDIS_REST_URL: "http://127.0.0.1:3217"
+      UPSTASH_REDIS_REST_TOKEN: "darkcut-local-disabled"
+      MARBLE_WORKSPACE_KEY: "darkcut-local-disabled"
+      FREESOUND_CLIENT_ID: "darkcut-local-disabled"
+      FREESOUND_API_KEY: "darkcut-local-disabled"
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Bun
+        uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: 1.2.18
+
+      - name: Install dependencies
+        run: bun install
+
+      - name: Test SRT and automotive visual scene engines
+        run: bun test apps/web/src/darkcut/__tests__/srt-scene-sync.test.ts apps/web/src/darkcut/__tests__/retro-automotive.test.ts apps/web/src/darkcut/__tests__/media-search-intelligence.test.ts
+
+      - name: Build DarkCut web runtime
+        run: bun run build:web

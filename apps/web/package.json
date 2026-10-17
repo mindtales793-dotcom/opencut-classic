@@ -77,7 +77,9 @@
     "use-deep-compare-effect": "^1.8.1",
     "wavesurfer.js": "^7.9.8",
     "zod": "4.3.6",
-    "zustand": "^5.0.2"
+    "zustand": "^5.0.2",
+    "remotion": "4.0.535",
+    "@remotion/player": "4.0.535"
   },
   "devDependencies": {
     "@content-collections/core": "^0.14.1",

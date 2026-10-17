@@ -1,7 +1,7 @@
 "use client";
 
 import Image from "next/image";
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { PanelView } from "@/components/editor/panels/assets/views/base-panel";
 import { MediaDragOverlay } from "@/components/editor/panels/assets/drag-overlay";
 import { DraggableItem } from "@/components/editor/panels/assets/draggable-item";
@@ -26,7 +26,15 @@ import {
 	TooltipTrigger,
 } from "@/components/ui/tooltip";
 import { DEFAULT_NEW_ELEMENT_DURATION } from "@/timeline/creation";
-import { mediaTimeFromSeconds, type MediaTime } from "@/wasm";
+import { TracksSnapshotCommand } from "@/commands/timeline";
+import { generateUUID } from "@/utils/id";
+import type { ImageElement, VideoElement } from "@/timeline/types";
+import {
+	addMediaTime,
+	mediaTimeFromSeconds,
+	ZERO_MEDIA_TIME,
+	type MediaTime,
+} from "@/wasm";
 import { useEditor } from "@/editor/use-editor";
 import { useFileUpload } from "@/media/use-file-upload";
 import { invokeAction } from "@/actions";
@@ -46,6 +54,7 @@ import {
 	useAssetsPanelStore,
 } from "@/components/editor/panels/assets/assets-panel-store";
 import { MASKABLE_ELEMENT_TYPES } from "@/timeline";
+import { useTimelineStore } from "@/timeline/timeline-store";
 import type { MediaAsset } from "@/media/types";
 import { cn } from "@/utils/ui";
 import {
@@ -76,6 +85,16 @@ export function MediaView() {
 
 	const [isProcessing, setIsProcessing] = useState(false);
 	const [progress, setProgress] = useState(0);
+	const [batchSelectedIds, setBatchSelectedIds] = useState<string[]>([]);
+	const [isAddingBatch, setIsAddingBatch] = useState(false);
+	const folderInputRef = useRef<HTMLInputElement>(null);
+	const audioInputRef = useRef<HTMLInputElement>(null);
+	const [mediaCategory, setMediaCategory] = useState<"visual" | "audio">(
+		"visual",
+	);
+	const imageDurationSeconds = useTimelineStore(
+		(state) => state.darkcutDurationSeconds,
+	);
 
 	const processFiles = async ({ files }: { files: File[] }) => {
 		if (!files || files.length === 0) return;
@@ -92,14 +111,20 @@ export function MediaView() {
 				promise: async () => {
 					const processedAssets = await processMediaAssets({
 						files,
-						onProgress: (progress: { progress: number }) =>
-							setProgress(progress.progress),
+						// The original media processor reports percentage 0–100.
+						// Reserve the final 15% for actual project storage writes.
+						onProgress: ({ progress }) => {
+							setProgress(Math.round(progress * 0.85));
+						},
 					});
-					for (const asset of processedAssets) {
+					for (let index = 0; index < processedAssets.length; index += 1) {
 						await editor.media.addMediaAsset({
 							projectId: activeProject.metadata.id,
-							asset,
+							asset: processedAssets[index],
 						});
+						setProgress(
+							85 + Math.round(((index + 1) / processedAssets.length) * 15),
+						);
 					}
 					return {
 						uploadedCount: processedAssets.length,
@@ -121,6 +146,42 @@ export function MediaView() {
 			multiple: true,
 			onFilesSelected: (files) => processFiles({ files }),
 		});
+
+	const openFolderPicker = () => {
+		const input = folderInputRef.current;
+		if (!input) return;
+		input.setAttribute("webkitdirectory", "");
+		input.setAttribute("directory", "");
+		input.click();
+	};
+
+	const handleFolderChange = (event: React.ChangeEvent<HTMLInputElement>) => {
+		const allFiles = Array.from(event.target.files ?? []);
+		const mediaFiles = allFiles.filter((file) => {
+			const type = file.type.toLowerCase();
+			if (
+				type.startsWith("image/") ||
+				type.startsWith("video/") ||
+				type.startsWith("audio/")
+			) {
+				return true;
+			}
+
+			return /\.(png|jpe?g|webp|gif|bmp|mp4|mov|webm|mkv|avi|mp3|wav|m4a|aac|ogg)$/i.test(
+				file.name,
+			);
+		});
+
+		if (mediaFiles.length === 0) {
+			toast.error(
+				"Essa pasta não possui imagens, vídeos ou áudios compatíveis.",
+			);
+		} else {
+			processFiles({ files: mediaFiles });
+		}
+
+		event.target.value = "";
+	};
 
 	const handleRemove = ({
 		event,
@@ -148,18 +209,30 @@ export function MediaView() {
 		}
 	};
 
+	const naturalOrder = useMemo(() => new Intl.Collator("pt-BR", { numeric: true, sensitivity: "base" }), []);
 	const filteredMediaItems = useMemo(() => {
-		const filtered = mediaFiles.filter((item) => !item.ephemeral);
+		const filtered = mediaFiles.filter(
+			(item) =>
+				!item.ephemeral &&
+				(mediaCategory === "audio"
+					? item.type === "audio"
+					: item.type !== "audio"),
+		);
 
 		filtered.sort((a, b) => {
+			// Preserve natural ordering: Cena 2 comes before Cena 10.
+			if (mediaSortBy === "scene" || mediaSortBy === "name") {
+				const value = naturalOrder.compare(a.name, b.name);
+				return (mediaSortOrder === "asc" ? value : -value) || naturalOrder.compare(a.id, b.id);
+			}
+			if (mediaSortBy === "date") {
+				const value = (a.file?.lastModified ?? 0) - (b.file?.lastModified ?? 0);
+				return (mediaSortOrder === "asc" ? value : -value) || naturalOrder.compare(a.name, b.name);
+			}
 			let valueA: string | number;
 			let valueB: string | number;
 
 			switch (mediaSortBy) {
-				case "name":
-					valueA = a.name.toLowerCase();
-					valueB = b.name.toLowerCase();
-					break;
 				case "type":
 					valueA = a.type;
 					valueB = b.type;
@@ -182,14 +255,199 @@ export function MediaView() {
 		});
 
 		return filtered;
-	}, [mediaFiles, mediaSortBy, mediaSortOrder]);
+	}, [mediaFiles, mediaSortBy, mediaSortOrder, mediaCategory, naturalOrder]);
 	const orderedMediaIds = useMemo(() => {
 		return filteredMediaItems.map((item) => item.id);
 	}, [filteredMediaItems]);
 
+	const batchSelectableItems = useMemo(
+		() =>
+			filteredMediaItems.filter(
+				(item) => item.type === "image" || item.type === "video",
+			),
+		[filteredMediaItems],
+	);
+	const batchSelectableIds = useMemo(
+		() => batchSelectableItems.map((item) => item.id),
+		[batchSelectableItems],
+	);
+	const batchSelectedSet = useMemo(
+		() => new Set(batchSelectedIds),
+		[batchSelectedIds],
+	);
+	const allBatchSelected =
+		batchSelectableIds.length > 0 &&
+		batchSelectableIds.every((id) => batchSelectedSet.has(id));
+	const someBatchSelected = batchSelectedIds.length > 0;
+
+	useEffect(() => {
+		const available = new Set(batchSelectableIds);
+		setBatchSelectedIds((current) => current.filter((id) => available.has(id)));
+	}, [batchSelectableIds]);
+
+	const toggleBatchSelection = (id: string) => {
+		setBatchSelectedIds((current) =>
+			current.includes(id)
+				? current.filter((candidate) => candidate !== id)
+				: [...current, id],
+		);
+	};
+
+	const toggleSelectAll = () => {
+		setBatchSelectedIds(allBatchSelected ? [] : batchSelectableIds);
+	};
+
+	const addSelectedToTimeline = async () => {
+		if (isAddingBatch) return;
+
+		const selectedSet = new Set(batchSelectedIds);
+		const selectedItems = batchSelectableItems.filter((item) =>
+			selectedSet.has(item.id),
+		);
+		if (selectedItems.length === 0) {
+			toast.error("Selecione uma ou mais imagens/vídeos.");
+			return;
+		}
+
+		const scene = editor.scenes.getActiveSceneOrNull();
+		if (!scene) {
+			toast.error("Nenhuma cena ativa.");
+			return;
+		}
+
+		setIsAddingBatch(true);
+		const toastId = `darkcut-batch-${Date.now()}`;
+		toast.loading(
+			`Preparando ${selectedItems.length} mídia(s) para a timeline...`,
+			{ id: toastId },
+		);
+
+		try {
+			// Deixa o navegador pintar o feedback antes do lote pesado.
+			await new Promise<void>((resolve) =>
+				requestAnimationFrame(() => resolve()),
+			);
+
+			const beforeTracks = scene.tracks;
+			const mainTrack = beforeTracks.main;
+			const hadVisuals = mainTrack.elements.length > 0;
+			let cursor = mainTrack.elements.reduce<MediaTime>((max, element) => {
+				const elementEnd = addMediaTime({
+					a: element.startTime,
+					b: element.duration,
+				});
+				return elementEnd > max ? elementEnd : max;
+			}, ZERO_MEDIA_TIME);
+			const batchStart = cursor;
+			const newElements: Array<ImageElement | VideoElement> = [];
+
+			for (const asset of selectedItems) {
+				const duration =
+					asset.type === "image"
+						? mediaTimeFromSeconds({
+								seconds: Math.max(0.1, imageDurationSeconds),
+							})
+						: asset.duration != null
+							? mediaTimeFromSeconds({ seconds: asset.duration })
+							: DEFAULT_NEW_ELEMENT_DURATION;
+
+				const element = buildElementFromMedia({
+					mediaId: asset.id,
+					mediaType: asset.type,
+					name: asset.name,
+					duration,
+					startTime: cursor,
+				});
+
+				if (element.type !== "image" && element.type !== "video") {
+					continue;
+				}
+				newElements.push({
+					...element,
+					id: generateUUID(),
+				});
+
+				cursor = addMediaTime({ a: cursor, b: duration });
+			}
+
+			const afterTracks = {
+				...beforeTracks,
+				main: {
+					...mainTrack,
+					elements: [...mainTrack.elements, ...newElements],
+				},
+			};
+
+			editor.command.execute({
+				command: new TracksSnapshotCommand({
+					before: beforeTracks,
+					after: afterTracks,
+				}),
+			});
+
+			// Em lotes grandes, mostrar imediatamente o começo do material inserido.
+			if (!hadVisuals) {
+				const viewState = editor.project.getTimelineViewState();
+				editor.project.setTimelineViewState({
+					viewState: {
+						...viewState,
+						zoomLevel: 1,
+						scrollLeft: 0,
+						playheadTime: batchStart,
+					},
+				});
+			}
+			editor.playback.seek({ time: batchStart });
+			setBatchSelectedIds([]);
+
+			toast.success(`${selectedItems.length} mídia(s) adicionadas à V1.`, {
+				id: toastId,
+				description: `Inserção em lote concluída. Imagens: ${Math.max(
+					0.1,
+					imageDurationSeconds,
+				).toFixed(1)}s cada.`,
+			});
+		} catch (error) {
+			console.error("Falha ao adicionar lote à timeline:", error);
+			toast.error("Não foi possível adicionar as mídias à timeline.", {
+				id: toastId,
+				description:
+					error instanceof Error ? error.message : "Erro desconhecido.",
+			});
+		} finally {
+			setIsAddingBatch(false);
+		}
+	};
+
 	return (
 		<>
 			<input {...fileInputProps} />
+			<input
+				ref={folderInputRef}
+				type="file"
+				hidden
+				multiple
+				onChange={handleFolderChange}
+			/>
+			<input
+				ref={audioInputRef}
+				type="file"
+				hidden
+				multiple
+				accept=".wav,.mp3,audio/wav,audio/mpeg"
+				onChange={(event) => {
+					const files = Array.from(event.target.files ?? []).filter((file) =>
+						/\.(wav|mp3)$/i.test(file.name),
+					);
+					event.target.value = "";
+					if (!files.length) {
+						toast.error("Selecione um áudio WAV ou MP3.");
+						return;
+					}
+					setMediaCategory("audio");
+					void processFiles({ files });
+				}}
+			/>
 
 			<PanelView
 				title="Assets"
@@ -197,23 +455,67 @@ export function MediaView() {
 					<MediaActions
 						mediaViewMode={mediaViewMode}
 						setMediaViewMode={setMediaViewMode}
-						isProcessing={isProcessing}
+						isProcessing={isProcessing || isAddingBatch}
 						sortBy={mediaSortBy}
 						sortOrder={mediaSortOrder}
 						onSort={handleSort}
+						onSetSceneOrder={() => setMediaSort({ key: "scene", order: "asc" })}
 						onImport={openFilePicker}
+						onImportFolder={openFolderPicker}
+						onImportAudio={() => audioInputRef.current?.click()}
+						selectedCount={batchSelectedIds.length}
+						allSelected={allBatchSelected}
+						someSelected={someBatchSelected}
+						onToggleSelectAll={toggleSelectAll}
+						onAddSelected={() => void addSelectedToTimeline()}
 					/>
 				}
 				className={cn(isDragOver && "bg-accent/30")}
 				contentClassName="h-full"
 				{...dragProps}
 			>
+				<div
+					className="sticky top-0 z-10 flex gap-2 bg-background p-2"
+					role="tablist"
+					aria-label="Tipo de mídia"
+				>
+					<Button
+						role="tab"
+						aria-selected={mediaCategory === "visual"}
+						variant={mediaCategory === "visual" ? "secondary" : "ghost"}
+						onClick={() => setMediaCategory("visual")}
+					>
+						Imagens e vídeos
+					</Button>
+					<Button
+						role="tab"
+						aria-selected={mediaCategory === "audio"}
+						variant={mediaCategory === "audio" ? "secondary" : "ghost"}
+						onClick={() => setMediaCategory("audio")}
+					>
+						Áudios
+					</Button>
+				</div>
+				<div className="mx-2 mb-1 flex flex-wrap items-center justify-between gap-2 rounded-md border bg-card/70 px-2 py-1.5 text-[0.68rem] text-muted-foreground">
+					<span>Ordem: {mediaSortBy === "scene" ? "cenas numeradas" : mediaSortBy === "date" ? "data do arquivo" : mediaSortBy} · {mediaSortOrder === "asc" ? "crescente" : "decrescente"}</span>
+					<span>+ Timeline segue esta ordem</span>
+				</div>
+				{isProcessing && (
+					<div className="mx-2 mb-2 space-y-1 rounded-md border border-primary/30 bg-primary/5 p-2 text-xs" role="status">
+						<div className="flex justify-between gap-2"><span>Importando mídias…</span><span>{progress}%</span></div>
+						<progress className="h-2 w-full" max={100} value={progress} />
+					</div>
+				)}
 				{isDragOver || filteredMediaItems.length === 0 ? (
 					<MediaDragOverlay
 						isVisible={true}
 						isProcessing={isProcessing}
 						progress={progress}
-						onClick={openFilePicker}
+						onClick={
+							mediaCategory === "audio"
+								? () => audioInputRef.current?.click()
+								: openFilePicker
+						}
 					/>
 				) : (
 					<SelectableSurface
@@ -227,6 +529,8 @@ export function MediaView() {
 							items={filteredMediaItems}
 							mode={mediaViewMode}
 							onRemove={handleRemove}
+							batchSelectedIds={batchSelectedIds}
+							onToggleBatchSelection={toggleBatchSelection}
 						/>
 					</SelectableSurface>
 				)}
@@ -342,6 +646,8 @@ function MediaItemList({
 	items,
 	mode,
 	onRemove,
+	batchSelectedIds,
+	onToggleBatchSelection,
 }: {
 	items: MediaAsset[];
 	mode: MediaViewMode;
@@ -352,6 +658,8 @@ function MediaItemList({
 		event: React.MouseEvent;
 		ids: string[];
 	}) => void;
+	batchSelectedIds: string[];
+	onToggleBatchSelection: (id: string) => void;
 }) {
 	const isGrid = mode === "grid";
 
@@ -365,6 +673,22 @@ function MediaItemList({
 			{items.map((item) => (
 				<MediaItemWithContextMenu item={item} onRemove={onRemove} key={item.id}>
 					<SelectableItem className={cn(!isGrid && "w-full")} id={item.id}>
+						{item.type === "image" || item.type === "video" ? (
+							<label
+								className="absolute top-1 left-1 z-20 flex size-6 cursor-pointer items-center justify-center rounded bg-background/90 shadow-sm backdrop-blur"
+								title="Selecionar para adicionar em lote"
+								onMouseDown={(event) => event.stopPropagation()}
+								onClick={(event) => event.stopPropagation()}
+							>
+								<input
+									type="checkbox"
+									checked={batchSelectedIds.includes(item.id)}
+									onChange={() => onToggleBatchSelection(item.id)}
+									className="size-4 accent-primary"
+									aria-label={`Selecionar ${item.name}`}
+								/>
+							</label>
+						) : null}
 						<MediaAssetDraggable
 							item={item}
 							preview={
@@ -512,7 +836,15 @@ function MediaActions({
 	sortBy,
 	sortOrder,
 	onSort,
+	onSetSceneOrder,
 	onImport,
+	onImportFolder,
+	onImportAudio,
+	selectedCount,
+	allSelected,
+	someSelected,
+	onToggleSelectAll,
+	onAddSelected,
 }: {
 	mediaViewMode: MediaViewMode;
 	setMediaViewMode: (mode: MediaViewMode) => void;
@@ -520,10 +852,18 @@ function MediaActions({
 	sortBy: MediaSortKey;
 	sortOrder: MediaSortOrder;
 	onSort: ({ key }: { key: MediaSortKey }) => void;
+	onSetSceneOrder: () => void;
 	onImport: () => void;
+	onImportFolder: () => void;
+	onImportAudio: () => void;
+	selectedCount: number;
+	allSelected: boolean;
+	someSelected: boolean;
+	onToggleSelectAll: () => void;
+	onAddSelected: () => void;
 }) {
 	return (
-		<div className="flex gap-1.5">
+		<div className="flex flex-wrap gap-1.5">
 			<TooltipProvider>
 				<Tooltip>
 					<TooltipTrigger asChild>
@@ -567,6 +907,20 @@ function MediaActions({
 						</TooltipTrigger>
 						<DropdownMenuContent align="end">
 							<SortMenuItem
+								label="Ordem de cenas (1, 2, 10)"
+								sortKey="scene"
+								currentSortBy={sortBy}
+								currentSortOrder={sortOrder}
+								onSort={onSort}
+							/>
+							<SortMenuItem
+								label="Data do arquivo (última modificação)"
+								sortKey="date"
+								currentSortBy={sortBy}
+								currentSortOrder={sortOrder}
+								onSort={onSort}
+							/>
+							<SortMenuItem
 								label="Name"
 								sortKey="name"
 								currentSortBy={sortBy}
@@ -605,6 +959,45 @@ function MediaActions({
 				</Tooltip>
 			</TooltipProvider>
 			<Button
+				variant={sortBy === "scene" && sortOrder === "asc" ? "secondary" : "outline"}
+				size="sm"
+				onClick={onSetSceneOrder}
+				disabled={isProcessing}
+				title="Ordenar imagens por número de cena para o SRT"
+			>1→N</Button>
+			<label className="flex h-8 cursor-pointer items-center gap-1.5 rounded-md border px-2 text-xs">
+				<input
+					type="checkbox"
+					checked={allSelected}
+					ref={(input) => {
+						if (input) input.indeterminate = someSelected && !allSelected;
+					}}
+					onChange={onToggleSelectAll}
+					className="size-4 accent-primary"
+					aria-label="Selecionar todas as imagens e vídeos"
+				/>
+				Selecionar todas
+			</label>
+			<Button
+				variant={selectedCount > 0 ? "default" : "outline"}
+				onClick={onAddSelected}
+				disabled={isProcessing || selectedCount === 0}
+				size="sm"
+				className="items-center justify-center gap-1.5"
+				title="Adicionar selecionadas em sequência na timeline"
+			>
+				+ Timeline{selectedCount > 0 ? ` (${selectedCount})` : ""}
+			</Button>
+			<Button
+				variant="outline"
+				onClick={onImportFolder}
+				disabled={isProcessing}
+				size="sm"
+				className="items-center justify-center gap-1.5"
+			>
+				Pasta
+			</Button>
+			<Button
 				variant="outline"
 				onClick={onImport}
 				disabled={isProcessing}
@@ -612,7 +1005,15 @@ function MediaActions({
 				className="items-center justify-center gap-1.5"
 			>
 				<HugeiconsIcon icon={CloudUploadIcon} />
-				Import
+				Arquivos
+			</Button>
+			<Button
+				variant="outline"
+				size="sm"
+				onClick={onImportAudio}
+				disabled={isProcessing}
+			>
+				Adicionar áudio
 			</Button>
 		</div>
 	);

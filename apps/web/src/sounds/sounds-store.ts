@@ -1,10 +1,26 @@
+import { useDarkCutTasks } from "@/darkcut/tasks";
 import { create } from "zustand";
 import type { SoundEffect, SavedSound } from "@/sounds/types";
 import { storageService } from "@/services/storage/service";
 import { toast } from "sonner";
 import { EditorCore } from "@/core";
-import { buildLibraryAudioElement } from "@/timeline/element-utils";
+import { processMediaAssets } from "@/media/processing";
+import { stopSoundPreview } from "@/sounds/use-sound-preview";
+import { buildElementFromMedia } from "@/timeline/element-utils";
 import { mediaTimeFromSeconds } from "@/wasm";
+
+function getOrCreateDarkCutAudioTrack({
+	editor,
+	name,
+}: {
+	editor: EditorCore;
+	name: string;
+}) {
+	const scene = editor.scenes.getActiveScene();
+	const existing = scene.tracks.audio.find((track) => track.name === name);
+	if (existing) return existing.id;
+	return editor.timeline.addTrack({ type: "audio", name });
+}
 
 interface SoundsStore {
 	topSoundEffects: SoundEffect[];
@@ -145,32 +161,65 @@ export const useSoundsStore = create<SoundsStore>((set, get) => ({
 	},
 
 	saveSoundEffect: async ({ soundEffect }) => {
+		const previous = get().savedSounds;
+		const optimistic: SavedSound = {
+			id: soundEffect.id,
+			name: soundEffect.name,
+			username: soundEffect.username,
+			previewUrl: soundEffect.previewUrl,
+			downloadUrl: soundEffect.downloadUrl,
+			duration: soundEffect.duration,
+			tags: soundEffect.tags,
+			license: soundEffect.license,
+			savedAt: new Date().toISOString(),
+		};
+
+		if (!previous.some((sound) => sound.id === soundEffect.id)) {
+			set({
+				savedSounds: [...previous, optimistic],
+				savedSoundsError: null,
+			});
+		}
+
 		try {
 			await storageService.saveSoundEffect({ soundEffect });
-
 			const savedSoundsData = await storageService.loadSavedSounds();
-			set({ savedSounds: savedSoundsData.sounds });
+			set({
+				savedSounds: savedSoundsData.sounds,
+				isSavedSoundsLoaded: true,
+				savedSoundsError: null,
+			});
+			toast.success("Música salva nos Favoritos.");
 		} catch (error) {
 			const errorMessage =
-				error instanceof Error ? error.message : "Failed to save sound";
-			set({ savedSoundsError: errorMessage });
-			toast.error("Failed to save sound");
+				error instanceof Error ? error.message : "Falha ao salvar favorito";
+			set({
+				savedSounds: previous,
+				savedSoundsError: errorMessage,
+			});
+			toast.error("Não foi possível salvar nos Favoritos.");
 			console.error("Failed to save sound:", error);
 		}
 	},
 
 	removeSavedSound: async ({ soundId }) => {
+		const previous = get().savedSounds;
+		set({
+			savedSounds: previous.filter((sound) => sound.id !== soundId),
+			savedSoundsError: null,
+		});
+
 		try {
 			await storageService.removeSavedSound({ soundId });
-
-			set((state) => ({
-				savedSounds: state.savedSounds.filter((sound) => sound.id !== soundId),
-			}));
+			toast.success("Removido dos Favoritos.");
 		} catch (error) {
 			const errorMessage =
-				error instanceof Error ? error.message : "Failed to remove sound";
-			set({ savedSoundsError: errorMessage });
-			toast.error("Failed to remove sound");
+				error instanceof Error ? error.message : "Falha ao remover favorito";
+			set({
+				savedSounds: previous,
+				savedSoundsError: errorMessage,
+			});
+			toast.error("Não foi possível remover dos Favoritos.");
 			console.error("Failed to remove sound:", error);
 		}
 	},
@@ -207,43 +256,118 @@ export const useSoundsStore = create<SoundsStore>((set, get) => ({
 	},
 
 	addSoundToTimeline: async ({ sound }) => {
-		const audioUrl = sound.previewUrl;
+		const audioUrl = sound.downloadUrl || sound.previewUrl;
 		if (!audioUrl) {
-			toast.error("Sound file not available");
+			toast.error("Áudio indisponível.");
 			return false;
 		}
 
+		const projectId = EditorCore.getInstance().project.getActive().metadata.id;
+		const task = (status: "running" | "done" | "error", detail: string) =>
+			useDarkCutTasks
+				.getState()
+				.set(`sound-${sound.id}`, {
+					projectId,
+					label: sound.name,
+					tab: "sounds",
+					status,
+					detail,
+				});
+		task("running", "Baixando áudio…");
 		try {
 			const editor = EditorCore.getInstance();
 			const currentTime = editor.playback.getCurrentTime();
+			const isBackgroundMusic = sound.tags?.some(
+				(tag) =>
+					tag.toLowerCase() === "jamendo" || tag.toLowerCase() === "music",
+			);
+			const trackName = isBackgroundMusic
+				? "A2 • Música de fundo"
+				: "A3 • Efeitos sonoros";
 
-			const response = await fetch(audioUrl);
-			if (!response.ok)
-				throw new Error(`Failed to download audio: ${response.statusText}`);
-
-			const arrayBuffer = await response.arrayBuffer();
-			const audioContext = new AudioContext();
-			const buffer = await audioContext.decodeAudioData(arrayBuffer);
-
-			const element = buildLibraryAudioElement({
-				sourceUrl: audioUrl,
+			const sceneId = editor.scenes.getActiveScene().id;
+			stopSoundPreview();
+			toast.loading("Baixando e preparando áudio…", {
+				id: `sound-${sound.id}`,
+			});
+			const response = await fetch(audioUrl, {
+				signal: AbortSignal.timeout(90000),
+			});
+			if (!response.ok) {
+				const detail = await response.json().catch(() => null);
+				throw new Error(
+					detail?.error || `Falha ao carregar áudio: ${response.status}`,
+				);
+			}
+			const type = response.headers.get("content-type") || "";
+			if (type.includes("json") || type.includes("text/"))
+				throw new Error("O provedor não retornou um arquivo de áudio.");
+			const blob = await response.blob();
+			const file = new File(
+				[blob],
+				`${sound.name.replace(/[<>:"/\\|?*]/g, "-")}.mp3`,
+				{ type: blob.type.startsWith("audio/") ? blob.type : "audio/mpeg" },
+			);
+			task("running", "Preparando áudio…");
+			const [processed] = await processMediaAssets({ files: [file] });
+			if (!processed || !processed.duration)
+				throw new Error("Não foi possível decodificar essa música.");
+			if (
+				editor.project.getActive().metadata.id !== projectId ||
+				editor.scenes.getActiveScene().id !== sceneId
+			)
+				throw new Error(
+					"O projeto mudou. Adicione a música novamente no projeto desejado.",
+				);
+			task("running", "Salvando áudio…");
+			const asset = await editor.media.addMediaAsset({
+				projectId,
+				asset: processed,
+			});
+			if (!asset)
+				throw new Error("Não foi possível salvar a música localmente.");
+			if (
+				editor.project.getActive().metadata.id !== projectId ||
+				editor.scenes.getActiveScene().id !== sceneId
+			)
+				throw new Error(
+					"O projeto mudou. O áudio foi salvo na biblioteca do projeto original.",
+				);
+			const targetTrackId = getOrCreateDarkCutAudioTrack({
+				editor,
+				name: trackName,
+			});
+			const element = buildElementFromMedia({
+				mediaId: asset.id,
+				mediaType: "audio",
 				name: sound.name,
-				duration: mediaTimeFromSeconds({ seconds: sound.duration }),
+				duration: mediaTimeFromSeconds({ seconds: processed.duration }),
 				startTime: currentTime,
-				buffer,
 			});
 
 			editor.timeline.insertElement({
-				placement: { mode: "auto", trackType: "audio" },
+				placement: { mode: "explicit", trackId: targetTrackId },
 				element,
 			});
+
+			task("done", "Adicionado à timeline");
+			toast.success(
+				isBackgroundMusic
+					? "Música adicionada à faixa A2."
+					: "Efeito sonoro adicionado à faixa A3.",
+				{ id: `sound-${sound.id}` },
+			);
 			return true;
 		} catch (error) {
+			task(
+				"error",
+				error instanceof Error ? error.message : "Falha ao adicionar áudio",
+			);
 			console.error("Failed to add sound to timeline:", error);
 			toast.error(
 				error instanceof Error
 					? error.message
-					: "Failed to add sound to timeline",
+					: "Falha ao adicionar áudio à timeline.",
 				{ id: `sound-${sound.id}` },
 			);
 			return false;

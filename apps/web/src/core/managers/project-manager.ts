@@ -669,9 +669,12 @@ export class ProjectManager {
 			fps: this.active.settings.fps,
 		});
 
+		// Project cards only need a small cover. Avoid saving full-resolution
+		// PNG data URLs in project metadata: they slow down HDD reads and startup.
+		const scale = Math.min(1, 640 / canvasSize.width, 360 / canvasSize.height);
 		const tempCanvas = document.createElement("canvas");
-		tempCanvas.width = canvasSize.width;
-		tempCanvas.height = canvasSize.height;
+		tempCanvas.width = Math.max(1, Math.round(canvasSize.width * scale));
+		tempCanvas.height = Math.max(1, Math.round(canvasSize.height * scale));
 
 		await renderer.renderToCanvas({
 			node: scene,
@@ -679,7 +682,7 @@ export class ProjectManager {
 			targetCanvas: tempCanvas,
 		});
 
-		const thumbnailDataUrl = tempCanvas.toDataURL("image/png");
+		const thumbnailDataUrl = tempCanvas.toDataURL("image/jpeg", 0.78);
 
 		await this.updateThumbnail({ thumbnail: thumbnailDataUrl });
 		return true;

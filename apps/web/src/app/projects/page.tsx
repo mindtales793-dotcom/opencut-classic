@@ -104,11 +104,19 @@ export default function ProjectsPage() {
 	}, [editor.project]);
 
 	return (
-		<div className="bg-background min-h-screen">
+		<div className="min-h-screen bg-[#090b0e] text-[#f6f6f7]">
 			<MigrationDialog />
 			<StoragePersistenceDialog />
 			<ChangelogNotification />
 			<ProjectsHeader />
+			<section className="relative mx-4 mt-4 overflow-hidden rounded-2xl border border-[#4f222b]/70 bg-[radial-gradient(circle_at_75%_20%,#48131c_0%,#181217_34%,#101115_75%)] px-6 py-7 sm:mx-8 sm:px-9">
+				<div className="pointer-events-none absolute -right-10 top-[-70px] select-none text-[160px] font-black tracking-[-0.12em] text-white/[0.035]" aria-hidden="true">DC</div>
+				<div className="relative">
+					<p className="text-xs font-bold tracking-[0.3em] text-[#ff6379]">DARKCUT STUDIO • WORKSPACE</p>
+					<h1 className="mt-2 text-3xl font-black tracking-tight sm:text-4xl">Seus projetos</h1>
+					<p className="mt-2 max-w-xl text-sm text-[#b0b2b8]">Continue de onde parou. Cada capa mostra a prévia salva do seu vídeo e a duração do material na timeline.</p>
+				</div>
+			</section>
 			<ProjectsToolbar projectIds={projectsToDisplay.map((p) => p.id)} />
 			<main className="mx-auto px-4 pt-2 pb-6 flex flex-col gap-4">
 				{isLoading || !isInitialized ? (
@@ -141,9 +149,10 @@ function ProjectsHeader() {
 	const { viewMode, isHydrated, setViewMode } = useProjectsStore();
 
 	return (
-		<header className="sticky top-0 z-20 px-8 bg-background flex flex-col gap-2">
+		<header className="sticky top-0 z-20 border-b border-[#26262a] bg-[#0c0d10]/95 px-8 backdrop-blur flex flex-col gap-2">
 			<div className="flex items-center justify-between h-16 pt-2">
 				<div className="flex items-center gap-5">
+					<Link href="/projects" className="hidden sm:flex h-10 w-10 items-center justify-center rounded-xl bg-gradient-to-br from-[#fa2643] to-[#8a102a] text-base font-black text-white shadow-[0_5px_20px_#f1254235]">DC</Link>
 					<Breadcrumb>
 						<BreadcrumbList>
 							<BreadcrumbItem>
@@ -156,7 +165,7 @@ function ProjectsHeader() {
 							<BreadcrumbSeparator />
 							<BreadcrumbItem>
 								<BreadcrumbPage className="text-sm sm:text-base font-medium">
-									All projects
+									Meus projetos
 								</BreadcrumbPage>
 							</BreadcrumbItem>
 						</BreadcrumbList>
@@ -226,7 +235,7 @@ function ProjectsToolbar({ projectIds }: { projectIds: string[] }) {
 	};
 
 	return (
-		<div className="sticky top-16 z-10 flex items-center justify-between px-6 h-14 pt-2 bg-background">
+		<div className="sticky top-16 z-10 flex items-center justify-between px-6 h-14 pt-2 bg-[#0c0d10]/95 backdrop-blur">
 			<div className="flex items-center gap-2">
 				<Label
 					className="flex items-center gap-3 cursor-pointer px-2"
@@ -521,7 +530,7 @@ function NewProjectButton() {
 			className="flex px-5 md:px-6"
 			onClick={handleCreateProject}
 		>
-			<span className="text-sm font-medium hidden md:block">New project</span>
+			<span className="text-sm font-medium hidden md:block">+ Novo projeto</span>
 			<span className="text-sm font-medium block md:hidden">New</span>
 		</Button>
 	);
@@ -578,8 +587,8 @@ function ProjectItem({
 	};
 
 	const gridContent = (
-		<Card className="bg-background overflow-hidden border-none p-0">
-			<div className="bg-muted relative aspect-video">
+		<Card className="overflow-hidden rounded-xl border border-[#303037] bg-[#15161a] p-0 shadow-sm transition-all duration-200 group-hover:-translate-y-1 group-hover:border-[#f72c49]/65 group-hover:shadow-[0_14px_32px_#0006]">
+			<div className="relative aspect-video overflow-hidden bg-[linear-gradient(145deg,#28141d,#111827_52%,#090b0e)]">
 				<div className="absolute inset-0">
 					{project.thumbnail ? (
 						<Image
@@ -589,26 +598,27 @@ function ProjectItem({
 							className="object-cover"
 						/>
 					) : (
-						<div className="flex size-full items-center justify-center">
-							<OcVideoIcon className="text-muted-foreground size-12 shrink-0" />
+						<div className="flex size-full flex-col items-center justify-center gap-2">
+							<div className="rounded-2xl bg-gradient-to-br from-[#f72a49] to-[#721627] p-4 shadow-lg">
+								<OcVideoIcon className="size-10 shrink-0 text-white" />
+							</div>
+							<span className="text-[10px] font-bold tracking-[0.3em] text-[#c9a4aa]">DARKCUT STUDIO</span>
 						</div>
 					)}
 				</div>
 
-				{durationLabel && (
-					<div className="absolute bottom-2 right-2 bg-black/60 text-white text-xs font-semibold px-2 py-1 rounded-sm">
-						{durationLabel}
-					</div>
-				)}
+				<div className="pointer-events-none absolute inset-x-0 bottom-0 h-16 bg-gradient-to-t from-black/70 to-transparent" />
+				<div className="absolute bottom-2 right-2 rounded-md border border-white/20 bg-black/80 px-2 py-1 text-xs font-bold tabular-nums text-white">{durationLabel || "00:00"}</div>
+				<span className="absolute bottom-2 left-3 text-[10px] font-bold tracking-wider text-white/90">▶ CONTINUAR</span>
 			</div>
 
-			<CardContent className="flex flex-col gap-2 px-0 pt-4">
-				<h3 className="group-hover:text-foreground/90 line-clamp-2 text-sm leading-snug font-medium">
+			<CardContent className="flex flex-col gap-2 px-3 pt-3 pb-3">
+				<h3 className="line-clamp-2 text-sm leading-snug font-semibold text-white">
 					{project.name}
 				</h3>
 				<div className="text-muted-foreground flex items-center gap-1.5 text-sm">
 					<HugeiconsIcon icon={Calendar04Icon} className="size-4" />
-					<span>Created {formatDate({ date: project.createdAt })}</span>
+					<span>Atualizado {formatDate({ date: project.updatedAt })}</span>
 				</div>
 			</CardContent>
 		</Card>

@@ -3,6 +3,7 @@ import type { RootNode } from "@/services/renderer/nodes/root-node";
 import type { ExportOptions, ExportResult } from "@/export";
 import { CanvasRenderer } from "@/services/renderer/canvas-renderer";
 import { SceneExporter } from "@/services/renderer/scene-exporter";
+import { FfmpegSceneExporter } from "@/services/renderer/ffmpeg-exporter";
 import { buildScene } from "@/services/renderer/scene-builder";
 import { createTimelineAudioBuffer } from "@/media/audio";
 import { formatTimecode } from "opencut-wasm";
@@ -147,7 +148,7 @@ export class RendererManager {
 		onProgress?: ({ progress }: { progress: number }) => void;
 		onCancel?: () => boolean;
 	}): Promise<ExportResult> {
-		const { format, quality, fps, includeAudio } = options;
+		const { format, quality, fps, includeAudio, engine } = options;
 
 		try {
 			const tracks = this.editor.scenes.getActiveScene().tracks;
@@ -184,6 +185,36 @@ export class RendererManager {
 				background: activeProject.settings.background,
 			});
 
+			const reportProgress = (progress: number) => {
+				const adjustedProgress = includeAudio
+					? 0.05 + progress * 0.95
+					: progress;
+				onProgress?.({ progress: adjustedProgress });
+			};
+
+			// Preferred engine: FFmpeg + GPU encoder (desktop runtime). It streams
+			// the file to disk instead of holding the whole video in memory.
+			if (
+				engine !== "browser" &&
+				(await FfmpegSceneExporter.isSupported({ format }))
+			) {
+				const ffmpegResult = await this.exportWithFfmpeg({
+					scene,
+					width: canvasSize.width,
+					height: canvasSize.height,
+					fps: exportFps,
+					format,
+					quality,
+					filename: options.filename ?? activeProject.metadata.name,
+					audioBuffer,
+					onProgress: reportProgress,
+					onCancel,
+				});
+				if (ffmpegResult) return ffmpegResult;
+				// null means FFmpeg failed: continue with the in-browser encoder.
+				onProgress?.({ progress: includeAudio ? 0.05 : 0 });
+			}
+
 			const exporter = new SceneExporter({
 				width: canvasSize.width,
 				height: canvasSize.height,
@@ -194,12 +225,7 @@ export class RendererManager {
 				audioBuffer: audioBuffer || undefined,
 			});
 
-			exporter.on("progress", (progress) => {
-				const adjustedProgress = includeAudio
-					? 0.05 + progress * 0.95
-					: progress;
-				onProgress?.({ progress: adjustedProgress });
-			});
+			exporter.on("progress", reportProgress);
 
 			let cancelled = false;
 			const checkCancel = () => {
@@ -226,6 +252,7 @@ export class RendererManager {
 				return {
 					success: true,
 					buffer,
+					encoderLabel: "Navegador (WebCodecs)",
 				};
 			} finally {
 				clearInterval(cancelInterval);
@@ -236,6 +263,73 @@ export class RendererManager {
 				success: false,
 				error: error instanceof Error ? error.message : "Unknown export error",
 			};
+		}
+	}
+
+	/**
+	 * Returns the result, or null when FFmpeg failed for a reason other than
+	 * cancellation so the caller can retry with the in-browser encoder.
+	 */
+	private async exportWithFfmpeg({
+		scene,
+		width,
+		height,
+		fps,
+		format,
+		quality,
+		filename,
+		audioBuffer,
+		onProgress,
+		onCancel,
+	}: {
+		scene: RootNode;
+		width: number;
+		height: number;
+		fps: NonNullable<ExportOptions["fps"]>;
+		format: ExportOptions["format"];
+		quality: ExportOptions["quality"];
+		filename: string;
+		audioBuffer: AudioBuffer | null;
+		onProgress: (progress: number) => void;
+		onCancel?: () => boolean;
+	}): Promise<ExportResult | null> {
+		const exporter = new FfmpegSceneExporter({
+			width,
+			height,
+			fps,
+			format,
+			quality,
+			filename,
+			shouldIncludeAudio: !!audioBuffer,
+			audioBuffer: audioBuffer ?? undefined,
+		});
+		exporter.on("progress", onProgress);
+
+		let cancelled = false;
+		const cancelInterval = setInterval(() => {
+			if (onCancel?.()) {
+				cancelled = true;
+				exporter.cancel();
+			}
+		}, 100);
+
+		try {
+			const output = await exporter.export({ rootNode: scene });
+			if (cancelled || !output) return { success: false, cancelled: true };
+			return {
+				success: true,
+				downloadUrl: output.downloadUrl,
+				encoderLabel: output.encoderLabel,
+			};
+		} catch (error) {
+			if (cancelled) return { success: false, cancelled: true };
+			console.warn(
+				"FFmpeg export failed, falling back to the browser encoder:",
+				error,
+			);
+			return null;
+		} finally {
+			clearInterval(cancelInterval);
 		}
 	}
 

@@ -1,0 +1,182 @@
+name: DarkCut Windows App
+
+# DarkCut desktop build
+
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - darkcut-studio
+    paths:
+      - "apps/web/**"
+      - "rust/darkcut-audio/**"
+      - "rust/darkcut-fx/**"
+      - "apps/darkcut-desktop/**"
+      - "package.json"
+      - "bun.lock"
+      - ".github/workflows/darkcut-windows.yml"
+
+jobs:
+  build-windows:
+    runs-on: windows-latest
+    timeout-minutes: 45
+    env:
+      CSC_IDENTITY_AUTO_DISCOVERY: "false"
+      NEXT_TELEMETRY_DISABLED: "1"
+      NEXT_PUBLIC_SITE_URL: "http://127.0.0.1:3217"
+      NEXT_PUBLIC_MARBLE_API_URL: "http://127.0.0.1:3217"
+      DATABASE_URL: "postgresql://darkcut:darkcut@127.0.0.1:5432/darkcut"
+      BETTER_AUTH_SECRET: "darkcut-local-desktop-build-secret-2026"
+      UPSTASH_REDIS_REST_URL: "http://127.0.0.1:3217"
+      UPSTASH_REDIS_REST_TOKEN: "darkcut-local-disabled"
+      MARBLE_WORKSPACE_KEY: "darkcut-local-disabled"
+      FREESOUND_CLIENT_ID: "darkcut-local-disabled"
+      FREESOUND_API_KEY: "darkcut-local-disabled"
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Bun
+        uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: 1.2.18
+
+      - name: Install dependencies
+        run: bun install
+
+      - name: Setup audio core compiler
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: wasm32-unknown-unknown
+
+      - name: Test and build local audio core
+        run: |
+          node rust/darkcut-audio/build.mjs
+          node rust/darkcut-fx/build.mjs
+
+      - name: Test transition and camera combinations
+        working-directory: apps/web
+        run: bun test --preload ./scripts/test-wasm-preload.ts ./src/timeline/__tests__/darkcut-effects.test.ts ./src/sounds/__tests__/preview.test.ts
+
+      - name: Build DarkCut web runtime
+        run: bun run build:web
+
+      - name: Stage desktop runtime
+        shell: pwsh
+        run: |
+          Push-Location apps/darkcut-desktop
+          bun run stage
+          Pop-Location
+
+      - name: Bundle automatic video tools
+        shell: pwsh
+        run: |
+          $tools = Join-Path $PWD "apps/darkcut-desktop/tools"
+          New-Item -ItemType Directory -Force -Path $tools | Out-Null
+
+          Invoke-WebRequest -Uri "https://github.com/yt-dlp/yt-dlp/releases/latest/download/yt-dlp.exe" -OutFile (Join-Path $tools "yt-dlp.exe")
+
+          $denoZip = Join-Path $env:RUNNER_TEMP "deno.zip"
+          Invoke-WebRequest -Uri "https://github.com/denoland/deno/releases/latest/download/deno-x86_64-pc-windows-msvc.zip" -OutFile $denoZip
+          Expand-Archive -Path $denoZip -DestinationPath $tools -Force
+          & (Join-Path $tools "deno.exe") --version
+
+          # The export engine needs hardware encoders (Intel Quick Sync first), so
+          # check the build instead of assuming it: essentials, then full.
+          function Get-FfmpegBuild([string]$name) {
+            $zip = Join-Path $env:RUNNER_TEMP "ffmpeg-$name.zip"
+            $dir = Join-Path $env:RUNNER_TEMP "ffmpeg-$name"
+            Invoke-WebRequest -Uri "https://www.gyan.dev/ffmpeg/builds/ffmpeg-release-$name.zip" -OutFile $zip
+            Expand-Archive -Path $zip -DestinationPath $dir -Force
+            $exe = Get-ChildItem $dir -Recurse -Filter "ffmpeg.exe" | Select-Object -First 1
+            $probe = Get-ChildItem $dir -Recurse -Filter "ffprobe.exe" | Select-Object -First 1
+            if (-not $exe -or -not $probe) { throw "FFmpeg/FFprobe not found in the $name package." }
+            $encoders = (& $exe.FullName -hide_banner -encoders) -join "`n"
+            return @{
+              Name = $name
+              Ffmpeg = $exe
+              Ffprobe = $probe
+              HasQsv = $encoders.Contains("h264_qsv")
+              HasX264 = $encoders.Contains("libx264")
+            }
+          }
+
+          $build = Get-FfmpegBuild "essentials"
+          if (-not $build.HasQsv) {
+            Write-Host "The essentials build has no h264_qsv; downloading the full build."
+            $build = Get-FfmpegBuild "full"
+          }
+          if (-not $build.HasQsv) { throw "Bundled FFmpeg has no Intel Quick Sync (h264_qsv) encoder." }
+          if (-not $build.HasX264) { throw "Bundled FFmpeg has no libx264 software fallback." }
+          Write-Host "Bundling FFmpeg '$($build.Name)' build with Quick Sync support."
+
+          Copy-Item $build.Ffmpeg.FullName (Join-Path $tools "ffmpeg.exe") -Force
+          Copy-Item $build.Ffprobe.FullName (Join-Path $tools "ffprobe.exe") -Force
+
+          & (Join-Path $tools "yt-dlp.exe") --version
+          & (Join-Path $tools "ffmpeg.exe") -version | Select-Object -First 1
+
+      - name: Build Windows EXE
+        shell: pwsh
+        run: |
+          Push-Location apps/darkcut-desktop
+          bun run dist:win
+          Pop-Location
+
+      - name: Verify Windows packages
+        shell: pwsh
+        run: |
+          $files = Get-ChildItem "apps/darkcut-desktop/dist" -Recurse -File
+          $files | ForEach-Object { Write-Host $_.FullName }
+          $exe = $files | Where-Object { $_.Extension -eq ".exe" }
+          if (-not $exe) { throw "DarkCut Studio EXE was not generated." }
+
+          $packagedTools = Join-Path $PWD "apps/darkcut-desktop/dist/win-unpacked/resources/tools"
+          $requiredTools = @("yt-dlp.exe", "ffmpeg.exe", "ffprobe.exe", "deno.exe")
+          foreach ($tool in $requiredTools) {
+            $toolPath = Join-Path $packagedTools $tool
+            if (-not (Test-Path $toolPath)) {
+              throw "Required packaged video tool missing: $tool"
+            }
+          }
+
+          & (Join-Path $packagedTools "yt-dlp.exe") --version
+          & (Join-Path $packagedTools "deno.exe") --version
+          & (Join-Path $packagedTools "ffmpeg.exe") -version | Select-Object -First 1
+          & (Join-Path $packagedTools "ffprobe.exe") -version | Select-Object -First 1
+          & (Join-Path $packagedTools "ffmpeg.exe") -hide_banner -encoders | Select-String -Pattern "h264_qsv|h264_nvenc|h264_amf|libx264 "
+
+      - name: Open packaged app and create a project
+        shell: pwsh
+        run: |
+          $env:DARKCUT_SMOKE_PROFILE = Join-Path $env:RUNNER_TEMP "darkcut-smoke-profile"
+          $env:DARKCUT_SMOKE_REPORT = Join-Path $env:RUNNER_TEMP "darkcut-smoke.json"
+          $exe = (Resolve-Path "apps/darkcut-desktop/dist/win-unpacked/DarkCut Studio.exe").Path
+          $app = Start-Process -FilePath $exe -ArgumentList "--smoke-test" -PassThru
+          if (-not $app.WaitForExit(180000)) {
+            Stop-Process -Id $app.Id -Force -ErrorAction SilentlyContinue
+            throw "Packaged app did not finish the startup test."
+          }
+          if (-not (Test-Path $env:DARKCUT_SMOKE_REPORT)) { throw "No startup test report was produced." }
+          $report = Get-Content $env:DARKCUT_SMOKE_REPORT -Raw | ConvertFrom-Json
+          if (-not $report.ok) { throw "Startup test failed: $($report.error)" }
+          Get-Content $env:DARKCUT_SMOKE_REPORT
+
+      - name: Upload startup diagnostics
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: DarkCut-Windows-Diagnostics
+          path: |
+            ${{ runner.temp }}/darkcut-smoke.json*
+            ${{ runner.temp }}/darkcut-smoke-profile/startup.log
+          if-no-files-found: ignore
+
+      - name: Upload DarkCut Studio EXE
+        uses: actions/upload-artifact@v4
+        with:
+          name: DarkCut-Studio-Windows
+          path: |
+            apps/darkcut-desktop/dist/*.exe
+          if-no-files-found: error

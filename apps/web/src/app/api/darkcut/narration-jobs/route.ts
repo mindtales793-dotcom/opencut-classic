@@ -1,0 +1,185 @@
+import { mkdir, open, readFile, writeFile, rename, stat } from "node:fs/promises";
+import { createReadStream } from "node:fs";
+import { Readable } from "node:stream";
+import { join } from "node:path";
+import { tmpdir } from "node:os";
+import { randomUUID } from "node:crypto";
+import { POST as synthesize } from "../fish/tts/route";
+export const runtime = "nodejs";
+export const dynamic = "force-dynamic";
+type Job = {
+	id: string;
+	status: "running" | "ready" | "error" | "interrupted";
+	error?: string;
+	stage?: "queued" | "synthesizing" | "downloading" | "saving" | "ready" | "error";
+	bytesReceived?: number;
+	totalBytes?: number;
+	text: string;
+	referenceId: string;
+};
+const running = new Set<string>();
+const root = () =>
+	join(process.env.DARKCUT_DATA_DIR ?? tmpdir(), "darkcut-narration-jobs");
+const valid = (id: string) => /^[0-9a-f-]{36}$/.test(id);
+async function save(job: Job) {
+	await mkdir(root(), { recursive: true });
+	const p = join(root(), job.id + ".json");
+	await writeFile(p + ".tmp", JSON.stringify(job));
+	await rename(p + ".tmp", p);
+}
+async function read(id: string): Promise<Job> {
+	return JSON.parse(await readFile(join(root(), id + ".json"), "utf8"));
+}
+
+async function streamToFile(response: Response, path: string, onProgress: (bytes: number, totalBytes: number) => Promise<void>) {
+	if (!response.body) throw new Error("Fish Audio respondeu sem áudio.");
+	const handle = await open(path, "w");
+	const reader = response.body.getReader();
+	const totalBytes = Number(response.headers.get("content-length")) || 0;
+	let bytesReceived = 0;
+	let lastProgressUpdate = 0;
+	try {
+		while (true) {
+			const { done, value } = await reader.read();
+			if (done) break;
+			if (value?.byteLength) {
+				await handle.write(value);
+				bytesReceived += value.byteLength;
+				const now = Date.now();
+				if (now - lastProgressUpdate > 750) {
+					await onProgress(bytesReceived, totalBytes);
+					lastProgressUpdate = now;
+				}
+			}
+		}
+		await onProgress(bytesReceived, totalBytes);
+	} finally {
+		reader.releaseLock();
+		await handle.close();
+	}
+}
+export async function GET(request: Request) {
+	const url = new URL(request.url),
+		id = url.searchParams.get("id") ?? "";
+	if (!valid(id))
+		return Response.json({ error: "Tarefa inválida." }, { status: 400 });
+	try {
+		const job = await read(id);
+		if (url.searchParams.get("audio") === "1" && job.status === "ready") {
+			const audioPath = join(root(), id + ".mp3");
+			const metadata = await stat(audioPath);
+			const stream = Readable.toWeb(createReadStream(audioPath)) as unknown as ReadableStream<Uint8Array>;
+			return new Response(stream, {
+				headers: {
+					"Content-Type": "audio/mpeg",
+					"Content-Length": String(metadata.size),
+					"Cache-Control": "no-store",
+				},
+			});
+		}
+		const status =
+			job.status === "running" && !running.has(id) ? "interrupted" : job.status;
+		return Response.json(
+			{ id, status, stage: job.stage, bytesReceived: job.bytesReceived, totalBytes: job.totalBytes, error: job.error },
+			{ headers: { "Cache-Control": "no-store" } },
+		);
+	} catch {
+		return Response.json({ error: "Tarefa não encontrada." }, { status: 404 });
+	}
+}
+export async function POST(request: Request) {
+	let body;
+	try {
+		body = await request.json();
+	} catch {
+		return Response.json({ error: "JSON inválido." }, { status: 400 });
+	}
+	if (!body || typeof body !== "object") return Response.json({error:"JSON inválido."},{status:400});
+	if (
+		typeof body.text !== "string" ||
+		!body.text.trim() ||
+		body.text.length > 100000 ||
+		typeof body.referenceId !== "string"
+	)
+		return Response.json(
+			{ error: "Roteiro ou narrador inválido." },
+			{ status: 400 },
+		);
+	const id =
+		typeof body.id === "string" && valid(body.id) ? body.id : randomUUID();
+	let job: Job = {
+		id,
+		status: "running",
+		stage: "queued",
+		bytesReceived: 0,
+		totalBytes: 0,
+		text: body.text,
+		referenceId: body.referenceId,
+	};
+	try {
+		const old = await read(id);
+		if (old.text === body.text && old.referenceId === body.referenceId) {
+			if (old.status === "ready" || running.has(id))
+				return Response.json({ id, status: old.status });
+			job = { ...old, status: "running", stage: "queued", bytesReceived: 0, totalBytes: 0, error: undefined };
+		} else {
+			// A changed script or narrator must not return the old completed MP3.
+			// Use a fresh job ID; preserve the old job/MP3 for recovery.
+			job = { ...job, id: randomUUID() };
+		}
+	} catch {}
+	const activeId = job.id;
+	running.add(activeId);
+	try {
+		await save(job);
+	} catch {
+		running.delete(activeId);
+		return Response.json(
+			{ error: "Não foi possível salvar a tarefa." },
+			{ status: 500 },
+		);
+	}
+	// Local server operation; keys stay only in memory, never in job files.
+	void (async () => {
+		try {
+			await save({ ...job, stage: "synthesizing" });
+			const response = await synthesize(
+				new Request("http://localhost/api/darkcut/fish/tts", {
+					method: "POST",
+					headers: { "Content-Type": "application/json" },
+					body: JSON.stringify({
+						text: job.text,
+						referenceId: job.referenceId,
+						fishApiKeys: body.fishApiKeys,
+					}),
+				}),
+			);
+			if (!response.ok) {
+				const data = await response.json();
+				throw new Error(data.error ?? "Falha na narração.");
+			}
+			const output = join(root(), activeId + ".mp3");
+			await save({ ...job, stage: "downloading" });
+			let downloadedBytes = 0;
+			let expectedBytes = 0;
+			await streamToFile(response, output + ".tmp", async (received, total) => {
+				downloadedBytes = received;
+				expectedBytes = total;
+				await save({ ...job, stage: "downloading", bytesReceived: received, totalBytes: total });
+			});
+			await save({ ...job, stage: "saving", bytesReceived: downloadedBytes, totalBytes: expectedBytes });
+			await rename(output + ".tmp", output);
+			await save({ ...job, status: "ready", stage: "ready", bytesReceived: downloadedBytes, totalBytes: expectedBytes });
+		} catch (error) {
+			await save({
+				...job,
+				status: "error",
+				stage: "error",
+				error: error instanceof Error ? error.message : "Falha na narração.",
+			}).catch(() => {});
+		} finally {
+			running.delete(activeId);
+		}
+	})();
+	return Response.json({ id: activeId, status: "running" }, { status: 202 });
+}
