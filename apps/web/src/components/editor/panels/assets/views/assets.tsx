@@ -227,10 +227,6 @@ export function MediaView() {
 			let valueB: string | number;
 
 			switch (mediaSortBy) {
-				case "name":
-					valueA = a.name.toLowerCase();
-					valueB = b.name.toLowerCase();
-					break;
 				case "type":
 					valueA = a.type;
 					valueB = b.type;
