@@ -1,4 +1,9 @@
 import { transitionValue } from "@/darkcut/fx-core.generated";
+import {
+	makeSrtTimingGroups,
+	sceneNumberFromName,
+	type SrtSyncStrategy,
+} from "@/darkcut/srt-scene-sync";
 import { resolveAnimationPathValueAtTime } from "@/animation/resolve";
 import type { EditorCore } from "@/core";
 import type {
@@ -201,76 +206,129 @@ function getNarrationDurationSeconds({ editor }: { editor: EditorCore }) {
 }
 
 export type DarkCutSrtTiming = {
+	index?: number;
 	startSeconds: number;
 	endSeconds: number;
+	text?: string;
 };
+
+export type DarkCutSrtScope = "main" | "all";
+export type DarkCutSrtOrder = "timeline" | "scene-number";
 
 export function syncVisualsToSrt({
 	editor,
 	refs = [],
 	cues,
+	strategy = "one-per-cue",
+	scope = "main",
+	order = "timeline",
 }: {
 	editor: EditorCore;
 	refs?: ElementRef[];
 	cues: DarkCutSrtTiming[];
+	strategy?: SrtSyncStrategy;
+	scope?: DarkCutSrtScope;
+	order?: DarkCutSrtOrder;
 }) {
+	const scene = editor.scenes.getActiveScene();
 	const targets = getVisualTargets({
 		editor,
 		refs,
 		fallbackToAll: true,
-	});
-	const validCues = cues
-		.filter(
-			(cue) =>
-				Number.isFinite(cue.startSeconds) &&
-				Number.isFinite(cue.endSeconds) &&
-				cue.startSeconds >= 0 &&
-				cue.endSeconds > cue.startSeconds,
-		)
-		.sort((a, b) => a.startSeconds - b.startSeconds);
+	}).filter((target) => scope === "all" || target.trackId === scene.tracks.main.id);
 
-	const pairCount = Math.min(targets.length, validCues.length);
-	if (pairCount === 0) {
-		return {
-			changed: 0,
+	const validCues = cues.filter(
+		(cue) =>
+			Number.isFinite(cue.startSeconds) &&
+			Number.isFinite(cue.endSeconds) &&
+			cue.startSeconds >= 0 &&
+			cue.endSeconds > cue.startSeconds,
+	).map((cue, index) => ({
+		index: cue.index ?? index + 1,
+		startSeconds: cue.startSeconds,
+		endSeconds: cue.endSeconds,
+		text: cue.text ?? "",
+	})).sort((a, b) => a.startSeconds - b.startSeconds);
+
+	const emptyResult = {
+		changed: 0,
+		visualCount: targets.length,
+		cueCount: validCues.length,
+		unmatchedVisuals: targets.length,
+		unmatchedCues: validCues.length,
+		groupedCues: 0,
+		nameMatched: 0,
+		clamped: 0,
+	};
+
+	if (!targets.length || !validCues.length) return emptyResult;
+
+	// A naming match uses only explicit scene-number filenames. Descriptive
+	// filenames such as "HB20 novo" do not count as an image identifier.
+	let pairs: Array<{
+		target: VisualTarget;
+		startSeconds: number;
+		endSeconds: number;
+		cueCount: number;
+	}> = [];
+	if (order === "scene-number" && strategy === "one-per-cue") {
+		const byIndex = new Map(validCues.map((cue) => [cue.index, cue]));
+		const usedIndices = new Set<number>();
+		for (const target of targets) {
+			const number = sceneNumberFromName(target.element.name);
+			const cue = number == null ? undefined : byIndex.get(number);
+			if (!cue || usedIndices.has(cue.index)) continue;
+			usedIndices.add(cue.index);
+			pairs.push({
+				target,
+				startSeconds: cue.startSeconds,
+				endSeconds: cue.endSeconds,
+				cueCount: 1,
+			});
+		}
+	} else {
+		const groups = makeSrtTimingGroups({
+			cues: validCues,
 			visualCount: targets.length,
-			cueCount: validCues.length,
-			unmatchedVisuals: targets.length,
-			unmatchedCues: validCues.length,
-			clamped: 0,
-		};
+			strategy,
+		});
+		pairs = groups.map((cue, i) => ({
+			target: targets[i],
+			startSeconds: cue.startSeconds,
+			endSeconds: cue.endSeconds,
+			cueCount: cue.lastCue - cue.firstCue + 1,
+		}));
 	}
 
+	if (!pairs.length) return emptyResult;
+
 	let clamped = 0;
-	const updates = targets.slice(0, pairCount).map((target, index) => {
-		const cue = validCues[index];
-		const requestedSeconds = Math.max(
-			0.1,
-			cue.endSeconds - cue.startSeconds,
-		);
+	const updates = pairs.map(({ target, startSeconds, endSeconds }) => {
 		const duration = targetDurationPatch({
 			element: target.element,
-			seconds: requestedSeconds,
+			seconds: endSeconds - startSeconds,
 		});
 		if (duration.wasClamped) clamped += 1;
-
 		return {
 			trackId: target.trackId,
 			elementId: target.elementId,
 			patch: {
 				...duration.patch,
-				startTime: mediaTimeFromSeconds({ seconds: cue.startSeconds }),
+				startTime: mediaTimeFromSeconds({ seconds: startSeconds }),
 			} as Partial<TimelineElement>,
 		};
 	});
 
 	editor.timeline.updateElements({ updates });
+	const usedCueCount = pairs.reduce((sum, pair) => sum + pair.cueCount, 0);
 	return {
-		changed: pairCount,
+		changed: pairs.length,
 		visualCount: targets.length,
 		cueCount: validCues.length,
-		unmatchedVisuals: Math.max(0, targets.length - pairCount),
-		unmatchedCues: Math.max(0, validCues.length - pairCount),
+		unmatchedVisuals: Math.max(0, targets.length - pairs.length),
+		unmatchedCues: Math.max(0, validCues.length - usedCueCount),
+		groupedCues: Math.max(0, usedCueCount - pairs.length),
+		nameMatched: order === "scene-number" ? pairs.length : 0,
 		clamped,
 	};
 }
