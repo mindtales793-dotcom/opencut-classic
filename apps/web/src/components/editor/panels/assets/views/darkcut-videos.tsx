@@ -2,6 +2,7 @@
 
 import { useProjectDraft } from "@/darkcut/project-draft";
 import { useDarkCutTasks } from "@/darkcut/tasks";
+import { buildMediaSearchPlan } from "@/darkcut/media-search-intelligence";
 import { useMemo, useRef, useState } from "react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
@@ -11,7 +12,6 @@ import { processMediaAssets } from "@/media/processing";
 import {
 	assembleScenesOnTimeline,
 	buildDarkCutScenes,
-	buildVisualSearchQuery,
 	type DarkCutScene,
 } from "../darkcut-automation";
 import { useDarkCutProductionStore } from "../darkcut-production-store";
@@ -19,6 +19,9 @@ import { useAssetsPanelStore } from "../assets-panel-store";
 
 type VideoBlock = DarkCutScene & {
 	searchQuery: string;
+	fallbackQuery?: string;
+	searchReason?: string;
+	mediaExternalId?: string;
 	statusLabel: "idle" | "searching" | "ready" | "error" | "exhausted";
 	triedVideoIds: string[];
 	lastVideoId?: string;
@@ -28,12 +31,18 @@ type VideoBlock = DarkCutScene & {
 };
 
 function createVideoBlocks(script: string, sceneSeconds: number): VideoBlock[] {
-	return buildDarkCutScenes({ script, sceneSeconds }).map((scene) => ({
-		...scene,
-		searchQuery: buildVisualSearchQuery(scene.text),
-		statusLabel: "idle",
-		triedVideoIds: [],
-	}));
+	const scenes = buildDarkCutScenes({ script, sceneSeconds });
+	return scenes.map((scene, index) => {
+		const plan = buildMediaSearchPlan(scene.text, scenes[index - 1]?.text ?? "");
+		return {
+			...scene,
+			searchQuery: plan.query,
+			fallbackQuery: plan.fallbackQuery,
+			searchReason: plan.reason,
+			statusLabel: "idle",
+			triedVideoIds: [],
+		};
+	});
 }
 
 export function DarkCutVideosView() {
@@ -57,6 +66,10 @@ export function DarkCutVideosView() {
 	);
 	const pause = useRef(isPaused);
 	const usedVideoIds = useRef(new Set<string>());
+	const usedStockIds = useRef(new Set<string>());
+	const [sourcePriority, setSourcePriority] = useProjectDraft<
+		"youtube-first" | "stock-first" | "stock-only"
+	>("video-source-priority", "youtube-first");
 	const task = (
 		status: "running" | "paused" | "done" | "error",
 		done: number,
@@ -145,6 +158,8 @@ export function DarkCutVideosView() {
 		});
 		if (!asset) throw new Error("Não foi possível salvar a mídia na Mídia Local.");
 
+		const externalKey = `${source}:${isImage ? "image" : "video"}:${mediaId}`;
+		if (source !== "youtube") usedStockIds.current.add(externalKey);
 		updateBlock(block.id, {
 			statusLabel: "ready",
 			status: "ready",
@@ -152,6 +167,7 @@ export function DarkCutVideosView() {
 			mediaName: title,
 			mediaSource: source,
 			mediaKind: isImage ? "image" : "video",
+			mediaExternalId: externalKey,
 			error: undefined,
 		});
 		return true;
@@ -159,24 +175,47 @@ export function DarkCutVideosView() {
 
 	const tryStockFallback = async (block: VideoBlock) => {
 		if (!configuredStockApis) return false;
-		const response = await fetch("/api/darkcut/stock/media", {
-			method: "POST",
-			headers: { "Content-Type": "application/json" },
-			body: JSON.stringify({
-				query: block.searchQuery.trim(),
-				pexelsApiKey,
-				pixabayApiKey,
-				prefer: "video",
-			}),
-		});
-		if (!response.ok) {
-			const data = await response.json().catch(() => null) as { error?: string; detail?: string } | null;
-			throw new Error(data?.detail || data?.error || `Bancos de mídia: HTTP ${response.status}`);
+		const plan = buildMediaSearchPlan(block.text);
+		const queries = Array.from(new Set([
+			block.searchQuery.trim(),
+			(block.fallbackQuery || plan.fallbackQuery).trim(),
+		].filter(Boolean)));
+		let errorDetail = "";
+		// Only try a broad fallback when the exact stock search has no matches.
+		// No extra YouTube search request is spent here.
+		for (const [index, query] of queries.entries()) {
+			const response = await fetch("/api/darkcut/stock/media", {
+				method: "POST",
+				headers: { "Content-Type": "application/json" },
+				body: JSON.stringify({
+					query,
+					pexelsApiKey,
+					pixabayApiKey,
+					prefer: "video",
+					excludeMediaIds: Array.from(new Set([
+						...usedStockIds.current,
+						...blocks.flatMap((item) => item.mediaExternalId ? [item.mediaExternalId] : []),
+					])),
+				}),
+			});
+			if (response.ok) {
+				const source = response.headers.get("X-DarkCut-Source") === "pixabay"
+					? "pixabay" : "pexels";
+				if (index > 0) {
+					toast.info(`Bloco ${block.index}: busca ampliada para encontrar mídia de apoio.`, {
+						description: "Confira se a imagem genérica representa corretamente a fala.",
+					});
+				}
+				return saveResponseAsMedia({ response, block, source });
+			}
+			const data = await response.json().catch(() => null) as {
+				error?: string;
+				detail?: string;
+			} | null;
+			errorDetail = data?.detail || data?.error || `Bancos HTTP ${response.status}`;
+			if (response.status !== 404) break;
 		}
-		const sourceHeader = response.headers.get("X-DarkCut-Source");
-		const source =
-			sourceHeader === "pixabay" ? "pixabay" : "pexels";
-		return saveResponseAsMedia({ response, block, source });
+		throw new Error(errorDetail || "Nenhuma mídia compatível nos bancos consultados.");
 	};
 
 	const downloadForBlock = async (block: VideoBlock) => {
@@ -200,7 +239,15 @@ export function DarkCutVideosView() {
 		updateBlock(block.id, { statusLabel: "searching", error: undefined });
 		let youtubeError = "";
 
-		if (configuredApiKeys) {
+		if (sourcePriority !== "youtube-first" && configuredStockApis) {
+			try {
+				if (await tryStockFallback(block)) return true;
+			} catch (error) {
+				youtubeError = error instanceof Error ? error.message : "Falha nos bancos.";
+			}
+		}
+
+		if (configuredApiKeys && sourcePriority !== "stock-only") {
 			try {
 				const response = await fetch("/api/darkcut/youtube/clip", {
 					method: "POST",
@@ -267,12 +314,14 @@ export function DarkCutVideosView() {
 			}
 		}
 
-		try {
-			if (await tryStockFallback(block)) return true;
-		} catch (error) {
-			const stockError =
-				error instanceof Error ? error.message : "Falha nos bancos de mídia.";
-			youtubeError = [youtubeError, stockError].filter(Boolean).join(" · ");
+		if (sourcePriority === "youtube-first") {
+			try {
+				if (await tryStockFallback(block)) return true;
+			} catch (error) {
+				const stockError =
+					error instanceof Error ? error.message : "Falha nos bancos de mídia.";
+				youtubeError = [youtubeError, stockError].filter(Boolean).join(" · ");
+			}
 		}
 
 		updateBlock(block.id, {
