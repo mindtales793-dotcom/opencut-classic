@@ -51,7 +51,7 @@ export function carModel(text: string): string | null {
 
 const INTENTS: Array<{ pattern: RegExp; query: string; description: string }> = [
 	{ pattern: /\b(concessionaria|showroom|loja de carros|vendedor|vitrine)\b/, query: "car dealership showroom", description: "concessionária" },
-	{ pattern: /\b(financiar|financiamento|parcelas?|juros|divida|credito|emprestimo|banco)\b/, query: "auto loan paperwork", description: "financiamento" },
+	{ pattern: /\b(financiar|financiamento|financiei|financiado|parcelas?|juros|divida|credito|emprestimo|banco|contrato|assinou|assinar)\b/, query: "auto loan paperwork", description: "financiamento" },
 	{ pattern: /\b(mecanico|oficina|manutencao|conserto|motor|oleo)\b/, query: "auto mechanic workshop", description: "oficina" },
 	{ pattern: /\b(segunda mao|usado|seminovo|antigo|velho|quitado)\b/, query: "used car", description: "carro usado" },
 	{ pattern: /\b(a vista|dinheiro|economizar|poupanca|salario|reais|preco|comprou|comprar)\b/, query: "car buying cash", description: "compra à vista" },
