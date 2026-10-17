@@ -159,6 +159,8 @@ function sceneTypeFor(text: string, index: number, total: number): CrisSceneType
 
 function visualSlotFor(text: string, sceneType: CrisSceneType): CrisVisualSlot {
 	const lower = text.toLocaleLowerCase("pt-BR");
+	if (/\b(comparar|comparação|comparacao|comparativo|versus|vs\.?|em vez de|ao invés de|ao inves de|de um lado|do outro lado|mais barato|mais caro)\b/.test(lower))
+		return "comparison";
 	if (/\b(são paulo|rio de janeiro|cidade|estado|país|pais|bairro|rua|avenida|local|lugar)\b/.test(lower))
 		return "location";
 	if (/\b(19|20)\d{2}\b|\b(hoje|ontem|amanhã|amanha|ano|mês|mes|data)\b/.test(lower))
@@ -171,8 +173,6 @@ function visualSlotFor(text: string, sceneType: CrisSceneType): CrisVisualSlot {
 		return "document";
 	if (/\b(map[a]?|rota|trajeto|região|regiao|distância|distancia)\b/.test(lower))
 		return "map";
-	if (/\b(comparar|comparação|comparacao|comparativo|versus|vs\.?|em vez de|ao invés de|ao inves de|de um lado|do outro lado|mais barato|mais caro)\b/.test(lower))
-		return "comparison";
 	if (sceneType === "list") return "list-item";
 	if (sceneType === "problem") return "conflict";
 	if (sceneType === "turn") return "reveal";
