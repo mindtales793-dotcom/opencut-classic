@@ -15,6 +15,7 @@ import { addNarrationAssetToTimeline } from "../darkcut-automation";
 import { useDarkCutProductionStore } from "../darkcut-production-store";
 import { useAssetsPanelStore } from "../assets-panel-store";
 import { syncVisualsToSrt } from "@/timeline/darkcut-tools";
+import type { TimelineElement } from "@/timeline/types";
 
 
 function formatSrtTime(totalSeconds: number) {
@@ -211,10 +212,17 @@ export function DarkCutSyncView() {
 	const activeScene = useEditor((e) => e.scenes.getActiveSceneOrNull());
 	const timelineVisualCount = useMemo(() => {
 		if (!activeScene) return 0;
-		return [activeScene.tracks.main, ...activeScene.tracks.overlay]
-			.flatMap((track) => track.elements)
-			.filter((element) => element.type === "image" || element.type === "video")
-			.length;
+		const tracks = [
+			activeScene.tracks.main,
+			...activeScene.tracks.overlay,
+		] as Array<{ elements: readonly TimelineElement[] }>;
+		let count = 0;
+		for (const track of tracks) {
+			for (const element of track.elements) {
+				if (element.type === "image" || element.type === "video") count += 1;
+			}
+		}
+		return count;
 	}, [activeScene]);
 	useEffect(() => {
 		const asset = mediaAssets.find((a) => a.id === narrationAssetId);
