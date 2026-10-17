@@ -111,14 +111,20 @@ export function MediaView() {
 				promise: async () => {
 					const processedAssets = await processMediaAssets({
 						files,
-						onProgress: (progress: { progress: number }) =>
-							setProgress(progress.progress),
+						// The original media processor reports percentage 0–100.
+						// Reserve the final 15% for actual project storage writes.
+						onProgress: ({ progress }) => {
+							setProgress(Math.round(progress * 0.85));
+						},
 					});
-					for (const asset of processedAssets) {
+					for (let index = 0; index < processedAssets.length; index += 1) {
 						await editor.media.addMediaAsset({
 							projectId: activeProject.metadata.id,
-							asset,
+							asset: processedAssets[index],
 						});
+						setProgress(
+							85 + Math.round(((index + 1) / processedAssets.length) * 15),
+						);
 					}
 					return {
 						uploadedCount: processedAssets.length,
@@ -496,8 +502,8 @@ export function MediaView() {
 				</div>
 				{isProcessing && (
 					<div className="mx-2 mb-2 space-y-1 rounded-md border border-primary/30 bg-primary/5 p-2 text-xs" role="status">
-						<div className="flex justify-between gap-2"><span>Importando mídias…</span><span>{Math.round(progress * 100)}%</span></div>
-						<progress className="h-2 w-full" max={1} value={progress} />
+						<div className="flex justify-between gap-2"><span>Importando mídias…</span><span>{progress}%</span></div>
+						<progress className="h-2 w-full" max={100} value={progress} />
 					</div>
 				)}
 				{isDragOver || filteredMediaItems.length === 0 ? (
