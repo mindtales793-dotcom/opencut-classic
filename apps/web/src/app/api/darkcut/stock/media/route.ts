@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { sortMediaCandidates } from "@/darkcut/media-search-intelligence";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -8,6 +9,7 @@ type StockRequest = {
 	pexelsApiKey?: unknown;
 	pixabayApiKey?: unknown;
 	prefer?: unknown;
+	excludeMediaIds?: unknown;
 };
 
 type Candidate = {
@@ -33,7 +35,7 @@ function clean(value: unknown) {
 	return typeof value === "string" ? value.trim() : "";
 }
 
-async function searchPexels(query: string, apiKey: string, errors: string[]): Promise<Candidate[]> {
+async function searchPexels(query: string, apiKey: string, errors: string[], prefer: "video" | "image"): Promise<Candidate[]> {
 	if (!apiKey) return [];
 	const headers = { Authorization: apiKey };
 	const candidates: Candidate[] = [];
@@ -85,6 +87,8 @@ async function searchPexels(query: string, apiKey: string, errors: string[]): Pr
 		errors.push(error instanceof Error && error.name === "Error" ? error.message : "Pexels: falha de conexão ou tempo limite excedido.");
 	}
 
+	if (prefer === "video" && candidates.length > 0) return candidates;
+
 	try {
 		const response = await fetch(
 			`https://api.pexels.com/v1/search?query=${encodeURIComponent(query)}&per_page=10&orientation=landscape`,
@@ -122,7 +126,7 @@ async function searchPexels(query: string, apiKey: string, errors: string[]): Pr
 	return candidates;
 }
 
-async function searchPixabay(query: string, apiKey: string, errors: string[]): Promise<Candidate[]> {
+async function searchPixabay(query: string, apiKey: string, errors: string[], prefer: "video" | "image"): Promise<Candidate[]> {
 	if (!apiKey) return [];
 	const candidates: Candidate[] = [];
 
@@ -170,6 +174,8 @@ async function searchPixabay(query: string, apiKey: string, errors: string[]): P
 	} catch (error) {
 		errors.push(error instanceof Error && error.name === "Error" ? error.message : "Pixabay: falha de conexão ou tempo limite excedido.");
 	}
+
+	if (prefer === "video" && candidates.length > 0) return candidates;
 
 	try {
 		const params = new URLSearchParams({
@@ -258,6 +264,11 @@ export async function POST(request: Request) {
 	const pexelsApiKey = clean(body.pexelsApiKey);
 	const pixabayApiKey = clean(body.pixabayApiKey);
 	const prefer = body.prefer === "image" ? "image" : "video";
+	const excluded = new Set(
+		Array.isArray(body.excludeMediaIds)
+			? body.excludeMediaIds.filter((item): item is string => typeof item === "string").slice(0, 1000)
+			: [],
+	);
 
 	if (!query) {
 		return NextResponse.json({ error: "Informe uma busca visual." }, { status: 400 });
@@ -271,17 +282,17 @@ export async function POST(request: Request) {
 
 	const errors: string[] = [];
 	const providers: Array<() => Promise<Candidate[]>> = [
-		() => searchPexels(query, pexelsApiKey, errors),
-		() => searchPixabay(query, pixabayApiKey, errors),
+		() => searchPexels(query, pexelsApiKey, errors, prefer),
+		() => searchPixabay(query, pixabayApiKey, errors, prefer),
 	];
 
 	for (const search of providers) {
 		try {
 			const candidates = await search();
-			const ordered = [
-				...candidates.filter((item) => item.kind === prefer),
-				...candidates.filter((item) => item.kind !== prefer),
-			];
+			const ordered = sortMediaCandidates(candidates, query, {
+				prefer,
+				exclude: excluded,
+			});
 			for (const candidate of ordered.slice(0, 6)) {
 				try {
 					return await download(candidate);
