@@ -15,7 +15,7 @@ import { addNarrationAssetToTimeline } from "../darkcut-automation";
 import { useDarkCutProductionStore } from "../darkcut-production-store";
 import { useAssetsPanelStore } from "../assets-panel-store";
 import { syncVisualsToSrt, type DarkCutSrtScope, type DarkCutSrtOrder } from "@/timeline/darkcut-tools";
-import { analyzeSceneSrt, makeSrtTimingGroups, sceneNumberFromName, type SrtSyncStrategy } from "@/darkcut/srt-scene-sync";
+import { analyzeSceneSrt, makeSrtTimingGroups, resolveSrtSyncStrategy, sceneNumberFromName, type SrtSyncStrategy } from "@/darkcut/srt-scene-sync";
 import type { TimelineElement } from "@/timeline/types";
 
 
@@ -145,7 +145,7 @@ export function DarkCutSyncView() {
 	);
 	const srtInputRef = useRef<HTMLInputElement>(null);
 	const [srtStrategy, setSrtStrategy] = useProjectDraft<SrtSyncStrategy>(
-		"sync-srt-strategy", "one-per-cue",
+		"sync-srt-strategy", "auto",
 	);
 	const [srtOrder, setSrtOrder] = useProjectDraft<DarkCutSrtOrder>(
 		"sync-srt-order", "timeline",
@@ -179,6 +179,11 @@ export function DarkCutSyncView() {
 	const namedVisualCount = visualTimeline.filter(
 		(item) => sceneNumberFromName(item.name) != null,
 	).length;
+	const effectiveSrtStrategy = resolveSrtSyncStrategy({
+		strategy: srtStrategy,
+		cueCount: srtCues.length,
+		visualCount: timelineVisualCount,
+	});
 	const groupedPreview = useMemo(
 		() => makeSrtTimingGroups({
 			cues: srtCues,
@@ -190,14 +195,15 @@ export function DarkCutSyncView() {
 	const hasSrtMismatch = srtCues.length !== timelineVisualCount;
 	const needsPlanConfirmation =
 		srtAnalysis.invalidBlocks > 0 ||
-		(srtStrategy === "one-per-cue" && hasSrtMismatch) ||
-		(srtStrategy === "fit-to-media" && timelineVisualCount > srtCues.length);
+		hasSrtMismatch;
 	const canApplySrt =
 		srtCues.length > 0 &&
 		timelineVisualCount > 0 &&
 		srtAnalysis.overlaps === 0 &&
 		(!needsPlanConfirmation || confirmSrtPlan) &&
-		(srtOrder !== "scene-number" || namedVisualCount > 0);
+		(effectiveSrtStrategy !== "one-per-cue" ||
+			srtOrder !== "scene-number" ||
+			namedVisualCount > 0);
 
 	useEffect(() => {
 		const asset = mediaAssets.find((a) => a.id === narrationAssetId);
@@ -519,7 +525,7 @@ export function DarkCutSyncView() {
 			cues: srtCues,
 			strategy: srtStrategy,
 			scope: srtScope,
-			order: srtStrategy === "fit-to-media" ? "timeline" : srtOrder,
+			order: effectiveSrtStrategy === "fit-to-media" ? "timeline" : srtOrder,
 		});
 
 		if (!result.changed) {
@@ -791,12 +797,18 @@ export function DarkCutSyncView() {
 						<select
 							value={srtStrategy}
 							onChange={(event) => {
-								setSrtStrategy(event.target.value === "fit-to-media" ? "fit-to-media" : "one-per-cue");
+								const value = event.target.value;
+								setSrtStrategy(
+									value === "fit-to-media" || value === "one-per-cue"
+										? value
+										: "auto",
+								);
 								setSrtOrder("timeline");
 								setConfirmSrtPlan(false);
 							}}
 							className="mt-1 h-9 w-full rounded-md border bg-background px-2 text-xs text-foreground"
 						>
+							<option value="auto">Automático (recomendado)</option>
 							<option value="one-per-cue">1 trecho = 1 imagem (exato)</option>
 							<option value="fit-to-media">Adaptar a menos imagens</option>
 						</select>
@@ -817,7 +829,7 @@ export function DarkCutSyncView() {
 					</label>
 				</div>
 
-				{srtStrategy === "one-per-cue" && (
+				{effectiveSrtStrategy === "one-per-cue" && (
 					<label className="block text-[0.68rem] text-muted-foreground">
 						Como identificar cada imagem?
 						<select
@@ -871,7 +883,7 @@ export function DarkCutSyncView() {
 					<div className="rounded-md border bg-background p-2">
 						<div className="text-xs font-semibold">Prévia das primeiras cenas</div>
 						<div className="mt-2 max-h-44 space-y-1 overflow-y-auto">
-							{(srtOrder === "scene-number" && srtStrategy === "one-per-cue"
+							{(srtOrder === "scene-number" && effectiveSrtStrategy === "one-per-cue"
 								? srtCues.slice(0, 6).map((cue) => ({
 									firstCue: cue.index,
 									lastCue: cue.index,
@@ -907,11 +919,11 @@ export function DarkCutSyncView() {
 
 				{srtCues.length > 0 && (
 					<p className="text-[0.68rem] leading-relaxed text-muted-foreground">
-						{srtStrategy === "fit-to-media" && timelineVisualCount < srtCues.length
-							? `Modo adaptativo: ${srtCues.length} falas organizadas para ${timelineVisualCount} mídia(s), mantendo os intervalos consecutivos.`
-							: hasSrtMismatch
-								? `Há ${srtCues.length} trechos e ${timelineVisualCount} mídias. No modo exato, somente as correspondências existentes são alteradas.`
-								: "Quantidade correspondente: os tempos do SRT podem ser aplicados cena a cena."}
+						{effectiveSrtStrategy === "fit-to-media" && timelineVisualCount < srtCues.length
+							? `Automático: este arquivo tem ${srtCues.length} trechos e ${timelineVisualCount} mídia(s). Os trechos consecutivos serão agrupados para cobrir o SRT inteiro.`
+							: timelineVisualCount > srtCues.length
+								? `Este SRT tem ${srtCues.length} trechos e há ${timelineVisualCount} mídias. As ${timelineVisualCount - srtCues.length} mídias sem trecho permanecerão sem alteração.`
+								: "Quantidade correspondente: cada mídia receberá o tempo de seu trecho no SRT."}
 					</p>
 				)}
 
@@ -923,7 +935,7 @@ export function DarkCutSyncView() {
 							checked={confirmSrtPlan}
 							onChange={(event) => setConfirmSrtPlan(event.target.checked)}
 						/>
-						Confirmo aplicar apenas os pares válidos, preservando as mídias que não tiverem correspondência.
+						Confirmo os tempos calculados para este SRT. Mídias sem correspondência permanecerão intactas.
 					</label>
 				)}
 
