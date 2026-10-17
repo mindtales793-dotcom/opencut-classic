@@ -21,6 +21,12 @@ type SearchEntry = {
 	title: string;
 };
 
+// YouTube's search.list has a high quota cost; cache only public video
+// metadata (never keys or media files) for adjacent scenes with the same query.
+const SEARCH_TTL_MS = 15 * 60 * 1000;
+const SEARCH_CACHE_LIMIT = 100;
+const searchCache = new Map<string, { expiresAt: number; entries: SearchEntry[] }>();
+
 type YouTubeSearchResponse = {
 	items?: Array<{
 		id?: { videoId?: string };
@@ -106,7 +112,19 @@ async function searchWithYouTubeApi({
 	apiKeys: string[];
 	excluded: Set<string>;
 	videoDuration?: "any" | "short" | "medium" | "long";
-}): Promise<{ entries: SearchEntry[]; keyIndex: number }> {
+}): Promise<{ entries: SearchEntry[]; keyIndex: number; cached: boolean }> {
+	const cacheKey = `${videoDuration}:${query.toLowerCase().replace(/\s+/g, " ").trim()}`;
+	const cached = searchCache.get(cacheKey);
+	if (cached) {
+		if (cached.expiresAt > Date.now()) {
+			return {
+				entries: cached.entries.filter((entry) => !excluded.has(entry.id)),
+				keyIndex: 0,
+				cached: true,
+			};
+		}
+		searchCache.delete(cacheKey);
+	}
 	let lastError = "A busca do YouTube falhou.";
 
 	for (let keyIndex = 0; keyIndex < apiKeys.length; keyIndex += 1) {
@@ -151,13 +169,19 @@ async function searchWithYouTubeApi({
 					(entry) =>
 						entry.id &&
 						/^[a-zA-Z0-9_-]{3,32}$/.test(entry.id) &&
-						!excluded.has(entry.id) &&
 						!/(^|\s)#?shorts?\b|youtube shorts?/i.test(entry.title),
 				);
 
 			const ranked = sortMediaCandidates(entries, query)
 				.filter((entry) => scoreMediaCandidate({ query, title: entry.title }) > -100);
-			return { entries: ranked, keyIndex };
+			if (searchCache.size >= SEARCH_CACHE_LIMIT)
+				searchCache.delete(searchCache.keys().next().value ?? "");
+			searchCache.set(cacheKey, { entries: ranked, expiresAt: Date.now() + SEARCH_TTL_MS });
+			return {
+				entries: ranked.filter((entry) => !excluded.has(entry.id)),
+				keyIndex,
+				cached: false,
+			};
 		} catch (error) {
 			lastError =
 				error instanceof Error ? error.message : "Falha ao acessar o YouTube.";
@@ -223,7 +247,7 @@ export async function POST(request: Request) {
 	let lastDownloadError: unknown = null;
 
 	try {
-		const { entries, keyIndex } = await searchWithYouTubeApi({
+		const { entries, keyIndex, cached } = await searchWithYouTubeApi({
 			query,
 			apiKeys,
 			excluded,
@@ -313,7 +337,8 @@ export async function POST(request: Request) {
 						"X-DarkCut-Video-Id": candidate.id,
 						"X-DarkCut-Video-Title": encodeURIComponent(safeTitle),
 						"X-DarkCut-Tried-Ids": attemptedVideoIds.join(","),
-						"X-DarkCut-YouTube-Key": String(keyIndex + 1),
+						"X-DarkCut-YouTube-Key": cached ? "cache" : String(keyIndex + 1),
+					"X-DarkCut-Search-Cache": cached ? "hit" : "miss",
 					},
 				});
 			} catch (error) {
