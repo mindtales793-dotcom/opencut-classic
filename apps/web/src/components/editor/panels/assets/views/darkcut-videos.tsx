@@ -95,7 +95,9 @@ export function DarkCutVideosView() {
 		[youtubeApiKeys],
 	);
 	const configuredStockApis = Number(Boolean(pexelsApiKey.trim())) + Number(Boolean(pixabayApiKey.trim()));
-	const hasAnyMediaSource = configuredApiKeys > 0 || configuredStockApis > 0;
+	const hasAnyMediaSource = sourcePriority === "stock-only"
+		? configuredStockApis > 0
+		: configuredApiKeys > 0 || configuredStockApis > 0;
 
 	const analyze = () => {
 		const next = createVideoBlocks(script, sceneSeconds);
@@ -472,13 +474,36 @@ export function DarkCutVideosView() {
 					)}
 				</div>
 				<p className="text-xs text-muted-foreground">
-					Blocos salvos por projeto. O DarkCut interpreta cada trecho e cria
-					uma busca visual curta em inglês, em vez de pesquisar a frase inteira.
+					Blocos salvos por projeto. O DarkCut reconhece modelos como HB20,
+					Corsa e Onix e cria termos de busca editáveis, sem gastar cota de IA.
 				</p>
 				<p className="mt-1 text-xs text-muted-foreground">
-					Roteiro → interpretação visual → YouTube → Pexels → Pixabay →
-					preview do resultado → Mídia Local → timeline.
+					Roteiro → palavras-chave por contexto → relevância do resultado →
+					preview → Mídia Local → timeline. Modelos de carros são preservados.
 				</p>
+				<div className="mt-3 rounded-lg border border-primary/30 bg-primary/5 p-3">
+					<label htmlFor="darkcut-source-priority" className="text-xs font-semibold">
+						Fonte prioritária • eficiência das APIs
+					</label>
+					<select
+						id="darkcut-source-priority"
+						className="mt-1.5 h-9 w-full rounded-md border bg-background px-2 text-xs"
+						value={sourcePriority}
+						disabled={isRunning}
+						onChange={(event) => setSourcePriority(
+							event.target.value as "youtube-first" | "stock-first" | "stock-only",
+						)}
+					>
+						<option value="youtube-first">YouTube primeiro • busca específica</option>
+						<option value="stock-first">Bancos primeiro • economizar cota YouTube</option>
+						<option value="stock-only">Somente Pexels e Pixabay • sem cota YouTube</option>
+					</select>
+					<p className="mt-1.5 text-[0.68rem] leading-relaxed text-muted-foreground">
+						O DarkCut usa uma consulta ao YouTube por bloco quando necessário,
+						classifica resultados e não repete mídias já identificadas.
+						As buscas ampliadas acontecem somente se a principal falhar.
+					</p>
+				</div>
 			</div>
 
 			<section className="mb-3 space-y-3 rounded-md border bg-card p-3">
@@ -633,7 +658,29 @@ export function DarkCutVideosView() {
 									{block.text}
 								</p>
 
+								<div className="mt-2 flex items-center justify-between gap-2 text-[0.65rem] text-muted-foreground">
+									<span>🔎 Palavra-chave visual em inglês</span>
+									<button
+										type="button"
+										disabled={isRunning}
+										className="rounded border px-2 py-1 text-primary hover:bg-primary/10 disabled:opacity-40"
+										title="Recriar a consulta sem usar nenhuma API"
+										onClick={() => {
+											const previous = blocks.find((item) => item.index === block.index - 1)?.text ?? "";
+											const plan = buildMediaSearchPlan(block.text, previous);
+											updateBlock(block.id, {
+												searchQuery: plan.query,
+												fallbackQuery: plan.fallbackQuery,
+												searchReason: plan.reason,
+												error: undefined,
+											});
+										}}
+									>
+										↻ Melhorar busca
+									</button>
+								</div>
 								<input
+									disabled={isRunning}
 									value={block.searchQuery}
 									onChange={(event) =>
 										updateBlock(block.id, {
@@ -645,6 +692,14 @@ export function DarkCutVideosView() {
 									className="mt-2 h-8 w-full rounded-md border bg-card px-2 text-xs outline-none focus:border-primary"
 									placeholder="Palavra-chave visual em inglês"
 								/>
+								<p className="mt-1 text-[0.66rem] text-muted-foreground">
+									{block.searchReason
+										? `🧠 ${block.searchReason}`
+										: "Consulta manual • pode ser editada a qualquer momento"}
+									{block.fallbackQuery && block.fallbackQuery !== block.searchQuery
+										? ` · alternativa: ${block.fallbackQuery}`
+										: ""}
+								</p>
 
 								{block.statusLabel === "searching" && (
 									<div className="mt-2 overflow-hidden rounded-md border border-primary/25 bg-primary/5">
