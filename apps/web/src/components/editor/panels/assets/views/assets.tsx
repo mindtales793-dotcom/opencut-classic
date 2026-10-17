@@ -203,6 +203,7 @@ export function MediaView() {
 		}
 	};
 
+	const naturalOrder = useMemo(() => new Intl.Collator("pt-BR", { numeric: true, sensitivity: "base" }), []);
 	const filteredMediaItems = useMemo(() => {
 		const filtered = mediaFiles.filter(
 			(item) =>
@@ -213,6 +214,15 @@ export function MediaView() {
 		);
 
 		filtered.sort((a, b) => {
+			// Preserve natural ordering: Cena 2 comes before Cena 10.
+			if (mediaSortBy === "scene" || mediaSortBy === "name") {
+				const value = naturalOrder.compare(a.name, b.name);
+				return (mediaSortOrder === "asc" ? value : -value) || naturalOrder.compare(a.id, b.id);
+			}
+			if (mediaSortBy === "date") {
+				const value = (a.file?.lastModified ?? 0) - (b.file?.lastModified ?? 0);
+				return (mediaSortOrder === "asc" ? value : -value) || naturalOrder.compare(a.name, b.name);
+			}
 			let valueA: string | number;
 			let valueB: string | number;
 
@@ -243,7 +253,7 @@ export function MediaView() {
 		});
 
 		return filtered;
-	}, [mediaFiles, mediaSortBy, mediaSortOrder, mediaCategory]);
+	}, [mediaFiles, mediaSortBy, mediaSortOrder, mediaCategory, naturalOrder]);
 	const orderedMediaIds = useMemo(() => {
 		return filteredMediaItems.map((item) => item.id);
 	}, [filteredMediaItems]);
@@ -447,6 +457,7 @@ export function MediaView() {
 						sortBy={mediaSortBy}
 						sortOrder={mediaSortOrder}
 						onSort={handleSort}
+						onSetSceneOrder={() => setMediaSort({ key: "scene", order: "asc" })}
 						onImport={openFilePicker}
 						onImportFolder={openFolderPicker}
 						onImportAudio={() => audioInputRef.current?.click()}
@@ -483,6 +494,16 @@ export function MediaView() {
 						Áudios
 					</Button>
 				</div>
+				<div className="mx-2 mb-1 flex flex-wrap items-center justify-between gap-2 rounded-md border bg-card/70 px-2 py-1.5 text-[0.68rem] text-muted-foreground">
+					<span>Ordem: {mediaSortBy === "scene" ? "cenas numeradas" : mediaSortBy === "date" ? "data do arquivo" : mediaSortBy} · {mediaSortOrder === "asc" ? "crescente" : "decrescente"}</span>
+					<span>+ Timeline segue esta ordem</span>
+				</div>
+				{isProcessing && (
+					<div className="mx-2 mb-2 space-y-1 rounded-md border border-primary/30 bg-primary/5 p-2 text-xs" role="status">
+						<div className="flex justify-between gap-2"><span>Importando mídias…</span><span>{Math.round(progress * 100)}%</span></div>
+						<progress className="h-2 w-full" max={1} value={progress} />
+					</div>
+				)}
 				{isDragOver || filteredMediaItems.length === 0 ? (
 					<MediaDragOverlay
 						isVisible={true}
@@ -813,6 +834,7 @@ function MediaActions({
 	sortBy,
 	sortOrder,
 	onSort,
+	onSetSceneOrder,
 	onImport,
 	onImportFolder,
 	onImportAudio,
@@ -828,6 +850,7 @@ function MediaActions({
 	sortBy: MediaSortKey;
 	sortOrder: MediaSortOrder;
 	onSort: ({ key }: { key: MediaSortKey }) => void;
+	onSetSceneOrder: () => void;
 	onImport: () => void;
 	onImportFolder: () => void;
 	onImportAudio: () => void;
@@ -882,6 +905,20 @@ function MediaActions({
 						</TooltipTrigger>
 						<DropdownMenuContent align="end">
 							<SortMenuItem
+								label="Ordem de cenas (1, 2, 10)"
+								sortKey="scene"
+								currentSortBy={sortBy}
+								currentSortOrder={sortOrder}
+								onSort={onSort}
+							/>
+							<SortMenuItem
+								label="Data do arquivo (última modificação)"
+								sortKey="date"
+								currentSortBy={sortBy}
+								currentSortOrder={sortOrder}
+								onSort={onSort}
+							/>
+							<SortMenuItem
 								label="Name"
 								sortKey="name"
 								currentSortBy={sortBy}
@@ -919,6 +956,13 @@ function MediaActions({
 					</TooltipContent>
 				</Tooltip>
 			</TooltipProvider>
+			<Button
+				variant={sortBy === "scene" && sortOrder === "asc" ? "secondary" : "outline"}
+				size="sm"
+				onClick={onSetSceneOrder}
+				disabled={isProcessing}
+				title="Ordenar imagens por número de cena para o SRT"
+			>1→N</Button>
 			<label className="flex h-8 cursor-pointer items-center gap-1.5 rounded-md border px-2 text-xs">
 				<input
 					type="checkbox"
