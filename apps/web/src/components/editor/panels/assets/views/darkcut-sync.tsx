@@ -37,12 +37,17 @@ type SrtSyncCue = {
 function parseSrtTimestamp(value: string) {
 	const match = value
 		.trim()
-		.match(/^(\d{1,3}):([0-5]\d):([0-5]\d)[,.](\d{1,3})$/);
+		.match(/^(\d{1,3}):([0-5]\d):([0-5]\d)[,.](\d{1,4})$/);
 	if (!match) return null;
 	const hours = Number(match[1]);
 	const minutes = Number(match[2]);
 	const seconds = Number(match[3]);
-	const milliseconds = Number(match[4].padEnd(3, "0").slice(0, 3));
+	// Older generators sometimes emit ",1000" instead of carrying one
+	// second. Treat this as 1000 ms, rather than silently dropping the cue.
+	const fraction = match[4];
+	const milliseconds = Number(
+		fraction.length <= 3 ? fraction.padEnd(3, "0") : fraction,
+	);
 	const total = hours * 3600 + minutes * 60 + seconds + milliseconds / 1000;
 	return Number.isFinite(total) ? total : null;
 }
@@ -61,7 +66,7 @@ function parseSrtSyncCues(source: string): SrtSyncCue[] {
 		const timingLineIndex = lines.findIndex((line) => line.includes("-->"));
 		if (timingLineIndex < 0) continue;
 		const timing = lines[timingLineIndex].match(
-			/^\s*(\d{1,3}:\d{2}:\d{2}[,.]\d{1,3})\s*-->\s*(\d{1,3}:\d{2}:\d{2}[,.]\d{1,3})/,
+			/^\s*(\d{1,3}:\d{2}:\d{2}[,.]\d{1,4})\s*-->\s*(\d{1,3}:\d{2}:\d{2}[,.]\d{1,4})\s*$/,
 		);
 		if (!timing) continue;
 		const startSeconds = parseSrtTimestamp(timing[1]);
