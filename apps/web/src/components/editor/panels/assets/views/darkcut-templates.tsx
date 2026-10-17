@@ -705,27 +705,46 @@ export function DarkCutTemplatesView({
 
 		for (const [index, ref] of refs.entries()) {
 			const item = plan.scenes[index];
-			if (!item?.overlayText.trim()) continue;
+			if (!item) continue;
+			const isRetro = template.id === "retro-automotive";
+			const retroHighlight = item.visualSlot !== "default" ||
+				item.sceneType === "hook" ||
+				item.sceneType === "number" ||
+				item.sceneType === "turn";
+			// Keep long documentary projects responsive: show a card for meaningful
+			// moments, and at most one optional context card per five shots.
+			const overlayText = item.overlayText.trim() ||
+				(isRetro && (retroHighlight || index % 5 === 0)
+					? item.summary.slice(0, 58)
+					: "");
+			if (!overlayText) continue;
 			const visual = visualByRef.get(`${ref.trackId}:${ref.elementId}`);
 			if (!visual) continue;
+			const visualStyle = isRetro
+				? retroTextStyle({
+					visualSlot: item.visualSlot,
+					sceneType: item.sceneType,
+					intensity: template.intensity,
+				})
+				: null;
 			editor.timeline.insertElement({
 				placement: { mode: "explicit", trackId: textTrackId },
 				element: buildTextElement({
 					startTime: visual.startTime,
 					raw: {
-						name: `Cris • ${item.sceneType}`,
+						name: isRetro ? `Cris • ${visualStyle?.label}` : `Cris • ${item.sceneType}`,
 						duration: visual.duration,
 						params: {
 							...templateTextParams(
-								item.overlayText,
-								template.id === "list" ? 74 : 58,
+								overlayText,
+								isRetro ? (visualStyle?.fontSize ?? 66) : template.id === "list" ? 74 : 58,
 							),
 							fontWeight: "bold",
-							color: "#ffffff",
+							color: visualStyle?.color ?? "#ffffff",
 							"background.enabled": true,
-							"background.color": "#0b0d12d9",
-							"background.paddingX": 20,
-							"background.paddingY": 12,
+							"background.color": visualStyle?.background ?? "#0b0d12d9",
+							"background.paddingX": visualStyle?.paddingX ?? 20,
+							"background.paddingY": visualStyle?.paddingY ?? 12,
 						},
 					},
 				}),
