@@ -32,6 +32,7 @@ export type DarkCutComposerVisualSlot =
 	| "quote"
 	| "document"
 	| "map"
+	| "comparison"
 	| "list-item"
 	| "conflict"
 	| "reveal"
