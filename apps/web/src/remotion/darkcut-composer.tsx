@@ -2,6 +2,10 @@
 
 import { Player } from "@remotion/player";
 import {
+	RetroAutomotiveComposition,
+} from "@/remotion/retro-automotive-composer";
+import type { RetroIntensity, RetroVisualMode } from "@/darkcut/retro-automotive";
+import {
 	AbsoluteFill,
 	interpolate,
 	spring,
@@ -205,9 +209,37 @@ export function DarkCutRemotionPreview({
 	overlayText = "Cris Composer",
 	summary = "Motion graphics avançado controlado pelo plano de edição.",
 	fps = 15,
-}: ComposerProps & { fps?: number }) {
+	templateId,
+	intensity = "normal",
+	retroMode = "auto",
+}: ComposerProps & {
+	fps?: number;
+	templateId?: string;
+	intensity?: RetroIntensity;
+	retroMode?: RetroVisualMode;
+}) {
 	return (
 		<div className="overflow-hidden rounded-lg border bg-black">
+			{templateId === "retro-automotive" ? (
+				<Player
+					component={RetroAutomotiveComposition}
+					inputProps={{
+						heading: overlayText || summary || "Arquivo Automotivo",
+						subtitle: summary || "Investigação · Carros · Comparativo",
+						sceneType,
+						visualSlot,
+						mode: retroMode,
+						intensity,
+					}}
+					durationInFrames={Math.max(60, fps * 6)}
+					fps={fps}
+					compositionWidth={960}
+					compositionHeight={540}
+					controls
+					loop
+					style={{ width: "100%", aspectRatio: "16 / 9" }}
+				/>
+			) : (
 			<Player
 				component={DarkCutComposerScene}
 				inputProps={{
@@ -225,6 +257,7 @@ export function DarkCutRemotionPreview({
 				loop
 				style={{ width: "100%", aspectRatio: "16 / 9" }}
 			/>
+			)}
 		</div>
 	);
 }
