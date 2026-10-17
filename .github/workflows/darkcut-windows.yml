@@ -82,16 +82,37 @@ jobs:
           Expand-Archive -Path $denoZip -DestinationPath $tools -Force
           & (Join-Path $tools "deno.exe") --version
 
-          $ffmpegZip = Join-Path $env:RUNNER_TEMP "ffmpeg.zip"
-          $ffmpegDir = Join-Path $env:RUNNER_TEMP "ffmpeg"
-          Invoke-WebRequest -Uri "https://www.gyan.dev/ffmpeg/builds/ffmpeg-release-essentials.zip" -OutFile $ffmpegZip
-          Expand-Archive -Path $ffmpegZip -DestinationPath $ffmpegDir -Force
+          # The export engine needs hardware encoders (Intel Quick Sync first), so
+          # check the build instead of assuming it: essentials, then full.
+          function Get-FfmpegBuild([string]$name) {
+            $zip = Join-Path $env:RUNNER_TEMP "ffmpeg-$name.zip"
+            $dir = Join-Path $env:RUNNER_TEMP "ffmpeg-$name"
+            Invoke-WebRequest -Uri "https://www.gyan.dev/ffmpeg/builds/ffmpeg-release-$name.zip" -OutFile $zip
+            Expand-Archive -Path $zip -DestinationPath $dir -Force
+            $exe = Get-ChildItem $dir -Recurse -Filter "ffmpeg.exe" | Select-Object -First 1
+            $probe = Get-ChildItem $dir -Recurse -Filter "ffprobe.exe" | Select-Object -First 1
+            if (-not $exe -or -not $probe) { throw "FFmpeg/FFprobe not found in the $name package." }
+            $encoders = (& $exe.FullName -hide_banner -encoders) -join "`n"
+            return @{
+              Name = $name
+              Ffmpeg = $exe
+              Ffprobe = $probe
+              HasQsv = $encoders.Contains("h264_qsv")
+              HasX264 = $encoders.Contains("libx264")
+            }
+          }
 
-          $ffmpeg = Get-ChildItem $ffmpegDir -Recurse -Filter "ffmpeg.exe" | Select-Object -First 1
-          $ffprobe = Get-ChildItem $ffmpegDir -Recurse -Filter "ffprobe.exe" | Select-Object -First 1
-          if (-not $ffmpeg -or -not $ffprobe) { throw "FFmpeg/FFprobe not found in downloaded package." }
-          Copy-Item $ffmpeg.FullName (Join-Path $tools "ffmpeg.exe") -Force
-          Copy-Item $ffprobe.FullName (Join-Path $tools "ffprobe.exe") -Force
+          $build = Get-FfmpegBuild "essentials"
+          if (-not $build.HasQsv) {
+            Write-Host "The essentials build has no h264_qsv; downloading the full build."
+            $build = Get-FfmpegBuild "full"
+          }
+          if (-not $build.HasQsv) { throw "Bundled FFmpeg has no Intel Quick Sync (h264_qsv) encoder." }
+          if (-not $build.HasX264) { throw "Bundled FFmpeg has no libx264 software fallback." }
+          Write-Host "Bundling FFmpeg '$($build.Name)' build with Quick Sync support."
+
+          Copy-Item $build.Ffmpeg.FullName (Join-Path $tools "ffmpeg.exe") -Force
+          Copy-Item $build.Ffprobe.FullName (Join-Path $tools "ffprobe.exe") -Force
 
           & (Join-Path $tools "yt-dlp.exe") --version
           & (Join-Path $tools "ffmpeg.exe") -version | Select-Object -First 1
@@ -124,6 +145,7 @@ jobs:
           & (Join-Path $packagedTools "deno.exe") --version
           & (Join-Path $packagedTools "ffmpeg.exe") -version | Select-Object -First 1
           & (Join-Path $packagedTools "ffprobe.exe") -version | Select-Object -First 1
+          & (Join-Path $packagedTools "ffmpeg.exe") -hide_banner -encoders | Select-String -Pattern "h264_qsv|h264_nvenc|h264_amf|libx264 "
 
       - name: Open packaged app and create a project
         shell: pwsh

@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { toast } from "sonner";
 import { TransitionTopIcon } from "@hugeicons/core-free-icons";
 import { HugeiconsIcon } from "@hugeicons/react";
@@ -19,11 +19,14 @@ import {
 	getExportMimeType,
 	getExportFileExtension,
 	downloadBuffer,
+	downloadFromUrl,
 } from "@/export";
 import { Check, Copy, Download, RotateCcw } from "lucide-react";
 import {
+	EXPORT_ENGINE_VALUES,
 	EXPORT_FORMAT_VALUES,
 	EXPORT_QUALITY_VALUES,
+	type ExportEngine,
 	type ExportFormat,
 	type ExportQuality,
 } from "@/export";
@@ -33,6 +36,10 @@ import {
 	SectionHeader,
 	SectionTitle,
 } from "@/components/section";
+import {
+	getFfmpegCapabilities,
+	type FfmpegCapabilities,
+} from "@/services/renderer/ffmpeg-exporter";
 import { useEditor } from "@/editor/use-editor";
 import { DEFAULT_EXPORT_OPTIONS } from "@/export/defaults";
 
@@ -42,6 +49,10 @@ function isExportFormat(value: string): value is ExportFormat {
 
 function isExportQuality(value: string): value is ExportQuality {
 	return EXPORT_QUALITY_VALUES.some((qualityValue) => qualityValue === value);
+}
+
+function isExportEngine(value: string): value is ExportEngine {
+	return EXPORT_ENGINE_VALUES.some((engineValue) => engineValue === value);
 }
 
 export function ExportButton() {
@@ -132,6 +143,21 @@ function ExportPopover({
 	const [shouldIncludeAudio, setShouldIncludeAudio] = useState<boolean>(
 		DEFAULT_EXPORT_OPTIONS.includeAudio ?? true,
 	);
+	const [engine, setEngine] = useState<ExportEngine>("auto");
+	const [capabilities, setCapabilities] = useState<FfmpegCapabilities | null>(
+		null,
+	);
+
+	// Checks (once per format) which encoder FFmpeg can use on this computer.
+	useEffect(() => {
+		let isActive = true;
+		void getFfmpegCapabilities({ format }).then((result) => {
+			if (isActive) setCapabilities(result);
+		});
+		return () => {
+			isActive = false;
+		};
+	}, [format]);
 
 	const handleExport = async () => {
 		if (!activeProject) return;
@@ -146,6 +172,8 @@ function ExportPopover({
 				quality,
 				fps: activeProject.settings.fps,
 				includeAudio: shouldIncludeAudio,
+				engine,
+				filename: activeProject.metadata.name,
 			},
 		});
 
@@ -154,16 +182,24 @@ function ExportPopover({
 			return;
 		}
 
-		if (result.success && result.buffer) {
-			downloadBuffer({
-				buffer: result.buffer,
-				filename: `${activeProject.metadata.name}${getExportFileExtension({ format })}`,
-				mimeType: getExportMimeType({ format }),
-			});
+		if (result.success && (result.downloadUrl || result.buffer)) {
+			const filename = `${activeProject.metadata.name}${getExportFileExtension({ format })}`;
+
+			if (result.downloadUrl) {
+				downloadFromUrl({ url: result.downloadUrl, filename });
+			} else if (result.buffer) {
+				downloadBuffer({
+					buffer: result.buffer,
+					filename,
+					mimeType: getExportMimeType({ format }),
+				});
+			}
 
 			editor.project.clearExportState();
 			toast.success("Exportação concluída.", {
-				description: "O arquivo foi enviado para a pasta de downloads.",
+				description: result.encoderLabel
+					? `Renderizado com ${result.encoderLabel}.`
+					: "O arquivo foi enviado para a pasta de downloads.",
 			});
 			onOpenChange(false);
 			return;
@@ -261,6 +297,37 @@ function ExportPopover({
 													</Label>
 												</div>
 											</RadioGroup>
+										</SectionContent>
+									</Section>
+
+									<Section collapsible defaultOpen={false}>
+										<SectionHeader>
+											<SectionTitle>Renderização</SectionTitle>
+										</SectionHeader>
+										<SectionContent>
+											<RadioGroup
+												value={engine}
+												onValueChange={(value) => {
+													if (isExportEngine(value)) setEngine(value);
+												}}
+											>
+												<div className="flex items-center space-x-2">
+													<RadioGroupItem value="auto" id="engine-auto" />
+													<Label htmlFor="engine-auto">
+														Automática - FFmpeg + placa de vídeo
+													</Label>
+												</div>
+												<div className="flex items-center space-x-2">
+													<RadioGroupItem value="browser" id="engine-browser" />
+													<Label htmlFor="engine-browser">
+														Compatível - encoder do navegador
+													</Label>
+												</div>
+											</RadioGroup>
+											<EncoderStatus
+												capabilities={capabilities}
+												engine={engine}
+											/>
 										</SectionContent>
 									</Section>
 
@@ -366,6 +433,62 @@ function ExportError({
 					Tentar novamente
 				</Button>
 			</div>
+		</div>
+	);
+}
+
+function EncoderStatus({
+	capabilities,
+	engine,
+}: {
+	capabilities: FfmpegCapabilities | null;
+	engine: ExportEngine;
+}) {
+	if (engine === "browser") {
+		return (
+			<p className="text-muted-foreground mt-3 text-xs">
+				Usa o encoder do navegador. É mais lento e usa mais memória em vídeos
+				longos.
+			</p>
+		);
+	}
+	if (!capabilities) {
+		return (
+			<p className="text-muted-foreground mt-3 text-xs">
+				Verificando a placa de vídeo…
+			</p>
+		);
+	}
+	if (!capabilities.available || !capabilities.selected) {
+		return (
+			<p className="text-muted-foreground mt-3 text-xs">
+				FFmpeg indisponível
+				{capabilities.reason ? ` (${capabilities.reason})` : ""}. A exportação
+				usará o encoder do navegador.
+			</p>
+		);
+	}
+	if (capabilities.selected.hardware) {
+		return (
+			<p className="mt-3 text-xs text-green-500">
+				Placa de vídeo em uso: {capabilities.selected.label}.
+			</p>
+		);
+	}
+	const skipped = capabilities.tested.filter(
+		(encoder) => encoder.hardware && !encoder.ok,
+	);
+	return (
+		<div className="text-muted-foreground mt-3 space-y-1 text-xs">
+			<p>
+				A placa de vídeo não foi aceita pelo FFmpeg; a exportação usará o{" "}
+				{capabilities.selected.label}.
+			</p>
+			{skipped.map((encoder) => (
+				<p key={encoder.id}>
+					{encoder.label}: {encoder.error ?? "indisponível"}
+				</p>
+			))}
 		</div>
 	);
 }

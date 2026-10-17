@@ -13,6 +13,12 @@ let mainWindow = null;
 let serverFailure = null;
 let quitting = false;
 let taskTray = null;
+// Exports keep rendering frames in this window while it is minimized or hidden
+// in the tray; without these switches Windows/Chromium throttle it and the
+// FFmpeg encoder starves. Must be set before the app is ready.
+app.commandLine.appendSwitch("disable-renderer-backgrounding");
+app.commandLine.appendSwitch("disable-background-timer-throttling");
+app.commandLine.appendSwitch("disable-features", "CalculateNativeWinOcclusion");
 const smokeTest = process.argv.includes("--smoke-test");
 if (smokeTest && process.env.DARKCUT_SMOKE_PROFILE) {
   app.setPath("userData", process.env.DARKCUT_SMOKE_PROFILE);

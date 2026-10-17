@@ -13,16 +13,32 @@ export const EXPORT_FORMAT_VALUES = ["mp4", "webm"] as const;
 export type ExportFormat = (typeof EXPORT_FORMAT_VALUES)[number];
 export type ExportQuality = (typeof EXPORT_QUALITY_VALUES)[number];
 
+/**
+ * - "auto": FFmpeg with GPU encoding when the desktop runtime provides it,
+ *   otherwise the in-browser encoder.
+ * - "browser": always use the in-browser (WebCodecs) encoder.
+ */
+export const EXPORT_ENGINE_VALUES = ["auto", "browser"] as const;
+export type ExportEngine = (typeof EXPORT_ENGINE_VALUES)[number];
+
 export interface ExportOptions {
 	format: ExportFormat;
 	quality: ExportQuality;
 	fps?: FrameRate;
 	includeAudio?: boolean;
+	engine?: ExportEngine;
+	/** Used as the downloaded file name by the FFmpeg engine (no extension). */
+	filename?: string;
 }
 
 export interface ExportResult {
 	success: boolean;
+	/** In-memory file. Only produced by the in-browser encoder. */
 	buffer?: ArrayBuffer;
+	/** Server-side file produced by FFmpeg. Download it instead of a buffer. */
+	downloadUrl?: string;
+	/** Human readable encoder that produced the file. */
+	encoderLabel?: string;
 	error?: string;
 	cancelled?: boolean;
 }
@@ -67,4 +83,20 @@ export function downloadBuffer({
 	downloadLink.click();
 	document.body.removeChild(downloadLink);
 	URL.revokeObjectURL(url);
+}
+
+/** Downloads a file that already lives on the local server, without loading it into memory. */
+export function downloadFromUrl({
+	url,
+	filename,
+}: {
+	url: string;
+	filename: string;
+}): void {
+	const downloadLink = document.createElement("a");
+	downloadLink.href = url;
+	downloadLink.download = filename;
+	document.body.appendChild(downloadLink);
+	downloadLink.click();
+	document.body.removeChild(downloadLink);
 }
