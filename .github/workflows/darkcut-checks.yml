@@ -34,7 +34,7 @@ jobs:
         run: bun install
 
       - name: Test SRT and automotive visual scene engines
-        run: bun test apps/web/src/darkcut/__tests__/srt-scene-sync.test.ts apps/web/src/darkcut/__tests__/retro-automotive.test.ts
+        run: bun test apps/web/src/darkcut/__tests__/srt-scene-sync.test.ts apps/web/src/darkcut/__tests__/retro-automotive.test.ts apps/web/src/darkcut/__tests__/media-search-intelligence.test.ts
 
       - name: Build DarkCut web runtime
         run: bun run build:web
