@@ -1,4 +1,6 @@
-import { mkdir, open, readFile, writeFile, rename } from "node:fs/promises";
+import { mkdir, open, readFile, writeFile, rename, stat } from "node:fs/promises";
+import { createReadStream } from "node:fs";
+import { Readable } from "node:stream";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
 import { randomUUID } from "node:crypto";
@@ -63,10 +65,18 @@ export async function GET(request: Request) {
 		return Response.json({ error: "Tarefa inválida." }, { status: 400 });
 	try {
 		const job = await read(id);
-		if (url.searchParams.get("audio") === "1" && job.status === "ready")
-			return new Response(await readFile(join(root(), id + ".mp3")), {
-				headers: { "Content-Type": "audio/mpeg", "Cache-Control": "no-store" },
+		if (url.searchParams.get("audio") === "1" && job.status === "ready") {
+			const audioPath = join(root(), id + ".mp3");
+			const metadata = await stat(audioPath);
+			const stream = Readable.toWeb(createReadStream(audioPath)) as unknown as ReadableStream<Uint8Array>;
+			return new Response(stream, {
+				headers: {
+					"Content-Type": "audio/mpeg",
+					"Content-Length": String(metadata.size),
+					"Cache-Control": "no-store",
+				},
 			});
+		}
 		const status =
 			job.status === "running" && !running.has(id) ? "interrupted" : job.status;
 		return Response.json(
@@ -108,15 +118,22 @@ export async function POST(request: Request) {
 	};
 	try {
 		const old = await read(id);
-		if (old.status === "ready" || running.has(id))
-			return Response.json({ id, status: old.status });
-		job = { ...old, status: "running", stage: "queued", bytesReceived: 0, totalBytes: 0, error: undefined };
+		if (old.text === body.text && old.referenceId === body.referenceId) {
+			if (old.status === "ready" || running.has(id))
+				return Response.json({ id, status: old.status });
+			job = { ...old, status: "running", stage: "queued", bytesReceived: 0, totalBytes: 0, error: undefined };
+		} else {
+			// A changed script or narrator must not return the old completed MP3.
+			// Use a fresh job ID; preserve the old job/MP3 for recovery.
+			job = { ...job, id: randomUUID() };
+		}
 	} catch {}
-	running.add(id);
+	const activeId = job.id;
+	running.add(activeId);
 	try {
 		await save(job);
 	} catch {
-		running.delete(id);
+		running.delete(activeId);
 		return Response.json(
 			{ error: "Não foi possível salvar a tarefa." },
 			{ status: 500 },
@@ -141,7 +158,7 @@ export async function POST(request: Request) {
 				const data = await response.json();
 				throw new Error(data.error ?? "Falha na narração.");
 			}
-			const output = join(root(), id + ".mp3");
+			const output = join(root(), activeId + ".mp3");
 			await save({ ...job, stage: "downloading" });
 			let downloadedBytes = 0;
 			let expectedBytes = 0;
@@ -161,8 +178,8 @@ export async function POST(request: Request) {
 				error: error instanceof Error ? error.message : "Falha na narração.",
 			}).catch(() => {});
 		} finally {
-			running.delete(id);
+			running.delete(activeId);
 		}
 	})();
-	return Response.json({ id, status: "running" }, { status: 202 });
+	return Response.json({ id: activeId, status: "running" }, { status: 202 });
 }
