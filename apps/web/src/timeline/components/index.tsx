@@ -663,7 +663,37 @@ function TrackLabelsPanel({
 				: [],
 		[scene],
 	);
-	const { selectedElements } = useElementSelection();
+	const { selectedElements, setElementSelection, clearElementSelection } = useElementSelection();
+
+	const selectTrackElements = (track: TimelineTrack) => {
+		if (!track.elements.length) {
+			toast.info(`A faixa ${track.name} está vazia.`);
+			return;
+		}
+		const allSelected =
+			selectedElements.length === track.elements.length &&
+			track.elements.every((element) =>
+				selectedElements.some(
+					(selected) =>
+						selected.trackId === track.id &&
+						selected.elementId === element.id,
+				),
+			);
+		if (allSelected) {
+			clearElementSelection();
+			toast.info(`Seleção da faixa ${track.name} desfeita.`);
+			return;
+		}
+		setElementSelection({
+			elements: track.elements.map((element) => ({
+				trackId: track.id,
+				elementId: element.id,
+			})),
+		});
+		toast.success(`${track.elements.length} clipe(s) selecionados em ${track.name}.`, {
+			description: "Somente os clipes desta faixa foram selecionados.",
+		});
+	};
 	const tracksWithSelection = useMemo(
 		() => new Set(selectedElements.map((el) => el.trackId)),
 		[selectedElements],
@@ -759,7 +789,28 @@ function TrackLabelsPanel({
 													? "V1 • Vídeo / Imagens"
 													: track.name}
 											</span>
-											<div className="flex shrink-0 items-center gap-1.5">
+											<div className="flex shrink-0 items-center gap-1">
+											<button
+												type="button"
+												disabled={track.elements.length === 0}
+												onClick={() => selectTrackElements(track)}
+												title={`Selecionar todos os ${track.elements.length} clipes de ${track.name}. Clique novamente para desfazer.`}
+												aria-label={`Selecionar somente clipes da faixa ${track.name}`}
+												className={cn(
+													"rounded border px-1.5 py-0.5 text-[0.63rem] font-semibold transition-colors disabled:opacity-40",
+													track.elements.length > 0 &&
+														selectedElements.length === track.elements.length &&
+														track.elements.every((element) =>
+															selectedElements.some((selected) =>
+																selected.trackId === track.id && selected.elementId === element.id,
+															),
+														)
+														? "border-primary bg-primary/20 text-primary"
+														: "border-border/70 text-muted-foreground hover:border-primary hover:bg-primary/10 hover:text-primary",
+												)}
+											>
+												☑
+											</button>
 											{canTrackHaveAudio(track) && (
 												<TrackToggleIcon
 													isOff={track.muted}
@@ -852,7 +903,7 @@ function TimelineTrackRows({
 				: [],
 		[scene],
 	);
-	const { selectedElements } = useElementSelection();
+	const { selectedElements, setElementSelection } = useElementSelection();
 	const tracksWithSelection = useMemo(
 		() => new Set(selectedElements.map((el) => el.trackId)),
 		[selectedElements],
@@ -967,7 +1018,21 @@ function TimelineTrackRows({
 							/>
 						</div>
 					</ContextMenuTrigger>
-					<ContextMenuContent className="w-40">
+					<ContextMenuContent className="w-48">
+						<ContextMenuItem
+							disabled={track.elements.length === 0}
+							onClick={() => {
+								setElementSelection({
+									elements: track.elements.map((element) => ({
+										trackId: track.id,
+										elementId: element.id,
+									})),
+								});
+								toast.success(`${track.elements.length} clipes selecionados em ${track.name}.`);
+							}}
+						>
+							☑ Selecionar todos desta faixa
+						</ContextMenuItem>
 						<ContextMenuItem
 							icon={<HugeiconsIcon icon={TaskAdd02Icon} />}
 							onClick={(event: React.MouseEvent) => {
