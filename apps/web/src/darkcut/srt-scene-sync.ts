@@ -12,6 +12,7 @@ export type SrtSceneCue = {
 export type SrtTimingGroup = {
 	firstCue: number;
 	lastCue: number;
+	cueCount: number;
 	startSeconds: number;
 	endSeconds: number;
 	text: string;
@@ -115,6 +116,7 @@ export function makeSrtTimingGroups({
 	const group = (startIndex: number, endIndex: number): SrtTimingGroup => ({
 		firstCue: cues[startIndex].index,
 		lastCue: cues[endIndex].index,
+		cueCount: endIndex - startIndex + 1,
 		startSeconds: cues[startIndex].startSeconds,
 		endSeconds: cues[endIndex].endSeconds,
 		text: cues.slice(startIndex, endIndex + 1).map((cue) => cue.text).filter(Boolean).join(" "),
