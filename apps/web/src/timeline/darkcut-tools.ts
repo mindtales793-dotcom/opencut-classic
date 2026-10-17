@@ -296,7 +296,7 @@ export function syncVisualsToSrt({
 			target: targets[i],
 			startSeconds: cue.startSeconds,
 			endSeconds: cue.endSeconds,
-			cueCount: cue.lastCue - cue.firstCue + 1,
+			cueCount: cue.cueCount,
 		}));
 	}
 
