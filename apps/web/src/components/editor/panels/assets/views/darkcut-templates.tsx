@@ -275,6 +275,71 @@ function collectVisualRefs(scene: TScene | null) {
 	return refs;
 }
 
+/**
+ * Lightweight 2D thumbnail for the retro template grid.
+ * A single canvas is animated at ~10 fps only while hovered/focused.
+ */
+function drawRetroAutomotiveCard(
+	ctx: CanvasRenderingContext2D,
+	time: number,
+	secondsPerShot: number,
+	active: boolean,
+) {
+	const index = Math.floor(time / secondsPerShot) % 3;
+	const motion = active ? Math.min(1, (time % secondsPerShot) / 0.6) : 1;
+	ctx.clearRect(0, 0, 480, 270);
+	ctx.fillStyle = index === 1 ? "#222323" : "#f4eedb";
+	ctx.fillRect(0, 0, 480, 270);
+	ctx.strokeStyle = index === 1 ? "#444443" : "#d2cab7";
+	ctx.lineWidth = 1;
+	for (let px = 0; px < 480; px += 24) {
+		ctx.beginPath(); ctx.moveTo(px, 0); ctx.lineTo(px, 270); ctx.stroke();
+	}
+	for (let py = 0; py < 270; py += 24) {
+		ctx.beginPath(); ctx.moveTo(0, py); ctx.lineTo(480, py); ctx.stroke();
+	}
+	ctx.save();
+	ctx.globalAlpha = motion;
+	ctx.translate(0, (1 - motion) * 21);
+	if (index === 0) {
+		ctx.strokeStyle = "#151515"; ctx.lineWidth = 3;
+		ctx.strokeRect(17, 22, 446, 228);
+		ctx.fillStyle = "#d4a359"; ctx.fillRect(38, 18, 174, 32);
+		ctx.fillStyle = "#151515"; ctx.font = "bold 15px monospace";
+		ctx.fillText("ARQUIVO / FILE 001", 49, 39);
+		ctx.fillStyle = "#a81818"; ctx.font = "900 42px Impact, Arial";
+		ctx.fillText("CARROS SOB", 38, 111);
+		ctx.fillText("INVESTIGAÇÃO", 38, 154);
+		ctx.fillStyle = "#151515"; ctx.fillRect(38, 170, 393, 3);
+		ctx.font = "bold 14px monospace"; ctx.fillText("EVIDÊNCIAS • DOCUMENTOS • REGRAS", 38, 200);
+	} else if (index === 1) {
+		ctx.fillStyle = "#f4eedb"; ctx.font = "bold 14px monospace";
+		ctx.textAlign = "center"; ctx.fillText("DOCUMENTÁRIO FINANCEIRO", 240, 52);
+		ctx.fillStyle = "#a81818"; ctx.fillRect(238, 67, 4, 34);
+		ctx.font = "900 107px Impact, Arial"; ctx.fillText("R$ 12 MIL", 240, 183);
+		ctx.fillStyle = "#f4eedb"; ctx.font = "bold 20px monospace";
+		ctx.fillText("VALOR À VISTA", 240, 226);
+		ctx.textAlign = "left";
+	} else {
+		ctx.fillStyle = "#151515"; ctx.font = "bold 15px monospace";
+		ctx.fillText("ARQUIVO / COMPARAÇÃO", 26, 38);
+		ctx.fillStyle = "#a81818"; ctx.font = "900 38px Impact, Arial";
+		ctx.fillText("DUAS ESCOLHAS", 24, 87);
+		ctx.strokeStyle = "#151515"; ctx.lineWidth = 3; ctx.strokeRect(25, 107, 208, 121);
+		ctx.strokeStyle = "#a81818"; ctx.strokeRect(248, 107, 207, 121);
+		ctx.fillStyle = "#151515"; ctx.font = "bold 15px monospace";
+		ctx.fillText("FINANCIAR", 49, 137);
+		ctx.fillStyle = "#a81818"; ctx.fillText("PAGAR À VISTA", 267, 137);
+		ctx.fillStyle = "#2d2d2d"; ctx.fillRect(53, 160, 147, 8);
+		ctx.fillStyle = "#a81818"; ctx.fillRect(274, 160, 147, 8);
+		ctx.fillStyle = "#adadad"; ctx.fillRect(53, 182, 103, 7);
+		ctx.fillStyle = "#c99a6e"; ctx.fillRect(274, 182, 84, 7);
+	}
+	ctx.restore();
+	ctx.fillStyle = index === 1 ? "#d4a359" : "#a81818";
+	ctx.fillRect(0, 265, 480 * (time / (secondsPerShot * 3)), 5);
+}
+
 function TemplatePreview({
 	template,
 	active,
@@ -336,6 +401,10 @@ function TemplatePreview({
 				: duration * 0.4;
 			const index = Math.floor(time / duration);
 			const localTime = time % duration;
+			if (template.id === "retro-automotive") {
+				drawRetroAutomotiveCard(ctx, time, duration, active);
+				return;
+			}
 			const animations = elements[index].animations;
 			const value = (propertyPath: string, fallbackValue: number) =>
 				resolveAnimationPathValueAtTime({
