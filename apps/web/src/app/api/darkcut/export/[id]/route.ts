@@ -32,7 +32,7 @@ export async function GET(_request: Request, { params }: RouteContext) {
 
 		// Node's web stream type is structurally the same as the DOM one.
 		// eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
-		const body = Readable.toWeb(createReadStream(file.path)) as ReadableStream;
+		const body = Readable.toWeb(createReadStream(file.path)) as unknown as ReadableStream<Uint8Array>;
 		return new Response(body, {
 			headers: {
 				"Content-Type": EXPORT_MIME_TYPES[file.format],
