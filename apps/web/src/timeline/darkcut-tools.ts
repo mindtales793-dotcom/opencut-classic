@@ -1,6 +1,7 @@
 import { transitionValue } from "@/darkcut/fx-core.generated";
 import {
 	makeSrtTimingGroups,
+	resolveSrtSyncStrategy,
 	sceneNumberFromName,
 	type SrtSyncStrategy,
 } from "@/darkcut/srt-scene-sync";
@@ -263,6 +264,12 @@ export function syncVisualsToSrt({
 
 	if (!targets.length || !validCues.length) return emptyResult;
 
+	const effectiveStrategy = resolveSrtSyncStrategy({
+		strategy,
+		cueCount: validCues.length,
+		visualCount: targets.length,
+	});
+
 	// A naming match uses only explicit scene-number filenames. Descriptive
 	// filenames such as "HB20 novo" do not count as an image identifier.
 	let pairs: Array<{
@@ -271,7 +278,7 @@ export function syncVisualsToSrt({
 		endSeconds: number;
 		cueCount: number;
 	}> = [];
-	if (order === "scene-number" && strategy === "one-per-cue") {
+	if (order === "scene-number" && effectiveStrategy === "one-per-cue") {
 		const byIndex = new Map(validCues.map((cue) => [cue.index, cue]));
 		const usedIndices = new Set<number>();
 		for (const target of targets) {
