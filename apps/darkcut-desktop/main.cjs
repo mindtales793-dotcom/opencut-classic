@@ -237,7 +237,32 @@ async function createWindow() {
       if (/^https?:/.test(url)) shell.openExternal(url);
     }
   });
-  await win.loadURL("data:text/html;charset=utf-8," + encodeURIComponent('<html lang="pt-BR"><body style="background:#0b0b0c;color:white;font:20px system-ui;display:grid;place-content:center;height:95vh"><h1>DarkCut Studio</h1><p>Iniciando o editor…</p></body></html>'));
+  // Lightweight local startup splash: no network, fonts, timers or extra BrowserWindow.
+  // The bar is indeterminate while the local server boots (not a fake percent).
+  const startupSplash = `<!doctype html><html lang="pt-BR"><head><meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1"><title>DarkCut Studio</title>
+  <style>
+    *{box-sizing:border-box} html,body{height:100%;margin:0}
+    body{display:grid;place-items:center;background:radial-gradient(circle at 50% 38%,#311017 0,#121216 42%,#09090b 85%);color:#fff;font-family:"Segoe UI",Arial,sans-serif;overflow:hidden}
+    .glow{position:absolute;width:580px;height:580px;border:1px solid #f93a4c22;border-radius:50%;box-shadow:0 0 0 100px #e91c3210,0 0 0 210px #e91c3208}
+    main{position:relative;text-align:center;width:min(90vw,620px);animation:enter .65s ease-out both}
+    .mark{width:142px;height:142px;margin:0 auto 18px;border-radius:32px;background:linear-gradient(135deg,#fb3456,#8d0d27);display:grid;place-items:center;box-shadow:0 18px 70px #e9163d55,inset 0 1px #ffffff77}
+    svg{width:88px;height:88px;fill:none;stroke:#fff;stroke-width:8;stroke-linecap:round;stroke-linejoin:round}
+    h1{margin:0;font-size:clamp(58px,10vw,92px);letter-spacing:-.09em;font-weight:900;line-height:1.1}
+    h1 em{color:#fa3856;font-style:normal}.studio{letter-spacing:.48em;font-size:17px;font-weight:700;margin:8px 0 42px;padding-left:.48em;color:#b6b7be}
+    .track{height:5px;border-radius:999px;background:#343138;overflow:hidden;max-width:390px;margin:0 auto 14px}
+    .fill{height:100%;width:38%;background:linear-gradient(90deg,transparent,#f72e4c,#ff8e9b);border-radius:999px;animation:loading 1.35s ease-in-out infinite}
+    p{color:#a8a9af;letter-spacing:.05em;font-size:13px;margin:0}small{position:fixed;bottom:26px;left:0;right:0;color:#717279;font-size:11px;letter-spacing:.12em}
+    @keyframes loading{from{transform:translateX(-110%)}to{transform:translateX(380%)}}
+    @keyframes enter{from{opacity:0;transform:translateY(24px) scale(.96)}to{opacity:1;transform:none}}
+    @media (prefers-reduced-motion:reduce){.fill,.mark,main{animation:none}}
+  </style></head><body><div class="glow"></div><main>
+    <div class="mark"><svg viewBox="0 0 100 100" aria-hidden="true"><path d="M25 15L80 75M75 15L20 75"/><circle cx="23" cy="79" r="10"/><circle cx="77" cy="79" r="10"/><path d="M48 42l8 8"/></svg></div>
+    <h1>DARK<em>CUT</em></h1><div class="studio">STUDIO</div>
+    <div class="track" role="progressbar" aria-label="Iniciando o DarkCut"><div class="fill"></div></div>
+    <p>Preparando seus projetos e ferramentas de edição…</p>
+  </main><small>SEU ESTÚDIO DE PRODUÇÃO INTELIGENTE</small></body></html>`;
+  await win.loadURL("data:text/html;charset=utf-8," + encodeURIComponent(startupSplash));
   return win;
 }
 
