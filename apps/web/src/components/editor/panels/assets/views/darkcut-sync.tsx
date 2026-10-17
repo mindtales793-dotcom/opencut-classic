@@ -4,7 +4,7 @@ import { useProjectDraft } from "@/darkcut/project-draft";
 import { TaskStatus, useDarkCutTasks } from "@/darkcut/tasks";
 import { MusicPanel } from "@/darkcut/music-panel";
 import { SilencePanel } from "@/darkcut/silence-panel";
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/utils/ui";
@@ -14,6 +14,7 @@ import { FISH_NARRATORS } from "@/darkcut/fish-narrators";
 import { addNarrationAssetToTimeline } from "../darkcut-automation";
 import { useDarkCutProductionStore } from "../darkcut-production-store";
 import { useAssetsPanelStore } from "../assets-panel-store";
+import { syncVisualsToSrt } from "@/timeline/darkcut-tools";
 
 
 function formatSrtTime(totalSeconds: number) {
@@ -23,6 +24,69 @@ function formatSrtTime(totalSeconds: number) {
 	const seconds = Math.floor(safe % 60);
 	const milliseconds = Math.floor((safe - Math.floor(safe)) * 1000);
 	return `${String(hours).padStart(2, "0")}:${String(minutes).padStart(2, "0")}:${String(seconds).padStart(2, "0")},${String(milliseconds).padStart(3, "0")}`;
+}
+
+type SrtSyncCue = {
+	index: number;
+	startSeconds: number;
+	endSeconds: number;
+	text: string;
+};
+
+function parseSrtTimestamp(value: string) {
+	const match = value
+		.trim()
+		.match(/^(\d{1,3}):([0-5]\d):([0-5]\d)[,.](\d{1,3})$/);
+	if (!match) return null;
+	const hours = Number(match[1]);
+	const minutes = Number(match[2]);
+	const seconds = Number(match[3]);
+	const milliseconds = Number(match[4].padEnd(3, "0").slice(0, 3));
+	const total = hours * 3600 + minutes * 60 + seconds + milliseconds / 1000;
+	return Number.isFinite(total) ? total : null;
+}
+
+function parseSrtSyncCues(source: string): SrtSyncCue[] {
+	const normalized = source
+		.replace(/^\uFEFF/, "")
+		.replace(/\r\n/g, "\n")
+		.replace(/\r/g, "\n")
+		.trim();
+	if (!normalized) return [];
+
+	const cues: SrtSyncCue[] = [];
+	for (const block of normalized.split(/\n{2,}/)) {
+		const lines = block.split("\n");
+		const timingLineIndex = lines.findIndex((line) => line.includes("-->"));
+		if (timingLineIndex < 0) continue;
+		const timing = lines[timingLineIndex].match(
+			/^\s*(\d{1,3}:\d{2}:\d{2}[,.]\d{1,3})\s*-->\s*(\d{1,3}:\d{2}:\d{2}[,.]\d{1,3})/,
+		);
+		if (!timing) continue;
+		const startSeconds = parseSrtTimestamp(timing[1]);
+		const endSeconds = parseSrtTimestamp(timing[2]);
+		if (
+			startSeconds == null ||
+			endSeconds == null ||
+			endSeconds <= startSeconds
+		) {
+			continue;
+		}
+		const rawIndex = timingLineIndex > 0 ? Number(lines[timingLineIndex - 1].trim()) : NaN;
+		cues.push({
+			index: Number.isFinite(rawIndex) ? rawIndex : cues.length + 1,
+			startSeconds,
+			endSeconds,
+			text: lines
+				.slice(timingLineIndex + 1)
+				.join(" ")
+				.replace(/<[^>]+>/g, "")
+				.replace(/\s+/g, " ")
+				.trim(),
+		});
+	}
+
+	return cues.sort((a, b) => a.startSeconds - b.startSeconds);
 }
 
 function splitSubtitleChunks(text: string) {
@@ -135,8 +199,23 @@ export function DarkCutSyncView() {
 	const [narrationSignature, setNarrationSignature] = useProjectDraft<
 		string | null
 	>("narration-signature", null);
+	const [syncSrtText, setSyncSrtText] = useProjectDraft("sync-srt-text", "");
+	const [syncSrtFileName, setSyncSrtFileName] = useProjectDraft(
+		"sync-srt-filename",
+		"",
+	);
+	const srtInputRef = useRef<HTMLInputElement>(null);
+	const srtCues = useMemo(() => parseSrtSyncCues(syncSrtText), [syncSrtText]);
 
 	const mediaAssets = useEditor((e) => e.media.getAssets());
+	const activeScene = useEditor((e) => e.scenes.getActiveSceneOrNull());
+	const timelineVisualCount = useMemo(() => {
+		if (!activeScene) return 0;
+		return [activeScene.tracks.main, ...activeScene.tracks.overlay]
+			.flatMap((track) => track.elements)
+			.filter((element) => element.type === "image" || element.type === "video")
+			.length;
+	}, [activeScene]);
 	useEffect(() => {
 		const asset = mediaAssets.find((a) => a.id === narrationAssetId);
 		if (asset?.url) setNarrationUrl(asset.url);
@@ -413,6 +492,73 @@ export function DarkCutSyncView() {
 		toast.success("SRT gerado e enviado para download.");
 	};
 
+	const loadSrtForSync = async (file: File | undefined) => {
+		if (!file) return;
+		try {
+			const text = await file.text();
+			const cues = parseSrtSyncCues(text);
+			if (!cues.length) {
+				throw new Error(
+					"Não encontrei marcações de tempo válidas nesse arquivo SRT.",
+				);
+			}
+			setSyncSrtText(text);
+			setSyncSrtFileName(file.name);
+			toast.success(`SRT carregado: ${cues.length} marcações de tempo.`);
+		} catch (error) {
+			toast.error(
+				error instanceof Error ? error.message : "Falha ao ler o arquivo SRT.",
+			);
+		}
+	};
+
+	const applySrtToTimeline = () => {
+		if (!srtCues.length) {
+			toast.error("Faça upload de um arquivo SRT primeiro.");
+			return;
+		}
+		if (!timelineVisualCount) {
+			toast.error("Adicione as imagens ou vídeos à timeline antes de sincronizar.");
+			return;
+		}
+
+		const result = syncVisualsToSrt({
+			editor,
+			cues: srtCues.map((cue) => ({
+				startSeconds: cue.startSeconds,
+				endSeconds: cue.endSeconds,
+			})),
+		});
+
+		if (!result.changed) {
+			toast.error("Não encontrei mídias visuais para sincronizar.");
+			return;
+		}
+
+		const details: string[] = [];
+		if (result.unmatchedVisuals > 0) {
+			details.push(`${result.unmatchedVisuals} mídia(s) ficaram sem marcação SRT`);
+		}
+		if (result.unmatchedCues > 0) {
+			details.push(`${result.unmatchedCues} marcação(ões) SRT ficaram sem mídia`);
+		}
+		if (result.clamped > 0) {
+			details.push(
+				`${result.clamped} vídeo(s) precisaram respeitar o limite de retime`,
+			);
+		}
+
+		toast.success(
+			`${result.changed} mídia(s) sincronizadas exatamente pelos tempos do SRT.`,
+			{
+				description:
+					details.length > 0
+						? details.join(" · ")
+						: "Início e duração das imagens/vídeos foram ajustados na timeline.",
+			},
+		);
+	};
+
 	const words = script.trim() ? script.trim().split(/\s+/).length : 0;
 
 	return (
@@ -610,6 +756,114 @@ export function DarkCutSyncView() {
 						</div>
 					</div>
 				)}
+			</section>
+
+			<section className="mt-3 space-y-3 rounded-md border border-primary/30 bg-primary/5 p-3">
+				<div className="flex items-start justify-between gap-3">
+					<div>
+						<div className="text-sm font-medium">Sincronizar imagens pelo SRT</div>
+						<div className="mt-0.5 text-[0.7rem] leading-relaxed text-muted-foreground">
+							Faça upload do SRT que contém o tempo de cada imagem. O DarkCut lê
+							cada início/fim e reposiciona as mídias visuais da timeline na mesma
+							ordem.
+						</div>
+					</div>
+					<span className="rounded bg-primary/15 px-2 py-1 text-[0.62rem] font-medium text-primary">
+						SRT → TIMELINE
+					</span>
+				</div>
+
+				<input
+					ref={srtInputRef}
+					type="file"
+					accept=".srt,application/x-subrip,text/plain"
+					className="hidden"
+					onChange={(event) => {
+						const file = event.currentTarget.files?.[0];
+						void loadSrtForSync(file);
+						event.currentTarget.value = "";
+					}}
+				/>
+
+				<div className="grid grid-cols-2 gap-2">
+					<Button
+						variant="secondary"
+						onClick={() => srtInputRef.current?.click()}
+					>
+						↑ Upload SRT
+					</Button>
+					<Button
+						disabled={!srtCues.length || !timelineVisualCount}
+						onClick={applySrtToTimeline}
+					>
+						Sincronizar timeline
+					</Button>
+				</div>
+
+				<div className="grid grid-cols-2 gap-2 text-[0.68rem]">
+					<div className="rounded border bg-background p-2">
+						<div className="text-muted-foreground">Marcações no SRT</div>
+						<div className="mt-0.5 text-sm font-semibold">{srtCues.length}</div>
+					</div>
+					<div className="rounded border bg-background p-2">
+						<div className="text-muted-foreground">Imagens/vídeos na timeline</div>
+						<div className="mt-0.5 text-sm font-semibold">{timelineVisualCount}</div>
+					</div>
+				</div>
+
+				{syncSrtFileName && (
+					<div className="rounded-md border bg-background p-2">
+						<div className="flex items-center justify-between gap-2">
+							<div className="min-w-0">
+								<div className="truncate text-xs font-medium">{syncSrtFileName}</div>
+								<div className="text-[0.65rem] text-muted-foreground">
+									{srtCues.length === timelineVisualCount
+										? "Quantidade perfeita: uma marcação para cada mídia."
+										: `Diferença de ${Math.abs(srtCues.length - timelineVisualCount)} entre SRT e mídias. O DarkCut sincroniza os pares disponíveis.`}
+								</div>
+							</div>
+							<Button
+								variant="ghost"
+								size="sm"
+								onClick={() => {
+									setSyncSrtText("");
+									setSyncSrtFileName("");
+								}}
+							>
+								Remover
+							</Button>
+						</div>
+
+						{srtCues.length > 0 && (
+							<div className="mt-2 max-h-36 space-y-1 overflow-y-auto">
+								{srtCues.slice(0, 6).map((cue) => (
+									<div
+										key={`${cue.index}-${cue.startSeconds}`}
+										className="grid grid-cols-[74px_1fr] gap-2 rounded border px-2 py-1.5 text-[0.65rem]"
+									>
+										<span className="font-medium text-primary">
+											{formatSrtTime(cue.startSeconds).slice(3, 8)}
+										</span>
+										<span className="truncate text-muted-foreground">
+											{cue.text || `Cena ${cue.index}`}
+										</span>
+									</div>
+								))}
+								{srtCues.length > 6 && (
+									<div className="pt-1 text-center text-[0.62rem] text-muted-foreground">
+										+ {srtCues.length - 6} marcações
+									</div>
+								)}
+							</div>
+						)}
+					</div>
+				)}
+
+				<p className="text-[0.65rem] leading-relaxed text-muted-foreground">
+					O pareamento é sequencial: primeira mídia = primeira marcação SRT,
+					segunda mídia = segunda marcação, e assim por diante. Imagens recebem o
+					tempo exato; vídeos respeitam os limites seguros de velocidade.
+				</p>
 			</section>
 
 			<SilencePanel />
