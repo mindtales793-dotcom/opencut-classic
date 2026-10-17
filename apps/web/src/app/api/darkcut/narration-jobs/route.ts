@@ -9,6 +9,9 @@ type Job = {
 	id: string;
 	status: "running" | "ready" | "error" | "interrupted";
 	error?: string;
+	stage?: "queued" | "synthesizing" | "downloading" | "saving" | "ready" | "error";
+	bytesReceived?: number;
+	totalBytes?: number;
 	text: string;
 	referenceId: string;
 };
@@ -26,16 +29,28 @@ async function read(id: string): Promise<Job> {
 	return JSON.parse(await readFile(join(root(), id + ".json"), "utf8"));
 }
 
-async function streamToFile(response: Response, path: string) {
+async function streamToFile(response: Response, path: string, onProgress: (bytes: number, totalBytes: number) => Promise<void>) {
 	if (!response.body) throw new Error("Fish Audio respondeu sem áudio.");
 	const handle = await open(path, "w");
 	const reader = response.body.getReader();
+	const totalBytes = Number(response.headers.get("content-length")) || 0;
+	let bytesReceived = 0;
+	let lastProgressUpdate = 0;
 	try {
 		while (true) {
 			const { done, value } = await reader.read();
 			if (done) break;
-			if (value?.byteLength) await handle.write(value);
+			if (value?.byteLength) {
+				await handle.write(value);
+				bytesReceived += value.byteLength;
+				const now = Date.now();
+				if (now - lastProgressUpdate > 750) {
+					await onProgress(bytesReceived, totalBytes);
+					lastProgressUpdate = now;
+				}
+			}
 		}
+		await onProgress(bytesReceived, totalBytes);
 	} finally {
 		reader.releaseLock();
 		await handle.close();
@@ -55,7 +70,7 @@ export async function GET(request: Request) {
 		const status =
 			job.status === "running" && !running.has(id) ? "interrupted" : job.status;
 		return Response.json(
-			{ id, status, error: job.error },
+			{ id, status, stage: job.stage, bytesReceived: job.bytesReceived, totalBytes: job.totalBytes, error: job.error },
 			{ headers: { "Cache-Control": "no-store" } },
 		);
 	} catch {
@@ -85,6 +100,9 @@ export async function POST(request: Request) {
 	let job: Job = {
 		id,
 		status: "running",
+		stage: "queued",
+		bytesReceived: 0,
+		totalBytes: 0,
 		text: body.text,
 		referenceId: body.referenceId,
 	};
@@ -92,7 +110,7 @@ export async function POST(request: Request) {
 		const old = await read(id);
 		if (old.status === "ready" || running.has(id))
 			return Response.json({ id, status: old.status });
-		job = { ...old, status: "running", error: undefined };
+		job = { ...old, status: "running", stage: "queued", bytesReceived: 0, totalBytes: 0, error: undefined };
 	} catch {}
 	running.add(id);
 	try {
@@ -107,6 +125,7 @@ export async function POST(request: Request) {
 	// Local server operation; keys stay only in memory, never in job files.
 	void (async () => {
 		try {
+			await save({ ...job, stage: "synthesizing" });
 			const response = await synthesize(
 				new Request("http://localhost/api/darkcut/fish/tts", {
 					method: "POST",
@@ -123,13 +142,22 @@ export async function POST(request: Request) {
 				throw new Error(data.error ?? "Falha na narração.");
 			}
 			const output = join(root(), id + ".mp3");
-			await streamToFile(response, output + ".tmp");
+			await save({ ...job, stage: "downloading" });
+			let downloadedBytes = 0;
+			let expectedBytes = 0;
+			await streamToFile(response, output + ".tmp", async (received, total) => {
+				downloadedBytes = received;
+				expectedBytes = total;
+				await save({ ...job, stage: "downloading", bytesReceived: received, totalBytes: total });
+			});
+			await save({ ...job, stage: "saving", bytesReceived: downloadedBytes, totalBytes: expectedBytes });
 			await rename(output + ".tmp", output);
-			await save({ ...job, status: "ready" });
+			await save({ ...job, status: "ready", stage: "ready", bytesReceived: downloadedBytes, totalBytes: expectedBytes });
 		} catch (error) {
 			await save({
 				...job,
 				status: "error",
+				stage: "error",
 				error: error instanceof Error ? error.message : "Falha na narração.",
 			}).catch(() => {});
 		} finally {
