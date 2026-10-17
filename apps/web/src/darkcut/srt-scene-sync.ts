@@ -18,7 +18,21 @@ export type SrtTimingGroup = {
 	text: string;
 };
 
-export type SrtSyncStrategy = "one-per-cue" | "fit-to-media";
+export type SrtSyncStrategy = "auto" | "one-per-cue" | "fit-to-media";
+
+/** Determine strategy afresh for every SRT and current visual count. */
+export function resolveSrtSyncStrategy({
+	strategy,
+	cueCount,
+	visualCount,
+}: {
+	strategy: SrtSyncStrategy;
+	cueCount: number;
+	visualCount: number;
+}): Exclude<SrtSyncStrategy, "auto"> {
+	if (strategy !== "auto") return strategy;
+	return visualCount < cueCount ? "fit-to-media" : "one-per-cue";
+}
 
 export type SrtTimingAnalysis = {
 	cues: SrtSceneCue[];
@@ -113,6 +127,11 @@ export function makeSrtTimingGroups({
 }): SrtTimingGroup[] {
 	if (visualCount <= 0 || !cues.length) return [];
 	const count = Math.min(Math.floor(visualCount), cues.length);
+	const appliedStrategy = resolveSrtSyncStrategy({
+		strategy,
+		cueCount: cues.length,
+		visualCount,
+	});
 	const group = (startIndex: number, endIndex: number): SrtTimingGroup => ({
 		firstCue: cues[startIndex].index,
 		lastCue: cues[endIndex].index,
@@ -122,7 +141,7 @@ export function makeSrtTimingGroups({
 		text: cues.slice(startIndex, endIndex + 1).map((cue) => cue.text).filter(Boolean).join(" "),
 	});
 
-	if (strategy === "one-per-cue" || count >= cues.length) {
+	if (appliedStrategy === "one-per-cue" || count >= cues.length) {
 		return cues.slice(0, count).map((_, i) => group(i, i));
 	}
 
