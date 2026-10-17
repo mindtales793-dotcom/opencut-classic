@@ -378,7 +378,7 @@ export function TimelineElement({
 				<ContextMenuTrigger asChild>
 					<div
 						className="absolute top-0 select-none"
-						title={`${element.name} · início ${Math.round(element.startTime / 1000) / 1000}s · duração ${Math.round(element.duration / 1000) / 1000}s`}
+						title={`${element.name} · início ${(element.startTime / TICKS_PER_SECOND).toFixed(2)}s · duração ${(element.duration / TICKS_PER_SECOND).toFixed(2)}s`}
 						aria-label={`Clipe: ${element.name}`}
 						data-timeline-element-id={element.id}
 						data-start-time={element.startTime}
