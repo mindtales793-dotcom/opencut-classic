@@ -137,9 +137,9 @@ export function makeSrtTimingGroups({
 		if (remaining) {
 			const target = first + (total * (i + 1)) / count;
 			while (
-				endExclusive < maxExclusive &&
-				Math.abs(cues[endExclusive].startSeconds - target) <=
-					Math.abs(cues[endExclusive - 1].endSeconds - target)
+				endExclusive + 1 < maxExclusive &&
+				Math.abs(cues[endExclusive + 1].startSeconds - target) <
+					Math.abs(cues[endExclusive].startSeconds - target)
 			) {
 				endExclusive += 1;
 			}
