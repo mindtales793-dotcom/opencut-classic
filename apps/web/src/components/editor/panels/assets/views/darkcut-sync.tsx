@@ -280,13 +280,18 @@ export function DarkCutSyncView() {
 		}
 
 		const projectId = editor.project.getActive().metadata.id;
-		const task = (status: "running" | "done" | "error", detail?: string) =>
+		const task = (
+			status: "running" | "done" | "error",
+			detail?: string,
+			progress?: { done: number; total: number },
+		) =>
 			useDarkCutTasks.getState().set("narration", {
 				projectId,
 				label: "Narração",
 				detail,
 				tab: "sync",
 				status,
+				...(progress && { done: progress.done, total: progress.total }),
 			});
 		const signature = await narrationFingerprint(text, selectedNarratorId);
 		const existingAsset = mediaAssets.find((asset) => asset.id === narrationAssetId);
@@ -337,6 +342,20 @@ export function DarkCutSyncView() {
 								"Tarefa interrompida. Clique em Retomar narração.",
 						);
 					if (state.status === "ready") break;
+					const bytes = Number(state.bytesReceived) || 0;
+					const totalBytes = Number(state.totalBytes) || 0;
+					if (state.stage === "downloading" && totalBytes > 0) {
+						task("running", `Recebendo áudio: ${(bytes / 1048576).toFixed(1)} MB / ${(totalBytes / 1048576).toFixed(1)} MB`, {
+							done: Math.min(bytes, totalBytes),
+							total: totalBytes,
+						});
+					} else if (state.stage === "downloading") {
+						task("running", `Áudio recebido: ${(bytes / 1048576).toFixed(1)} MB`);
+					} else if (state.stage === "saving") {
+						task("running", "Finalizando e salvando o MP3…");
+					} else {
+						task("running", "Fish Audio processando a voz…");
+					}
 					await new Promise((resolve) => setTimeout(resolve, 500));
 				}
 			}
@@ -391,7 +410,7 @@ export function DarkCutSyncView() {
 
 			setNarrationAssetId(asset.id);
 			setJobId(null);
-			task("done");
+			task("done", "MP3 pronto • escolha como continuar");
 			setNarrationUrl(asset.url ?? URL.createObjectURL(blob));
 			setNarrationFileName(fileName);
 			setNarrationSignature(signature);
@@ -699,11 +718,20 @@ export function DarkCutSyncView() {
 				</Button>
 
 				{isGenerating && narrationTask && (
-					<div role="status" className="rounded-md border p-3 text-xs">
-						<TaskStatus task={narrationTask} />
+				<div role="status" className="space-y-2 rounded-md border border-primary/30 bg-primary/5 p-3 text-xs">
+					<div className="flex items-center justify-between">
+						<span className="font-semibold">Gerando narração • acompanhamento</span>
+						<span className="text-primary">Em andamento</span>
 					</div>
-				)}
-				<p className="text-xs text-muted-foreground">
+					<TaskStatus task={narrationTask} />
+					<p className="text-[0.68rem] leading-relaxed text-muted-foreground">
+						O Fish Audio não informa o percentual da síntese.
+						A barra acompanha as etapas e o tempo decorrido; quando
+						a transferência informar o tamanho, mostra o progresso em bytes.
+					</p>
+				</div>
+			)}
+			<p className="text-xs text-muted-foreground">
 					Pode trocar de aba durante a geração. Se fechar o aplicativo, use
 					Retomar narração ao reabrir; resultados concluídos são recuperados sem
 					gerar novamente.
@@ -730,17 +758,15 @@ export function DarkCutSyncView() {
 								Baixe o áudio e a legenda antes de gerar suas imagens. Os dois
 								arquivos ficam independentes do projeto e podem ser usados depois.
 							</div>
-							<div className="mt-2 grid grid-cols-3 gap-2">
-								<Button variant="secondary" onClick={downloadNarration}>
-									↓ MP3
-								</Button>
-								<Button variant="secondary" onClick={downloadNarrationSrt}>
-									↓ SRT
-								</Button>
-								<Button variant="secondary" onClick={addNarrationToTimeline}>
-									+ Timeline
-								</Button>
-							</div>
+							<div className="mt-2 grid grid-cols-2 gap-2">
+							<Button variant="secondary" onClick={downloadNarration}>↓ Baixar MP3</Button>
+							<Button variant="secondary" onClick={downloadNarrationSrt} title="SRT estimado pelo texto e duração">↓ Salvar SRT</Button>
+							<Button variant="secondary" onClick={addNarrationToTimeline}>+ Adicionar à timeline</Button>
+							<Button onClick={() => setActiveTab("videos")}>Continuar → Vídeos</Button>
+						</div>
+						<p className="mt-2 text-[0.65rem] text-muted-foreground">
+							O SRT exportado distribui o texto na duração total: não é alinhamento palavra por palavra.
+						</p>
 						</div>
 					</div>
 				)}
