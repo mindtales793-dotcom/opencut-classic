@@ -18,6 +18,8 @@ import { HugeiconsIcon, type IconSvgElement } from "@hugeicons/react";
 export const TAB_KEYS = [
 	"production",
 	"sync",
+	"script-srt",
+	"darkminer",
 	"videos",
 	"media",
 	"sounds",
@@ -48,6 +50,8 @@ export const tabs = {
 		icon: createHugeiconsIcon({ icon: ArrowRightDoubleIcon }),
 		label: "Sincronização",
 	},
+	"script-srt": { icon: createHugeiconsIcon({ icon: ClosedCaptionIcon }), label: "Roteiro → SRT" },
+	darkminer: { icon: createHugeiconsIcon({ icon: MagicWand05Icon }), label: "DarkMiner" },
 	videos: {
 		icon: createHugeiconsIcon({ icon: Video01Icon }),
 		label: "Vídeos",
