@@ -1,3 +1,4 @@
+import { guessCrisSoundCue, normalizeCrisSoundCue, type CrisSoundCue } from "@/darkcut/cris-sound-design";
 import type {
 	DarkCutEffectIntensity,
 	DarkCutMotionPreset,
@@ -46,6 +47,7 @@ export type CrisScenePlan = {
 	effect: CrisVisualEffect;
 	intensity: DarkCutEffectIntensity;
 	durationWeight: number;
+	sound: CrisSoundCue;
 };
 
 export type CrisEditPlan = {
@@ -281,6 +283,7 @@ export function buildLocalCrisPlan({
 				intensity,
 				durationWeight:
 					sceneType === "hook" || sceneType === "turn" ? 0.9 : sceneType === "emotion" ? 1.2 : 1,
+				sound: guessCrisSoundCue(text, sceneType, index),
 			};
 		}),
 	};
@@ -357,6 +360,7 @@ export function normalizeCrisPlan({
 				Number.isFinite(durationWeight) && durationWeight >= 0.6 && durationWeight <= 1.6
 					? durationWeight
 					: base.durationWeight,
+			sound: normalizeCrisSoundCue(item.sound, base.sound),
 		};
 	});
 
