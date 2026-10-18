@@ -373,7 +373,7 @@ export function DarkCutSyncView() {
 					await new Promise((resolve) => setTimeout(resolve, 1200));
 				}
 			}
-			task("running", "Baixando narração…");
+			task("running", "Baixando narração…", { done: 99, total: 100 });
 			const response = await fetch(
 				`/api/darkcut/narration-jobs?id=${job.id}&audio=1`,
 			);
@@ -402,7 +402,7 @@ export function DarkCutSyncView() {
 				type: blob.type || "audio/mpeg",
 			});
 
-			task("running", "Preparando áudio…");
+			task("running", "Preparando áudio…", { done: 99, total: 100 });
 			const [processed] = await processMediaAssets({ files: [file] });
 			if (!processed) {
 				throw new Error("Não foi possível preparar o áudio gerado.");
@@ -413,7 +413,7 @@ export function DarkCutSyncView() {
 				throw new Error(
 					"Narração pronta. Reabra o projeto de origem e clique em Retomar narração.",
 				);
-			task("running", "Salvando narração…");
+			task("running", "Salvando narração…", { done: 99, total: 100 });
 			const asset = await editor.media.addMediaAsset({
 				projectId: activeProject.metadata.id,
 				asset: processed,
