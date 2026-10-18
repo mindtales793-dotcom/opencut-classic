@@ -21,7 +21,7 @@ declare global {
   interface Window {
     darkCutMinerDesktop?: {
       chooseAndStart: () => Promise<{ok:boolean;cancelled?:boolean;error?:string}>;
-      startSaved: () => Promise<{ok:boolean;error?:string}>;
+      startSaved: () => Promise<{ok:boolean;cancelled?:boolean;error?:string}>;
       connection: () => Promise<{ok:boolean;remembered:boolean;startedByDarkCut:boolean}>;
     };
   }
