@@ -307,8 +307,12 @@ export function DarkCutSyncView() {
 			return;
 		}
 
+		if (narrationSignature !== signature) {
+			// Do not offer the previous narrator/script's MP3 as the new output.
+			setNarrationUrl(null);
+		}
 		setIsGenerating(true);
-		task("running", "Enviando roteiro…");
+		task("running", "Enviando roteiro…", { done: 0, total: 100 });
 		try {
 			const creation = await fetch("/api/darkcut/narration-jobs", {
 				method: "POST",
@@ -326,7 +330,7 @@ export function DarkCutSyncView() {
 			setJobId(job.id);
 			const initialTotal = Math.max(1, Number(job.totalChunks) || 1);
 			task("running", `Preparando blocos de narração (0/${initialTotal})…`, {
-				done: Number(job.completedChunks) || 0, total: initialTotal,
+				done: Math.min(99, Number(job.progressPercent) || 0), total: 100,
 			});
 			if (job.status !== "ready") {
 				const startedPolling = Date.now();
@@ -345,7 +349,7 @@ export function DarkCutSyncView() {
 					const total = Math.max(1, Number(state.totalChunks) || initialTotal);
 					const completed = Math.min(total, Number(state.completedChunks) || 0);
 					if (state.status === "ready") {
-						task("running", "Narração completa. Importando áudio para o projeto…", { done: total, total });
+						task("running", "MP3 gerado. Importando áudio para o projeto…", { done: 99, total: 100 });
 						break;
 					}
 					const current = Math.max(1, Number(state.currentChunk) || completed + 1);
@@ -356,7 +360,10 @@ export function DarkCutSyncView() {
 							: state.stage === "downloading"
 								? `Recebendo bloco ${current}/${total} · ${((Number(state.bytesReceived) || 0) / 1048576).toFixed(1)} MB`
 								: `Fish Audio narrando bloco ${current}/${total}…`;
-					task("running", detail, { done: completed, total });
+					task("running", `${detail} • ${completed}/${total} blocos prontos`, {
+						done: Math.max(0, Math.min(99, Number(state.progressPercent) || 0)),
+						total: 100,
+					});
 					if (Date.now() - startedPolling > 90 * 60 * 1000) {
 						throw new Error("Limite de acompanhamento atingido. Clique em Retomar narração; os blocos concluídos permanecem salvos.");
 					}
@@ -414,7 +421,7 @@ export function DarkCutSyncView() {
 
 			setNarrationAssetId(asset.id);
 			setJobId(null);
-			task("done", "MP3 pronto • escolha como continuar");
+			task("done", "MP3 pronto • escolha como continuar", { done: 100, total: 100 });
 			setNarrationUrl(asset.url ?? URL.createObjectURL(blob));
 			setNarrationFileName(fileName);
 			setNarrationSignature(signature);
