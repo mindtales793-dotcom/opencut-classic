@@ -1,4 +1,4 @@
-import { mkdir, open, readFile, writeFile, rename, stat } from "node:fs/promises";
+import { mkdir, open, readFile, writeFile, rename, stat, copyFile } from "node:fs/promises";
 import { createReadStream } from "node:fs";
 import { Readable } from "node:stream";
 import { join, resolve } from "node:path";
@@ -90,11 +90,8 @@ function ffmpegBinary() {
 }
 async function mergeMp3Chunks(parts: string[], output: string) {
   if (parts.length === 1) {
-    await rename(parts[0] + ".merge-copy", output).catch(async () => {
-      // Never move original checkpoint; copy for future retries.
-      const { copyFile } = await import("node:fs/promises");
-      await copyFile(parts[0], output);
-    });
+    // Preserve the source checkpoint: never rename away the only ready block.
+    await copyFile(parts[0], output);
     return;
   }
   // FFmpeg concat demuxer copies encoded frames; no slow whole-video render
