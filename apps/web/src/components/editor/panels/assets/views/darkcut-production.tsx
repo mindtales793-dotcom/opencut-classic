@@ -1,6 +1,7 @@
 "use client";
 
 import { DarkCutTemplatesView } from "./darkcut-templates";
+import { DarkCutMediaBridge } from "./darkcut-media-bridge";
 import { useStudioNavigation } from "@/darkcut/studio-navigation";
 import { ChannelPanel } from "@/darkcut/channel-panel";
 import { useProjectDraft } from "@/darkcut/project-draft";
@@ -376,6 +377,8 @@ export function DarkCutProductionView() {
 						</Button>
 					</div>
 				</section>
+
+				<DarkCutMediaBridge />
 
 				{scenes.length > 0 && (
 					<section className="mt-3 rounded-xl border bg-card p-4">
