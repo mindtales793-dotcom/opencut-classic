@@ -1,4 +1,4 @@
-const { app, BrowserWindow, dialog, shell, Tray, Menu, nativeImage, nativeTheme } = require("electron");
+const { app, BrowserWindow, dialog, shell, Tray, Menu, nativeImage, nativeTheme, ipcMain } = require("electron");
 const path = require("node:path");
 const fs = require("node:fs");
 const http = require("node:http");
@@ -12,6 +12,7 @@ app.commandLine.appendSwitch("force_high_performance_gpu");
 let serverProcess = null;
 let mainWindow = null;
 let serverFailure = null;
+let darkMinerProcess = null;
 let quitting = false;
 let taskTray = null;
 // Exports keep rendering frames in this window while it is minimized or hidden
@@ -181,6 +182,79 @@ function startServer() {
   });
 }
 
+
+// The user chooses an existing, trusted Dark Miner EXE through a native file
+// picker. Web content NEVER supplies a process path or shell arguments.
+const minerPreferencesFile = path.join(app.getPath("userData"), "darkminer-integration.json");
+function localMinerPath() {
+  try {
+    const config = JSON.parse(fs.readFileSync(minerPreferencesFile, "utf8"));
+    if (typeof config.executable !== "string" ||
+        !config.executable.toLowerCase().endsWith(".exe") ||
+        !fs.existsSync(config.executable)) return null;
+    return config.executable;
+  } catch { return null; }
+}
+function canControlMiner(event) {
+  try {
+    const origin = new URL(event.senderFrame?.url || "").origin;
+    return event.sender === mainWindow?.webContents &&
+      origin === `http://${HOST}:${PORT}`;
+  } catch { return false; }
+}
+function startMinerExe(executable) {
+  if (darkMinerProcess && darkMinerProcess.exitCode === null && !darkMinerProcess.killed) {
+    return { ok: true, alreadyRunning: true };
+  }
+  if (!executable || !fs.existsSync(executable) ||
+      path.extname(executable).toLowerCase() !== ".exe") {
+    return { ok: false, error: "Selecione um Dark Miner.exe válido no Windows." };
+  }
+  try {
+    darkMinerProcess = spawn(executable, [], {
+      cwd: path.dirname(executable), windowsHide: true,
+      stdio: "ignore",
+      env: { ...process.env, DARKMINER_EMBEDDED: "1" },
+    });
+    darkMinerProcess.once("error", e => {
+      log("DarkMiner launch failed: " + e.message);
+      darkMinerProcess = null;
+    });
+    darkMinerProcess.once("exit", code => {
+      log("DarkMiner stopped: " + code);
+      darkMinerProcess = null;
+    });
+    log("DarkMiner started from user-approved local executable.");
+    return { ok: true, alreadyRunning: false };
+  } catch (error) {
+    return { ok: false, error: error instanceof Error ? error.message : "Falha ao abrir o Dark Miner." };
+  }
+}
+ipcMain.handle("darkcut:darkminer:choose-and-start", async event => {
+  if (!canControlMiner(event)) return { ok: false, error: "Origem não autorizada." };
+  const selection = await dialog.showOpenDialog(mainWindow, {
+    title: "Selecione o executável do Dark Miner Desktop",
+    properties: ["openFile"],
+    filters: [{ name: "Aplicativo Windows", extensions: ["exe"] }],
+  });
+  if (selection.canceled || !selection.filePaths?.[0]) return { ok: false, cancelled: true };
+  const executable = selection.filePaths[0];
+  const result = startMinerExe(executable);
+  if (result.ok) {
+    fs.writeFileSync(minerPreferencesFile, JSON.stringify({ executable }), { mode: 0o600 });
+  }
+  return result;
+});
+ipcMain.handle("darkcut:darkminer:start-saved", event => {
+  if (!canControlMiner(event)) return { ok: false, error: "Origem não autorizada." };
+  return startMinerExe(localMinerPath());
+});
+ipcMain.handle("darkcut:darkminer:connection", event => {
+  if (!canControlMiner(event)) return { ok: false, error: "Origem não autorizada." };
+  return { ok: true, remembered: !!localMinerPath(),
+    startedByDarkCut: !!darkMinerProcess && darkMinerProcess.exitCode === null };
+});
+
 async function createWindow() {
   nativeTheme.themeSource = "dark";
   const win = new BrowserWindow({
@@ -196,6 +270,7 @@ async function createWindow() {
       contextIsolation: true,
       nodeIntegration: false,
       sandbox: true,
+      preload: path.join(__dirname, "preload.cjs"),
       backgroundThrottling: false,
     },
   });
@@ -292,6 +367,7 @@ if (hasLock) app.whenReady().then(async () => {
 function stopServer() {
   quitting = true;
   if (serverProcess && !serverProcess.killed) serverProcess.kill();
+  if (darkMinerProcess && !darkMinerProcess.killed) darkMinerProcess.kill();
 }
 app.on("window-all-closed", () => app.quit());
 app.on("before-quit", stopServer);
