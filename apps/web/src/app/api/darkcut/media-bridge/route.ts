@@ -65,7 +65,7 @@ function detectFileType(data: Buffer, file: File) {
   const mp4 = data.subarray(4, 8).toString() === "ftyp";
   const webm = data.subarray(0, 4).equals(Buffer.from([0x1a, 0x45, 0xdf, 0xa3]));
   if (png && lower.endsWith(".png")) return { extension: ".png", contentType: "image/png", name };
-  if (jpeg && /\\.jpe?g$/.test(lower)) return { extension: ".jpg", contentType: "image/jpeg", name };
+  if (jpeg && /\.jpe?g$/.test(lower)) return { extension: ".jpg", contentType: "image/jpeg", name };
   if (webp && lower.endsWith(".webp")) return { extension: ".webp", contentType: "image/webp", name };
   if (mp4 && lower.endsWith(".mp4")) return { extension: ".mp4", contentType: "video/mp4", name };
   if (webm && lower.endsWith(".webm")) return { extension: ".webm", contentType: "video/webm", name };
@@ -78,7 +78,7 @@ async function loadEntries(dir: string): Promise<InboxEntry[]> {
     throw error;
   });
   const entries: InboxEntry[] = [];
-  for (const name of names.filter((item) => /^[a-f0-9-]{36}\\.json$/.test(item)).slice(0, MAX_FILES_PER_PROJECT + 1)) {
+  for (const name of names.filter((item) => /^[a-f0-9-]{36}\.json$/.test(item)).slice(0, MAX_FILES_PER_PROJECT + 1)) {
     try {
       const item = JSON.parse(await readFile(path.join(dir, name), "utf8")) as InboxEntry;
       if (item.id + ".json" === name && (item.state === "pending" || item.state === "imported")) entries.push(item);
