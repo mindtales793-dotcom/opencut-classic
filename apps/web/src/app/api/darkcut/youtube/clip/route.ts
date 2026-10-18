@@ -5,6 +5,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { NextResponse } from "next/server";
 import { sortMediaCandidates, scoreMediaCandidate } from "@/darkcut/media-search-intelligence";
+import { parseYouTubeDuration, rankYouTubeCandidates, type CandidateLengthFilter } from "@/darkcut/youtube-candidate-ranker";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -16,6 +17,7 @@ type ClipRequest = {
 	youtubeApiKeys?: unknown;
 	previewOnly?: unknown;
 	preferredVideoId?: unknown;
+	lengthFilter?: unknown;
 };
 
 type SearchEntry = {
@@ -23,6 +25,8 @@ type SearchEntry = {
 	title: string;
 	channel: string;
 	thumbnailUrl: string;
+	durationSeconds?: number;
+	embeddable?: boolean;
 };
 
 // YouTube's search.list has a high quota cost; cache only public video
@@ -183,7 +187,46 @@ async function searchWithYouTubeApi({
 						!/(^|\s)#?shorts?\b|youtube shorts?/i.test(entry.title),
 				);
 
-			const ranked = sortMediaCandidates(entries, query)
+			// videos.list is a cheap metadata lookup (vs costly search.list).
+			// It lets us avoid truly short clips and show durations in previews.
+			const durations = new Map<string, { seconds?: number; embeddable?: boolean }>();
+			if (entries.length) {
+				try {
+					const metaParams = new URLSearchParams({
+						part: "contentDetails,status",
+						id: entries.map((entry) => entry.id).join(","),
+						key: apiKeys[keyIndex],
+					});
+					const metaResponse = await fetch(
+						`https://www.googleapis.com/youtube/v3/videos?${metaParams.toString()}`,
+						{ cache: "no-store", signal: AbortSignal.timeout(12000) },
+					);
+					if (metaResponse.ok) {
+						const payload = await metaResponse.json() as {
+							items?: Array<{
+								id?: string;
+								contentDetails?: { duration?: string };
+								status?: { embeddable?: boolean };
+							}>;
+						};
+						for (const item of payload.items ?? []) {
+							if (!item.id) continue;
+							const seconds = parseYouTubeDuration(item.contentDetails?.duration ?? "");
+							durations.set(item.id, {
+								seconds: seconds ?? undefined,
+								embeddable: item.status?.embeddable,
+							});
+						}
+					}
+				} catch {
+					// Keep usable search results if a metadata lookup is unavailable.
+				}
+			}
+			const ranked = sortMediaCandidates(entries.map((entry) => ({
+				...entry,
+				durationSeconds: durations.get(entry.id)?.seconds,
+				embeddable: durations.get(entry.id)?.embeddable,
+			})), query)
 				.filter((entry) => scoreMediaCandidate({ query, title: entry.title }) > -100);
 			if (searchCache.size >= SEARCH_CACHE_LIMIT)
 				searchCache.delete(searchCache.keys().next().value ?? "");
@@ -224,6 +267,9 @@ export async function POST(request: Request) {
 	const previewOnly = body.previewOnly === true;
 	const preferredVideoId = typeof body.preferredVideoId === "string"
 		? body.preferredVideoId.trim() : "";
+	const lengthFilter: CandidateLengthFilter =
+		body.lengthFilter === "all" || body.lengthFilter === "over-three-minutes"
+			? body.lengthFilter : "over-minute";
 	const apiKeys = normalizeApiKeys(body.youtubeApiKeys);
 	const excluded = new Set(
 		Array.isArray(body.excludeVideoIds)
@@ -261,7 +307,7 @@ export async function POST(request: Request) {
 	let lastDownloadError: unknown = null;
 
 	try {
-		const { entries, keyIndex, cached } = await searchWithYouTubeApi({
+		const { entries: rawEntries, keyIndex, cached } = await searchWithYouTubeApi({
 			query,
 			apiKeys,
 			excluded,
@@ -269,6 +315,7 @@ export async function POST(request: Request) {
 			// The relevance classifier filters mismatched car models before download.
 			videoDuration: "any",
 		});
+		const entries = rankYouTubeCandidates(rawEntries, query, lengthFilter);
 
 		if (previewOnly) {
 			return NextResponse.json({
@@ -278,6 +325,7 @@ export async function POST(request: Request) {
 					title: entry.title,
 					channel: entry.channel,
 					thumbnailUrl: entry.thumbnailUrl,
+					durationSeconds: entry.durationSeconds ?? null,
 					relevanceScore: scoreMediaCandidate({ query, title: entry.title }),
 				})),
 				cached,
