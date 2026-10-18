@@ -17,6 +17,14 @@ import {
 import { useDarkCutProductionStore } from "../darkcut-production-store";
 import { useAssetsPanelStore } from "../assets-panel-store";
 
+type YouTubeCandidate = {
+	id: string;
+	title: string;
+	channel: string;
+	thumbnailUrl: string;
+	relevanceScore: number;
+};
+
 type VideoBlock = DarkCutScene & {
 	searchQuery: string;
 	fallbackQuery?: string;
@@ -60,6 +68,9 @@ export function DarkCutVideosView() {
 	} = useDarkCutProductionStore();
 	const [blocks, setBlocks] = useProjectDraft<VideoBlock[]>("video-blocks", []);
 	const [isRunning, setIsRunning] = useState(false);
+	const [previewCandidates, setPreviewCandidates] = useState<Record<string, YouTubeCandidate[]>>({});
+	const [previewLoadingId, setPreviewLoadingId] = useState<string | null>(null);
+	const [chosenCandidateId, setChosenCandidateId] = useState<string | null>(null);
 	const [isPaused, setIsPaused] = useProjectDraft<boolean>(
 		"video-search-paused",
 		false,
@@ -107,6 +118,9 @@ export function DarkCutVideosView() {
 			return;
 		}
 		setBlocks(next);
+		setPreviewCandidates({});
+		usedVideoIds.current = new Set();
+		usedStockIds.current = new Set();
 		toast.success(`${next.length} blocos criados para busca automática.`);
 	};
 
@@ -333,6 +347,99 @@ export function DarkCutVideosView() {
 				"Nenhum resultado adequado foi encontrado no YouTube, Pexels ou Pixabay.",
 		});
 		return false;
+	};
+
+	const excludedYouTubeIds = (block: VideoBlock) => Array.from(new Set([
+		...block.triedVideoIds,
+		...usedVideoIds.current,
+		...blocks.filter((item) => item.id !== block.id)
+			.flatMap((item) => item.lastVideoId ? [item.lastVideoId] : []),
+	]));
+
+	const previewYouTubeCandidates = async (block: VideoBlock) => {
+		if (!configuredApiKeys) {
+			toast.error("Cadastre uma chave YouTube em Configurações > APIs.");
+			return;
+		}
+		if (!block.searchQuery.trim()) {
+			toast.error("Informe uma palavra-chave para este bloco.");
+			return;
+		}
+		setPreviewLoadingId(block.id);
+		try {
+			const response = await fetch("/api/darkcut/youtube/clip", {
+				method: "POST",
+				headers: { "Content-Type": "application/json" },
+				body: JSON.stringify({
+					query: block.searchQuery.trim(),
+					youtubeApiKeys,
+					excludeVideoIds: excludedYouTubeIds(block),
+					previewOnly: true,
+				}),
+			});
+			const result = await response.json() as {
+				results?: YouTubeCandidate[];
+				cached?: boolean;
+				error?: string;
+			};
+			if (!response.ok) throw new Error(result.error || "Falha ao buscar prévias.");
+			setPreviewCandidates((old) => ({ ...old, [block.id]: result.results ?? [] }));
+			if (!result.results?.length) {
+				toast.info("Sem candidatos novos para essa palavra-chave.");
+			} else {
+				toast.success(`${result.results.length} candidatos para revisar.`, {
+					description: result.cached
+						? "Resultados reutilizados do cache: sem nova busca YouTube."
+						: "As miniaturas foram carregadas sem baixar vídeos.",
+				});
+			}
+		} catch (error) {
+			toast.error(error instanceof Error ? error.message : "Falha ao consultar candidatos.");
+		} finally {
+			setPreviewLoadingId(null);
+		}
+	};
+
+	const useYouTubeCandidate = async (block: VideoBlock, candidate: YouTubeCandidate) => {
+		if (isRunning || chosenCandidateId) return;
+		setChosenCandidateId(candidate.id);
+		updateBlock(block.id, { statusLabel: "searching", error: undefined });
+		try {
+			const response = await fetch("/api/darkcut/youtube/clip", {
+				method: "POST",
+				headers: { "Content-Type": "application/json" },
+				body: JSON.stringify({
+					query: block.searchQuery.trim(),
+					durationSeconds: block.durationSeconds,
+					youtubeApiKeys,
+					excludeVideoIds: excludedYouTubeIds(block),
+					preferredVideoId: candidate.id,
+				}),
+			});
+			if (!response.ok) {
+				const detail = await response.json().catch(() => null) as {
+					error?: string;
+					detail?: string;
+				} | null;
+				throw new Error(detail?.detail || detail?.error || "Não foi possível receber este clipe.");
+			}
+			await saveResponseAsMedia({ response, block, source: "youtube" });
+			usedVideoIds.current.add(candidate.id);
+			updateBlock(block.id, {
+				lastVideoId: candidate.id,
+				triedVideoIds: Array.from(new Set([...block.triedVideoIds, candidate.id])),
+			});
+			setPreviewCandidates((old) => ({ ...old, [block.id]: [] }));
+			toast.success(`Bloco ${block.index}: clipe escolhido e importado.`);
+		} catch (error) {
+			updateBlock(block.id, {
+				statusLabel: block.mediaId ? "ready" : "error",
+				error: error instanceof Error ? error.message : "Falha ao importar clipe.",
+			});
+			toast.error("Não foi possível importar o candidato escolhido.");
+		} finally {
+			setChosenCandidateId(null);
+		}
 	};
 
 	const searchAll = async () => {
@@ -701,6 +808,58 @@ export function DarkCutVideosView() {
 										: ""}
 								</p>
 
+								{configuredApiKeys > 0 && (
+									<div className="mt-2">
+										<Button
+											size="sm"
+											variant="outline"
+											disabled={isRunning || previewLoadingId !== null || chosenCandidateId !== null || !block.searchQuery.trim()}
+											onClick={() => void previewYouTubeCandidates(block)}
+										>
+											{previewLoadingId === block.id ? "Consultando candidatos…" : "👁 Ver candidatos antes de baixar"}
+										</Button>
+										<p className="mt-1 text-[0.65rem] text-muted-foreground">
+											Prévia do YouTube: títulos e miniaturas, sem baixar os arquivos.
+											A primeira consulta pode consumir cota; consultas iguais usam o cache.
+										</p>
+									</div>
+								)}
+								{Boolean(previewCandidates[block.id]?.length) && (
+									<div className="mt-2 max-h-80 space-y-2 overflow-y-auto rounded-lg border border-primary/25 bg-primary/5 p-2">
+										<div className="text-xs font-semibold">Escolha o clipe para este bloco</div>
+										{previewCandidates[block.id].map((candidate) => (
+											<div key={candidate.id} className="flex gap-2 rounded-md border bg-background p-2">
+												{candidate.thumbnailUrl ? (
+													<img
+														src={candidate.thumbnailUrl}
+														alt={`Miniatura: ${candidate.title}`}
+														loading="lazy"
+														className="h-20 w-32 shrink-0 rounded object-cover"
+													/>
+												) : (
+													<div className="h-20 w-32 shrink-0 rounded bg-muted" />
+												)}
+												<div className="min-w-0 flex-1 space-y-1">
+													<p className="line-clamp-2 text-xs font-medium">{candidate.title}</p>
+													<p className="truncate text-[0.68rem] text-muted-foreground">
+														{candidate.channel || "Canal desconhecido"} · relevância estimada: {candidate.relevanceScore}
+													</p>
+													<Button
+														size="sm"
+														variant="secondary"
+														disabled={isRunning || chosenCandidateId !== null}
+														onClick={() => void useYouTubeCandidate(block, candidate)}
+													>
+														{chosenCandidateId === candidate.id ? "Importando…" : "Usar este clipe"}
+													</Button>
+												</div>
+											</div>
+										))}
+										<p className="text-[0.65rem] text-muted-foreground">
+											Relevância baseada em palavras do título; confira conteúdo, fonte e direitos de uso antes de publicar.
+										</p>
+									</div>
+								)}
 								{block.statusLabel === "searching" && (
 									<div className="mt-2 overflow-hidden rounded-md border border-primary/25 bg-primary/5">
 										<div className="aspect-video w-full animate-pulse bg-muted/50" />
