@@ -39,6 +39,9 @@ import { cn } from "@/utils/ui";
 import { toast } from "sonner";
 import { useProjectDraft } from "@/darkcut/project-draft";
 import { useDarkCutProductionStore } from "../darkcut-production-store";
+import { useSoundsStore } from "@/sounds/sounds-store";
+import type { SoundEffect } from "@/sounds/types";
+import { buildCrisSoundTimeline, isCrisAutoSoundLicense } from "@/darkcut/cris-sound-design";
 import { DarkCutRemotionPreview } from "@/remotion/darkcut-composer";
 import {
 	RETRO_VISUAL_MODES,
@@ -524,6 +527,8 @@ export function DarkCutTemplatesView({
 	const setActiveTab = useAssetsPanelStore((s) => s.setActiveTab);
 	const [selectedTemplate, setSelectedTemplate] = useState<string | null>(null);
 	const [isCrisAnalyzing, setIsCrisAnalyzing] = useState(false);
+	const [isCrisSoundApplying, setIsCrisSoundApplying] = useState(false);
+	const [soundProgress, setSoundProgress] = useState("");
 	const applyingRef = useRef(false);
 	const [analysisStep, setAnalysisStep] = useState("");
 	const [narrationTrackId, setNarrationTrackId] = useState("");
@@ -541,9 +546,26 @@ export function DarkCutTemplatesView({
 		crisFallbackProvider,
 		geminiModel,
 		openRouterModel,
+		freesoundApiKey,
 	} = useDarkCutProductionStore();
 	const scene = useEditor((e) => e.scenes.getActiveSceneOrNull());
 	const activeTab = useAssetsPanelStore((s) => s.activeTab);
+	const soundCues = useMemo(() => {
+		if (!scene || !crisPlan) return [];
+		const refs = collectVisualRefs(scene);
+		const visuals = [scene.tracks.main, ...scene.tracks.overlay].flatMap((track) =>
+			track.elements.map((element) => ({ trackId: track.id, element }))
+		);
+		const timings = refs.map((ref) => {
+			const match = visuals.find((item) => item.trackId === ref.trackId && item.element.id === ref.elementId);
+			if (!match) return null;
+			return {
+				startSeconds: mediaTimeToSeconds({ time: match.element.startTime }),
+				durationSeconds: mediaTimeToSeconds({ time: match.element.duration }),
+			};
+		});
+		return buildCrisSoundTimeline({ scenes: crisPlan.scenes, timings });
+	}, [scene, crisPlan]);
 	const [previewId, setPreviewId] = useState<string | null>(null);
 	const [retroPreviewMode, setRetroPreviewMode] = useState<RetroVisualMode>("auto");
 	const [intensityChoice, setIntensityChoice] = useProjectDraft<
@@ -1087,6 +1109,77 @@ export function DarkCutTemplatesView({
 		});
 	};
 
+	const applyCrisSoundDesign = async () => {
+		if (isCrisSoundApplying || !scene || !crisPlan) return;
+		if (!freesoundApiKey.trim()) {
+			toast.error("Cadastre a chave Freesound em Configurações > APIs.");
+			return;
+		}
+		if (!soundCues.length) {
+			toast.info("A Cris preferiu silêncio nestas cenas. Aplique um template com roteiro ou narração.");
+			return;
+		}
+		const existing = scene.tracks.audio.find((track) => track.name === "A3 • Efeitos CRIS" && track.elements.length);
+		if (existing) {
+			toast.info("A trilha CRIS já tem efeitos. Revise/remova os existentes antes de gerar novamente.");
+			return;
+		}
+		const sceneId = scene.id;
+		const projectId = editor.project.getActive().metadata.id;
+		const cues = soundCues.slice(0, 16);
+		const soundCache = new Map<string, SoundEffect | null>();
+		let inserted = 0;
+		let skipped = 0;
+		setIsCrisSoundApplying(true);
+		try {
+			for (const [index, cue] of cues.entries()) {
+				if (editor.project.getActive().metadata.id !== projectId || editor.scenes.getActiveSceneOrNull()?.id !== sceneId) {
+					throw new Error("Projeto/cena alterado. Interrompendo aplicação de efeitos.");
+				}
+				setSoundProgress(`Som ${index + 1}/${cues.length}: ${cue.query}`);
+				let sound = soundCache.get(cue.query);
+				if (sound === undefined) {
+					const qs = new URLSearchParams({
+						q: cue.query, type: "effects", commercial_only: "true",
+						min_rating: "0", page_size: "30", sort: "score",
+					});
+					const response = await fetch(`/api/sounds/search?${qs}`, {
+						headers: { "x-darkcut-freesound-key": freesoundApiKey.trim() },
+					});
+					if (!response.ok) {
+						const err = await response.json().catch(() => ({})) as { error?: string };
+						throw new Error(err.error || `Busca Freesound HTTP ${response.status}`);
+					}
+					const data = await response.json() as { results?: SoundEffect[] };
+					sound = data.results?.find((item) =>
+						isCrisAutoSoundLicense(item.license) && Boolean(item.downloadUrl || item.previewUrl)
+					) ?? null;
+					soundCache.set(cue.query, sound);
+				}
+				if (!sound) { skipped += 1; continue; }
+				const added = await useSoundsStore.getState().addSoundToTimeline({
+					sound,
+					startSeconds: cue.startSeconds,
+					maxDurationSeconds: cue.maxDurationSeconds,
+					volumeDb: cue.volumeDb,
+					trackName: "A3 • Efeitos CRIS",
+				});
+				if (added) inserted += 1; else skipped += 1;
+			}
+			if (soundCues.length > cues.length) {
+				toast.info(`Cris aplicou até 16 sugestões por rodada. ${soundCues.length - cues.length} aguardam revisão para preservar a performance.`);
+			}
+			toast.success(`Cris: ${inserted} efeito(s) na timeline; ${skipped} ignorado(s).`, {
+				description: "Sons CC0, faixa dedicada, duração limitada e volume discreto. Você pode editar cada um.",
+			});
+		} catch (error) {
+			toast.error(error instanceof Error ? error.message : "Não foi possível completar a edição sonora.");
+		} finally {
+			setSoundProgress("");
+			setIsCrisSoundApplying(false);
+		}
+	};
+
 	const narrationControls = (
 		<div className="space-y-2 p-2">
 			<label className="block text-xs">
@@ -1109,6 +1202,24 @@ export function DarkCutTemplatesView({
 				Selecione a faixa de voz, sem música. Whisper baixa o modelo no primeiro
 				uso.
 			</p>
+			{crisPlan && (
+				<div className="rounded-lg border bg-card p-3 text-xs space-y-2">
+					<div className="flex items-center justify-between gap-2">
+						<strong>🔊 CRIS • Efeitos sonoros</strong>
+						<span className="text-muted-foreground">{soundCues.length} sugestões</span>
+					</div>
+					{soundCues.slice(0, 4).map((cue) => (
+						<p key={`${cue.sceneIndex}-${cue.startSeconds}`} className="text-muted-foreground">
+							{cue.startSeconds.toFixed(1)}s · {cue.query}
+						</p>
+					))}
+					<Button size="sm" className="w-full" disabled={isCrisSoundApplying || isCrisAnalyzing || soundCues.length === 0} onClick={applyCrisSoundDesign}>
+						{isCrisSoundApplying ? "Inserindo efeitos…" : "🔊 Aplicar efeitos da CRIS à timeline"}
+					</Button>
+					{soundProgress && <p role="status">{soundProgress}</p>}
+					<p className="text-muted-foreground">Até 16 sons por rodada, com licença CC0, sem substituir áudio existente. Confira os efeitos antes de exportar.</p>
+				</div>
+			)}
 			{isCrisAnalyzing && (
 				<p role="status" aria-live="polite" className="text-xs text-primary">
 					{analysisStep}
