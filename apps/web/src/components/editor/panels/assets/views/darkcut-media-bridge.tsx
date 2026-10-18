@@ -7,6 +7,7 @@ import { useProjectDraft } from "@/darkcut/project-draft";
 import type { DarkCutScene } from "../darkcut-automation";
 import { processMediaAssets } from "@/media/processing";
 import { Button } from "@/components/ui/button";
+import { DarkCutFolderWatcher } from "./darkcut-folder-watcher";
 
 type PendingMedia = {
   id: string;
@@ -32,7 +33,6 @@ export function DarkCutMediaBridge() {
   const [enabled, setEnabled] = useState(false);
   const inProgress = useRef(false);
   const completed = useRef(new Set<string>());
-  const tokenRef = useRef("");
 
   useEffect(() => {
     let live = true;
@@ -43,7 +43,6 @@ export function DarkCutMediaBridge() {
       })
       .then((data) => {
         if (!live) return;
-        tokenRef.current = data.token ?? "";
         setToken(data.token ?? "");
         setEnabled(Boolean(data.enabled && data.token));
         setStatus(data.token ? "Pronto para receber imagens e vídeos." : "Ponte não configurada.");
@@ -53,7 +52,7 @@ export function DarkCutMediaBridge() {
         setStatus(err instanceof Error ? err.message : "Ponte indisponível.");
         setEnabled(false);
       });
-    return () => { live = false; tokenRef.current = ""; };
+    return () => { live = false; };
   }, []);
 
   const refresh = useCallback(async () => {
@@ -202,6 +201,7 @@ export function DarkCutMediaBridge() {
           )}
         </>
       )}
+      <DarkCutFolderWatcher />
       <p role="status" className="mt-2 text-xs text-muted-foreground">{status}</p>
       <p className="mt-1 text-[0.67rem] text-muted-foreground">
         Apenas no aplicativo Windows. A extensão envia arquivos que você seleciona; não acessa contas nem automatiza sites.
