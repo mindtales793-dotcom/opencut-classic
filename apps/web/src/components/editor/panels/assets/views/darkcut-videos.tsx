@@ -3,6 +3,7 @@
 import { useProjectDraft } from "@/darkcut/project-draft";
 import { useDarkCutTasks } from "@/darkcut/tasks";
 import { buildMediaSearchPlan } from "@/darkcut/media-search-intelligence";
+import type { CandidateLengthFilter } from "@/darkcut/youtube-candidate-ranker";
 import { useMemo, useRef, useState } from "react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
@@ -23,6 +24,7 @@ type YouTubeCandidate = {
 	channel: string;
 	thumbnailUrl: string;
 	relevanceScore: number;
+	durationSeconds?: number | null;
 };
 
 type VideoBlock = DarkCutScene & {
@@ -81,6 +83,9 @@ export function DarkCutVideosView() {
 	const [sourcePriority, setSourcePriority] = useProjectDraft<
 		"youtube-first" | "stock-first" | "stock-only"
 	>("video-source-priority", "youtube-first");
+	const [youtubeLengthFilter, setYoutubeLengthFilter] = useProjectDraft<CandidateLengthFilter>(
+		"youtube-length-filter", "over-minute",
+	);
 	const task = (
 		status: "running" | "paused" | "done" | "error",
 		done: number,
@@ -279,6 +284,7 @@ export function DarkCutVideosView() {
 							]),
 						),
 						youtubeApiKeys,
+						lengthFilter: youtubeLengthFilter,
 					}),
 				});
 
@@ -374,6 +380,7 @@ export function DarkCutVideosView() {
 					query: block.searchQuery.trim(),
 					youtubeApiKeys,
 					excludeVideoIds: excludedYouTubeIds(block),
+					lengthFilter: youtubeLengthFilter,
 					previewOnly: true,
 				}),
 			});
@@ -413,6 +420,7 @@ export function DarkCutVideosView() {
 					durationSeconds: block.durationSeconds,
 					youtubeApiKeys,
 					excludeVideoIds: excludedYouTubeIds(block),
+					lengthFilter: youtubeLengthFilter,
 					preferredVideoId: candidate.id,
 				}),
 			});
@@ -605,6 +613,27 @@ export function DarkCutVideosView() {
 						<option value="stock-first">Bancos primeiro • economizar cota YouTube</option>
 						<option value="stock-only">Somente Pexels e Pixabay • sem cota YouTube</option>
 					</select>
+					<label htmlFor="darkcut-video-length-filter" className="mt-3 block text-xs font-semibold">
+						Filtro de duração • YouTube
+					</label>
+					<select
+						id="darkcut-video-length-filter"
+						value={youtubeLengthFilter}
+						disabled={isRunning}
+						onChange={(event) => {
+							setYoutubeLengthFilter(event.target.value as CandidateLengthFilter);
+							setPreviewCandidates({});
+						}}
+						className="mt-1 h-9 w-full rounded border bg-background px-2 text-xs"
+					>
+						<option value="all">Qualquer duração (incluir vídeos curtos)</option>
+						<option value="over-minute">Evitar menos de 1 minuto</option>
+						<option value="over-three-minutes">Evitar menos de 3 minutos (menos Shorts)</option>
+					</select>
+					<p className="mt-1 text-[0.68rem] text-muted-foreground">
+						A duração é obtida da API do YouTube, quando disponível.
+						Não garante o formato horizontal; revise a miniatura antes de importar.
+					</p>
 					<p className="mt-1.5 text-[0.68rem] leading-relaxed text-muted-foreground">
 						O DarkCut usa uma consulta ao YouTube por bloco quando necessário,
 						classifica resultados e não repete mídias já identificadas.
@@ -842,7 +871,9 @@ export function DarkCutVideosView() {
 												<div className="min-w-0 flex-1 space-y-1">
 													<p className="line-clamp-2 text-xs font-medium">{candidate.title}</p>
 													<p className="truncate text-[0.68rem] text-muted-foreground">
-														{candidate.channel || "Canal desconhecido"} · relevância estimada: {candidate.relevanceScore}
+														{candidate.channel || "Canal desconhecido"} · {candidate.durationSeconds
+															? `${Math.floor(candidate.durationSeconds / 60)}:${String(candidate.durationSeconds % 60).padStart(2, "0")}`
+															: "duração desconhecida"} · relevância estimada: {candidate.relevanceScore}
 													</p>
 													<Button
 														size="sm"
