@@ -46,7 +46,7 @@ export async function POST(request: Request) {
       ?"Modelo Gemini indisponível nesta conta.":(upstream.error?.message||`Gemini HTTP ${code}`).slice(0,230);
     return json({error:detail,status:code}, [400,401,403,404,429].includes(code)?code:502);
   }
-  const body = await response.json() as {candidates?:Array<{content?:{parts?:Array<{text?:string}>}}>}>;
+  const body = await response.json() as { candidates?: Array<{ content?: { parts?: Array<{ text?: string }> } }> };
   const raw = body.candidates?.[0]?.content?.parts?.map(x=>x.text??"").join("")??"";
   let result:Record<string,unknown>;
   try { result = JSON.parse(raw.replace(/^\s*```(?:json)?\s*|\s*```\s*$/g,"")); }
