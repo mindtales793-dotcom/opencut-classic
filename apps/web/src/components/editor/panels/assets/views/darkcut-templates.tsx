@@ -1158,7 +1158,8 @@ export function DarkCutTemplatesView({
 				}
 				if (!sound) { skipped += 1; continue; }
 				const added = await useSoundsStore.getState().addSoundToTimeline({
-					sound,
+					// Freesound download endpoints may require OAuth; public CC0 previews work with API-key search.
+					sound: { ...sound, downloadUrl: undefined },
 					startSeconds: cue.startSeconds,
 					maxDurationSeconds: cue.maxDurationSeconds,
 					volumeDb: cue.volumeDb,
