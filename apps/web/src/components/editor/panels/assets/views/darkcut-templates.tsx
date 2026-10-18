@@ -42,6 +42,7 @@ import { useDarkCutProductionStore } from "../darkcut-production-store";
 import { useSoundsStore } from "@/sounds/sounds-store";
 import type { SoundEffect } from "@/sounds/types";
 import { buildCrisSoundTimeline, isCrisAutoSoundLicense } from "@/darkcut/cris-sound-design";
+import { getCrisReferenceStyle } from "@/darkcut/reference-editing-styles";
 import { DarkCutRemotionPreview } from "@/remotion/darkcut-composer";
 import {
 	RETRO_VISUAL_MODES,
@@ -1287,6 +1288,7 @@ export function DarkCutTemplatesView({
 								>
 									<strong>{template.title}</strong>
 									<small>{template.tagline.split(" • ").join(" · ")}</small>
+									<small>✦ {getCrisReferenceStyle(template.id).label}</small>
 								</button>
 							</div>
 						))}
@@ -1520,6 +1522,10 @@ export function DarkCutTemplatesView({
 									</p>
 									<p className="mt-2 text-xs leading-relaxed text-muted-foreground">
 										{template.description}
+									</p>
+									<p className="mt-2 rounded-md border border-primary/20 bg-primary/5 p-2 text-[0.68rem] text-muted-foreground">
+										<span className="font-semibold text-foreground">✦ Direção da CRIS: </span>
+										{getCrisReferenceStyle(template.id).label}. {getCrisReferenceStyle(template.id).sound}
 									</p>
 									<p className="mt-2 text-[0.68rem] text-muted-foreground">
 										<span className="font-medium text-foreground">
