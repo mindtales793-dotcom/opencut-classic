@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { CRIS_SOUND_PRESETS } from "@/darkcut/cris-sound-design";
+import { crisStylePromptLines } from "@/darkcut/reference-editing-styles";
 import {
 	buildLocalCrisPlan,
 	normalizeCrisPlan,
@@ -81,6 +82,7 @@ function promptForPlan({
 		`Transições permitidas: ${template.transitions.join(", ")}.`,
 		`Efeitos permitidos: ${template.effects.join(", ")}.`,
 		`Intensidade base: ${template.intensity}.`,
+		...crisStylePromptLines(template.id),
 		"Para cada mídia, decida o que deve aparecer naquele momento da narração.",
 		"visualQuery deve ser uma busca visual curta em INGLÊS, não uma tradução literal da frase.",
 		"overlayText deve ser curto e só existir quando realmente agregar: número, item de lista, valor, virada, pergunta, palavra-chave.",
