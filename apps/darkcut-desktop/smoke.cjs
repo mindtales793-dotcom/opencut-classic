@@ -145,9 +145,9 @@ async function run(win) {
 	await clickByAria(win, "Templates", "templates:open");
 	await until(
 		win,
-		`document.querySelectorAll('[data-template-library] canvas[data-preview-playing]').length===10`,
+		`document.querySelectorAll('[data-template-library] canvas[data-preview-playing]').length>=11`,
 		20000,
-		"templates:ten-previews",
+		"templates:all-previews",
 	);
 	await clickByAria(win, "Prévia de POV Financeiro", "templates:play");
 	await until(
@@ -352,7 +352,7 @@ async function run(win) {
 			"tab switch preserved audio",
 			"animation frames responsive",
 			"properties panel hidden and toggle works",
-			"ten template previews and live animation",
+			"eleven or more template previews and live animation",
 			"music fixture downloaded, decoded and inserted in A2",
 			"indeterminate import progress visible",
 			"reference layout: labeled sidebar, preview left and production right",
