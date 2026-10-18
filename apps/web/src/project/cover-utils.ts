@@ -23,7 +23,14 @@ export function chooseProjectCover(
 ): CoverCandidate | null {
 	const byId = new Map(assets.map((asset) => [asset.id, asset]));
 	const candidates: CoverCandidate[] = [];
+	const hiddenIds = new Set<string>();
 	for (const scene of scenes) {
+		for (const track of [scene.tracks.main, ...scene.tracks.overlay]) {
+			if (track.type !== "video") continue;
+			for (const element of track.elements) {
+				if (track.hidden || element.hidden) hiddenIds.add(element.mediaId);
+			}
+		}
 		const tracks = [scene.tracks.main, ...scene.tracks.overlay]
 			.filter((track) => track.type === "video" && !track.hidden);
 		for (const track of tracks) {
@@ -47,8 +54,8 @@ export function chooseProjectCover(
 	);
 	if (candidates[0]) return candidates[0];
 	// Media imported but not placed on the timeline can still identify a project.
-	const fallback = assets.find((item) => item.type === "image") ??
-		assets.find((item) => item.type === "video");
+	const fallback = assets.find((item) => item.type === "image" && !hiddenIds.has(item.id)) ??
+		assets.find((item) => item.type === "video" && !hiddenIds.has(item.id));
 	return fallback ? {
 		mediaId: fallback.id,
 		type: fallback.type as "image" | "video",
