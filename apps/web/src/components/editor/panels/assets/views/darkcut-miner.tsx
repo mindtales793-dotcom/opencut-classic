@@ -5,11 +5,13 @@ import { toast } from "sonner";
 import { NICHE_MARKETS, localTitleAngles, rankMinerOpportunities, sanitizeMinerVideo, type MinerVideo } from "@/darkcut/niche-miner";
 import { useDarkCutProductionStore } from "../darkcut-production-store";
 import { useAssetsPanelStore } from "../assets-panel-store";
+import { DarkMinerDesktopConnect } from "./darkcut-miner-desktop";
 
 type AIResult = { summary:string; titles:{title:string;angle:string;hook:string;risk:string}[]; nicheDoubles:{angle:string;audience:string;why:string;culturalAdaptation:string;validation:string}[]; searchQueries:string[]; culturalChecks:string[]; confidenceNotes:string[] };
 const URL="/api/darkcut/miner/bridge";
 export function DarkCutMinerView(){
   const [videos,setVideos]=useState<MinerVideo[]>([]);
+  const [desktopVideos,setDesktopVideos]=useState<MinerVideo[]>([]);
   const [pairs,setPairs]=useState("");
   const [error,setError]=useState("");
   const [manualJson,setManualJson]=useState("");
@@ -27,7 +29,18 @@ export function DarkCutMinerView(){
   const script=useDarkCutProductionStore(s=>s.script);
   const geminiKey=useDarkCutProductionStore(s=>s.geminiApiKeys.find(Boolean)||s.geminiApiKey);
   const market=NICHE_MARKETS.find(m=>m.language===language)||NICHE_MARKETS[0];
-  const matches=useMemo(()=>rankMinerOpportunities(videos.filter(v=>(v.title+" "+v.channel).toLocaleLowerCase().includes(search.toLocaleLowerCase()))).slice(0,70),[videos,search]);
+  const matches=useMemo(()=>{
+    // Extension and original desktop database remain independent. This single
+    // view deduplicates by YouTube video ID, retaining richer measured metrics.
+    const merged=new Map<string,MinerVideo>();
+    for (const item of [...videos,...desktopVideos]) {
+      const previous=merged.get(item.videoId);
+      if (!previous||(!previous.outlier&&item.outlier)||(!previous.subscribers&&item.subscribers)) {
+        merged.set(item.videoId,item);
+      }
+    }
+    return rankMinerOpportunities([...merged.values()].filter(v=>(v.title+" "+v.channel).toLocaleLowerCase().includes(search.toLocaleLowerCase()))).slice(0,70);
+  },[videos,desktopVideos,search]);
 
   const load=async (key:string)=>{
     const r=await fetch(URL,{headers:{"x-darkcut-bridge-token":key},cache:"no-store"});
@@ -93,6 +106,7 @@ export function DarkCutMinerView(){
       <h2 className="text-lg font-bold text-foreground">📡 DarkMiner • Inteligência de oportunidades</h2>
       <p className="text-xs text-muted-foreground">Radar internacional, dobra de nicho e títulos por idioma. Dados importados da extensão + sugestões originais de IA.</p>
     </header>
+    <DarkMinerDesktopConnect onChange={setDesktopVideos}/>
     <div className="rounded-xl border border-primary/30 bg-card p-3 space-y-2">
       <h3 className="font-semibold">🔗 Sincronizar sua extensão Dark Miner 3.8.1+</h3>
       <p className="text-xs text-muted-foreground">No Windows, copie a chave temporária e use a extensão DarkMiner atualizada para enviar as listas Salvos/Monitor. Nenhuma chave do YouTube é transferida.</p>
@@ -110,6 +124,7 @@ export function DarkCutMinerView(){
     <div className="rounded-xl border bg-card p-3 space-y-2">
       <div className="flex items-center justify-between gap-2"><h3 className="font-semibold">📈 Oportunidades ({matches.length})</h3><span className="text-xs text-muted-foreground">Score heurístico • não prevê viralização</span></div>
       <input value={search} onChange={e=>setSearch(e.target.value)} className="w-full rounded-md border bg-background px-3 py-2" placeholder="Filtrar por canal, tema ou título..." />
+      <p className="text-[0.7rem] text-muted-foreground">Fontes: {videos.length} vídeos da extensão + {desktopVideos.length} vídeos do DarkMiner clássico. IDs repetidos são unidos sem apagar os dados originais.</p>
       <div className="max-h-64 space-y-2 overflow-y-auto">
         {!matches.length&&<p className="text-xs text-muted-foreground">Sem vídeos importados. Envie os salvos/monitor pela extensão DarkMiner ou importe JSON.</p>}
         {matches.map(({video,score,reasons,cautions})=><div key={video.videoId} className="rounded-lg border bg-background p-2">
