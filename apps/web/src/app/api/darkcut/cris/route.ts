@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { CRIS_SOUND_PRESETS } from "@/darkcut/cris-sound-design";
 import {
 	buildLocalCrisPlan,
 	normalizeCrisPlan,
@@ -91,6 +92,9 @@ function promptForPlan({
 		"Não invente dados, preços ou modelos que não estejam no roteiro.",
 		"Use effect apenas none ou blur.",
 		"durationWeight deve ficar entre 0.6 e 1.6.",
+		`Para sound.preset, use exclusivamente: none, ${CRIS_SOUND_PRESETS.join(", ")}.`,
+		"sound.placement pode ser start, middle ou end. Não coloque sons em toda cena. Prefira silêncio durante fala emocional, conselho ou explicação.",
+		"Sugira efeitos apenas se uma ação aparecer no roteiro ou se for uma virada visual relevante. Nunca invente uma ação.",
 		"Retorne SOMENTE JSON válido no formato:",
 		JSON.stringify({
 			scenes: [
@@ -106,6 +110,7 @@ function promptForPlan({
 					effect: "none",
 					intensity: template.intensity,
 					durationWeight: 1,
+					sound: { preset: "none", placement: "start" },
 				},
 			],
 		}),
@@ -193,7 +198,7 @@ async function callGemini({
 
 	for (const candidate of candidates) {
 		try {
-			return await callGeminiOnce({ apiKey, model: candidate, prompt });
+			return { raw: await callGeminiOnce({ apiKey, model: candidate, prompt }), model: candidate };
 		} catch (error) {
 			lastError = error;
 			if (!shouldTryAnotherGeminiModel(error)) throw error;
@@ -273,19 +278,17 @@ async function analyzeWithProvider({
 	const errors: string[] = [];
 	for (const [index, key] of keys.entries()) {
 		try {
-			const raw =
-				provider === "gemini"
-					? await callGemini({
-							apiKey: key,
-							model: normalizeGeminiModel(body.geminiModel),
-							prompt,
-						})
-					: await callOpenRouter({
-							apiKey: key,
-							model: cleanKey(body.openRouterModel) || "openrouter/free",
-							prompt,
-						});
-			return { raw, keySlot: index + 1 };
+			if (provider === "gemini") {
+				const response = await callGemini({
+					apiKey: key,
+					model: normalizeGeminiModel(body.geminiModel),
+					prompt,
+				});
+				return { raw: response.raw, model: response.model, keySlot: index + 1 };
+			}
+			const model = cleanKey(body.openRouterModel) || "openrouter/free";
+			const raw = await callOpenRouter({ apiKey: key, model, prompt });
+			return { raw, model, keySlot: index + 1 };
 		} catch (error) {
 			errors.push(
 				`chave ${index + 1}: ${error instanceof Error ? error.message : "falhou"}`,
@@ -328,10 +331,7 @@ export async function POST(request: Request) {
 				ok: true,
 				provider: primary,
 				keySlot: primaryResult.keySlot,
-				model:
-					primary === "gemini"
-						? normalizeGeminiModel(body.geminiModel)
-						: cleanKey(body.openRouterModel) || "openrouter/free",
+				model: primaryResult.model,
 			});
 		} catch (primaryError) {
 			if (fallback !== primary) {
@@ -342,10 +342,7 @@ export async function POST(request: Request) {
 						provider: fallback,
 						fallbackUsed: true,
 						keySlot: fallbackResult.keySlot,
-						model:
-							fallback === "gemini"
-								? normalizeGeminiModel(body.geminiModel)
-								: cleanKey(body.openRouterModel) || "openrouter/free",
+						model: fallbackResult.model,
 					});
 				} catch {}
 			}
@@ -398,6 +395,7 @@ export async function POST(request: Request) {
 					provider,
 					fallbackUsed: provider !== primary,
 					keySlot: result.keySlot,
+					model: result.model,
 				});
 			}
 			errors.push(`${provider}: resposta inválida`);
