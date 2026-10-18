@@ -180,3 +180,10 @@ jobs:
           path: |
             apps/darkcut-desktop/dist/*.exe
           if-no-files-found: error
+
+      - name: Upload DarkCut Chrome media bridge
+        uses: actions/upload-artifact@v4
+        with:
+          name: DarkCut-Media-Bridge-Chrome
+          path: extensions/darkcut-media-bridge/
+          if-no-files-found: error

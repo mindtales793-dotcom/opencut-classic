@@ -1,0 +1,16 @@
+{
+  "manifest_version": 3,
+  "name": "DarkCut — Ponte de Mídias Locais",
+  "version": "1.0.0",
+  "description": "Envia arquivos locais selecionados pelo usuário às cenas do DarkCut Studio Windows, sem acessar sites externos.",
+  "permissions": [
+    "storage"
+  ],
+  "host_permissions": [
+    "http://127.0.0.1:3217/*"
+  ],
+  "action": {
+    "default_title": "Enviar mídias ao DarkCut",
+    "default_popup": "popup.html"
+  }
+}

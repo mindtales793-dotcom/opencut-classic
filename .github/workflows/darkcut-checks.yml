@@ -34,7 +34,12 @@ jobs:
         run: bun install
 
       - name: Test SRT, all templates, covers and intelligent media search
-        run: bun test apps/web/src/darkcut/__tests__/srt-scene-sync.test.ts apps/web/src/darkcut/__tests__/retro-automotive.test.ts apps/web/src/darkcut/__tests__/media-search-intelligence.test.ts apps/web/src/darkcut/__tests__/youtube-candidate-ranker.test.ts apps/web/src/darkcut/__tests__/template-visual-profiles.test.ts apps/web/src/darkcut/__tests__/cris-sound-design.test.ts apps/web/src/darkcut/__tests__/reference-editing-styles.test.ts apps/web/src/project/__tests__/darkcut-cover-utils.test.ts
+        run: bun test apps/web/src/darkcut/__tests__/srt-scene-sync.test.ts apps/web/src/darkcut/__tests__/retro-automotive.test.ts apps/web/src/darkcut/__tests__/media-search-intelligence.test.ts apps/web/src/darkcut/__tests__/youtube-candidate-ranker.test.ts apps/web/src/darkcut/__tests__/template-visual-profiles.test.ts apps/web/src/darkcut/__tests__/cris-sound-design.test.ts apps/web/src/darkcut/__tests__/reference-editing-styles.test.ts apps/web/src/darkcut/__tests__/media-bridge.test.ts apps/web/src/project/__tests__/darkcut-cover-utils.test.ts
+
+      - name: Validate optional Chrome media bridge
+        run: |
+          node --check extensions/darkcut-media-bridge/popup.js
+          node -e "const fs=require('fs');const m=JSON.parse(fs.readFileSync('extensions/darkcut-media-bridge/manifest.json'));if(m.manifest_version!==3||m.content_scripts)process.exit(1)"
 
       - name: Build DarkCut web runtime
         run: bun run build:web
