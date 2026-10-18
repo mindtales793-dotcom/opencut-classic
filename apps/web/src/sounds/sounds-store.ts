@@ -44,7 +44,13 @@ interface SoundsStore {
 	isLoadingSavedSounds: boolean;
 	savedSoundsError: string | null;
 
-	addSoundToTimeline: ({ sound }: { sound: SoundEffect }) => Promise<boolean>;
+	addSoundToTimeline: ({ sound, startSeconds, maxDurationSeconds, volumeDb, trackName }: {
+		sound: SoundEffect;
+		startSeconds?: number;
+		maxDurationSeconds?: number;
+		volumeDb?: number;
+		trackName?: string;
+	}) => Promise<boolean>;
 	setTopSoundEffects: ({ sounds }: { sounds: SoundEffect[] }) => void;
 	setLoading: ({ loading }: { loading: boolean }) => void;
 	setError: ({ error }: { error: string | null }) => void;
@@ -255,7 +261,7 @@ export const useSoundsStore = create<SoundsStore>((set, get) => ({
 		}
 	},
 
-	addSoundToTimeline: async ({ sound }) => {
+	addSoundToTimeline: async ({ sound, startSeconds, maxDurationSeconds, volumeDb, trackName }) => {
 		const audioUrl = sound.downloadUrl || sound.previewUrl;
 		if (!audioUrl) {
 			toast.error("Áudio indisponível.");
@@ -276,14 +282,16 @@ export const useSoundsStore = create<SoundsStore>((set, get) => ({
 		task("running", "Baixando áudio…");
 		try {
 			const editor = EditorCore.getInstance();
-			const currentTime = editor.playback.getCurrentTime();
+			const currentTime = Number.isFinite(startSeconds)
+				? mediaTimeFromSeconds({ seconds: Math.max(0, startSeconds ?? 0) })
+				: editor.playback.getCurrentTime();
 			const isBackgroundMusic = sound.tags?.some(
 				(tag) =>
 					tag.toLowerCase() === "jamendo" || tag.toLowerCase() === "music",
 			);
-			const trackName = isBackgroundMusic
+			const destinationTrackName = trackName || (isBackgroundMusic
 				? "A2 • Música de fundo"
-				: "A3 • Efeitos sonoros";
+				: "A3 • Efeitos sonoros");
 
 			const sceneId = editor.scenes.getActiveScene().id;
 			stopSoundPreview();
@@ -335,16 +343,24 @@ export const useSoundsStore = create<SoundsStore>((set, get) => ({
 				);
 			const targetTrackId = getOrCreateDarkCutAudioTrack({
 				editor,
-				name: trackName,
+				name: destinationTrackName,
 			});
 			const element = buildElementFromMedia({
 				mediaId: asset.id,
 				mediaType: "audio",
 				name: sound.name,
-				duration: mediaTimeFromSeconds({ seconds: processed.duration }),
+				duration: mediaTimeFromSeconds({ seconds:
+					Math.min(processed.duration, Number.isFinite(maxDurationSeconds) && (maxDurationSeconds ?? 0) > 0 ? maxDurationSeconds! : processed.duration),
+				}),
 				startTime: currentTime,
 			});
 
+			if (Number.isFinite(volumeDb)) {
+				element.params = {
+					...element.params,
+					volume: Math.max(-60, Math.min(20, volumeDb ?? -19)),
+				};
+			}
 			editor.timeline.insertElement({
 				placement: { mode: "explicit", trackId: targetTrackId },
 				element,
