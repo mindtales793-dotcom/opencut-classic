@@ -2,6 +2,7 @@ const { app, BrowserWindow, dialog, shell, Tray, Menu, nativeImage, nativeTheme 
 const path = require("node:path");
 const fs = require("node:fs");
 const http = require("node:http");
+const { randomBytes } = require("node:crypto");
 const { spawn } = require("node:child_process");
 
 // Prefer the discrete GPU on notebooks/dual-GPU systems. Electron documents this
@@ -51,6 +52,8 @@ app.on("second-instance", () => {
 });
 const PORT = 3217;
 const HOST = "127.0.0.1";
+// Random per-run capability. Only the UI at the loopback origin may reveal it for pairing.
+const MEDIA_BRIDGE_TOKEN = randomBytes(32).toString("hex");
 
 function runtimeRoot() {
   return app.isPackaged
@@ -140,6 +143,7 @@ function startServer() {
       PORT: String(PORT),
       PATH: toolsPath,
       DARKCUT_DATA_DIR: app.getPath("userData"),
+       DARKCUT_MEDIA_BRIDGE_TOKEN: MEDIA_BRIDGE_TOKEN,
       Path: toolsPath,
       DARKCUT_VIDEO_TOOLS: toolsDir,
       NEXT_PUBLIC_SITE_URL:
