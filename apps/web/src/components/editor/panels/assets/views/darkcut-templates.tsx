@@ -45,6 +45,7 @@ import {
 	retroTextStyle,
 	type RetroVisualMode,
 } from "@/darkcut/retro-automotive";
+import { describeTemplateScene, getTemplateVisualProfile } from "@/darkcut/template-visual-profiles";
 import {
 	buildLocalCrisPlan,
 	type CrisEditPlan,
@@ -782,10 +783,11 @@ export function DarkCutTemplatesView({
 				item.sceneType === "turn";
 			// Keep long documentary projects responsive: show a card for meaningful
 			// moments, and at most one optional context card per five shots.
+			const displayContext = isRetro
+				? retroHighlight || index % 5 === 0
+				: retroHighlight && index % (template.durationSeconds > 5 ? 4 : 3) === 0;
 			const overlayText = item.overlayText.trim() ||
-				(isRetro && (retroHighlight || index % 5 === 0)
-					? item.summary.slice(0, 58)
-					: "");
+				(displayContext ? item.summary.slice(0, 58) : "");
 			if (!overlayText) continue;
 			const visual = visualByRef.get(`${ref.trackId}:${ref.elementId}`);
 			if (!visual) continue;
@@ -795,25 +797,30 @@ export function DarkCutTemplatesView({
 					sceneType: item.sceneType,
 					intensity: template.intensity,
 				})
-				: null;
+				: describeTemplateScene({
+					profileId: template.id,
+					visualSlot: item.visualSlot,
+					sceneType: item.sceneType,
+					intensity: template.intensity,
+				});
 			editor.timeline.insertElement({
 				placement: { mode: "explicit", trackId: textTrackId },
 				element: buildTextElement({
 					startTime: visual.startTime,
 					raw: {
-						name: isRetro ? `Cris • ${visualStyle?.label}` : `Cris • ${item.sceneType}`,
+						name: `Cris • ${visualStyle.label} • ${template.title}`,
 						duration: visual.duration,
 						params: {
 							...templateTextParams(
 								overlayText,
-								isRetro ? (visualStyle?.fontSize ?? 66) : template.id === "list" ? 74 : 58,
+								visualStyle.fontSize,
 							),
 							fontWeight: "bold",
-							color: visualStyle?.color ?? "#ffffff",
+							color: visualStyle.color,
 							"background.enabled": true,
-							"background.color": visualStyle?.background ?? "#0b0d12d9",
-							"background.paddingX": visualStyle?.paddingX ?? 20,
-							"background.paddingY": visualStyle?.paddingY ?? 12,
+							"background.color": visualStyle.background,
+							"background.paddingX": visualStyle.paddingX,
+							"background.paddingY": visualStyle.paddingY,
 						},
 					},
 				}),
@@ -1120,15 +1127,8 @@ export function DarkCutTemplatesView({
 				{narrationControls}
 				<div className="studio-template-grid">
 					{[
-						"pov-finance",
-						"pov-car",
-						"retro-automotive",
-						"dark-channel",
-						"storytelling",
-						"documentary",
-						"vox",
+						...TEMPLATES
 					]
-						.map((id) => TEMPLATES.find((t) => t.id === id)!)
 						.map((template) => (
 							<div
 								key={template.id}
