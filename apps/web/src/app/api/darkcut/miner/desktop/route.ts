@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { sanitizeMinerVideo, type MinerVideo } from "@/darkcut/niche-miner";
+import { normalizeLegacyVideo, type LegacyVideo, type LegacyVideoGroup } from "@/darkcut/darkminer-legacy-adapter";
 
 /**
  * Read-only bridge to a user-owned Dark Miner Desktop backend.
@@ -14,8 +14,6 @@ const allowedOrigins = new Set(["http://127.0.0.1:3217", "http://localhost:3217"
 
 type LegacyStatus = { ok?: boolean; version?: string; configured_keys?: number };
 type LegacyCollection = { items?: unknown[] };
-type VideoWithSource = MinerVideo & { source: "desktop"; group: "favorites" | "monitor" | "outliers" | "production" };
-
 async function localJSON<T>(port: number, endpoint: string, timeout = 2500): Promise<T> {
   const response = await fetch(`http://${HOST}:${port}${endpoint}`, {
     cache: "no-store", redirect: "error", signal: AbortSignal.timeout(timeout),
@@ -27,23 +25,6 @@ async function localJSON<T>(port: number, endpoint: string, timeout = 2500): Pro
   const text = await response.text();
   if (text.length > MAX_RESPONSE_BYTES) throw new Error("Limite da resposta excedido");
   return JSON.parse(text) as T;
-}
-function normalizeEntry(row: unknown, group: VideoWithSource["group"]): VideoWithSource | null {
-  if (!row || typeof row !== "object") return null;
-  const input = row as Record<string, unknown>;
-  // Real legacy fields: video_id, channel_title, published_at,
-  // outlier_multiplier / real_outlier and vph, not synthetic view metrics.
-  const video = sanitizeMinerVideo({
-    video_id: input.video_id ?? input.videoId,
-    title: input.title,
-    channel: input.channel_title ?? input.channel_name ?? input.channel ?? input.channelTitle,
-    views: input.views, subscribers: input.subscribers,
-    publishedAt: input.published_at ?? input.publishedAt,
-    language: input.language,
-    outlier: input.real_outlier_multiplier ?? input.outlier_multiplier ?? input.outlier ?? input.outlier_ratio,
-    vph: input.vph,
-  });
-  return video ? { ...video, source: "desktop", group } : null;
 }
 function blockedOrigin(request: Request) {
   const origin = request.headers.get("origin");
@@ -93,15 +74,15 @@ export async function GET(request: Request) {
     group,
     items: (await localJSON<LegacyCollection>(port!, endpoint, 5000)).items ?? [],
   })));
-  const merged = new Map<string, VideoWithSource>();
+  const merged = new Map<string, LegacyVideo>();
   const groups: Record<string, number> = {};
   const unavailable: string[] = [];
   for (let i = 0; i < fetched.length; i++) {
-    const r = fetched[i], group = endpoints[i][0];
+    const r = fetched[i], group = endpoints[i][0] as LegacyVideoGroup;
     if (r.status !== "fulfilled" || !Array.isArray(r.value.items)) {
       unavailable.push(group); continue;
     }
-    const videos = r.value.items.slice(0, 200).map(row => normalizeEntry(row, group)).filter((row): row is VideoWithSource => row != null);
+    const videos = r.value.items.slice(0, 200).map(row => normalizeLegacyVideo(row, group)).filter((row): row is LegacyVideo => row != null);
     groups[group] = videos.length;
     for (const video of videos) {
       const previous = merged.get(video.videoId);
