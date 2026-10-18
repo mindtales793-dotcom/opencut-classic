@@ -71,8 +71,11 @@ export function TaskStatus({ task }: { task: TaskProgress }) {
 						max={task.total}
 						value={task.done ?? 0}
 					/>
-					<span>
-						{task.done ?? 0}/{task.total}
+					<span className="font-semibold tabular-nums">
+						{Math.floor((Math.max(0, task.done ?? 0) / task.total) * 100)}%
+					</span>
+					<span className="text-muted-foreground tabular-nums">
+						({task.done ?? 0}/{task.total})
 					</span>
 				</>
 			) : (

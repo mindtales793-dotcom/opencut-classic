@@ -307,8 +307,15 @@ export function DarkCutSyncView() {
 			return;
 		}
 
+		if (narrationSignature !== signature) {
+			// Keep the old file in the project library, but never label it as the
+			// newly requested narrator/script or allow a stale MP3 download.
+			setNarrationUrl(null);
+			setNarrationAssetId(null);
+			setNarrationSignature(null);
+		}
 		setIsGenerating(true);
-		task("running", "Enviando roteiro…");
+		task("running", "Enviando roteiro…", { done: 0, total: 100 });
 		try {
 			const creation = await fetch("/api/darkcut/narration-jobs", {
 				method: "POST",
@@ -324,42 +331,49 @@ export function DarkCutSyncView() {
 			const job = await creation.json();
 			if (!creation.ok) throw new Error(job.error || "Falha ao criar tarefa.");
 			setJobId(job.id);
-			task("running", "Gerando voz — modo rápido ativo…");
+			const initialTotal = Math.max(1, Number(job.totalChunks) || 1);
+			task("running", `Preparando blocos de narração (0/${initialTotal})…`, {
+				done: Math.min(99, Number(job.progressPercent) || 0), total: 100,
+			});
 			if (job.status !== "ready") {
+				const startedPolling = Date.now();
 				while (true) {
 					const check = await fetch(
 						`/api/darkcut/narration-jobs?id=${job.id}`,
 						{ cache: "no-store" },
 					);
 					const state = await check.json();
-					if (
-						!check.ok ||
-						state.status === "error" ||
-						state.status === "interrupted"
-					)
+					if (!check.ok || state.status === "error" || state.status === "interrupted") {
 						throw new Error(
 							state.error ||
-								"Tarefa interrompida. Clique em Retomar narração.",
+								"Tarefa interrompida. Os blocos prontos foram salvos; clique em Retomar narração.",
 						);
-					if (state.status === "ready") break;
-					const bytes = Number(state.bytesReceived) || 0;
-					const totalBytes = Number(state.totalBytes) || 0;
-					if (state.stage === "downloading" && totalBytes > 0) {
-						task("running", `Recebendo áudio: ${(bytes / 1048576).toFixed(1)} MB / ${(totalBytes / 1048576).toFixed(1)} MB`, {
-							done: Math.min(bytes, totalBytes),
-							total: totalBytes,
-						});
-					} else if (state.stage === "downloading") {
-						task("running", `Áudio recebido: ${(bytes / 1048576).toFixed(1)} MB`);
-					} else if (state.stage === "saving") {
-						task("running", "Finalizando e salvando o MP3…");
-					} else {
-						task("running", "Fish Audio processando a voz…");
 					}
-					await new Promise((resolve) => setTimeout(resolve, 500));
+					const total = Math.max(1, Number(state.totalChunks) || initialTotal);
+					const completed = Math.min(total, Number(state.completedChunks) || 0);
+					if (state.status === "ready") {
+						task("running", "MP3 gerado. Importando áudio para o projeto…", { done: 99, total: 100 });
+						break;
+					}
+					const current = Math.max(1, Number(state.currentChunk) || completed + 1);
+					const detail = state.stage === "combining"
+						? "Unindo os blocos de áudio com FFmpeg…"
+						: state.stage === "saving"
+							? "Validando e salvando o MP3 completo…"
+							: state.stage === "downloading"
+								? `Recebendo bloco ${current}/${total} · ${((Number(state.bytesReceived) || 0) / 1048576).toFixed(1)} MB`
+								: `Fish Audio narrando bloco ${current}/${total}…`;
+					task("running", `${detail} • ${completed}/${total} blocos prontos`, {
+						done: Math.max(0, Math.min(99, Number(state.progressPercent) || 0)),
+						total: 100,
+					});
+					if (Date.now() - startedPolling > 90 * 60 * 1000) {
+						throw new Error("Limite de acompanhamento atingido. Clique em Retomar narração; os blocos concluídos permanecem salvos.");
+					}
+					await new Promise((resolve) => setTimeout(resolve, 1200));
 				}
 			}
-			task("running", "Baixando narração…");
+			task("running", "Baixando narração…", { done: 99, total: 100 });
 			const response = await fetch(
 				`/api/darkcut/narration-jobs?id=${job.id}&audio=1`,
 			);
@@ -388,7 +402,7 @@ export function DarkCutSyncView() {
 				type: blob.type || "audio/mpeg",
 			});
 
-			task("running", "Preparando áudio…");
+			task("running", "Preparando áudio…", { done: 99, total: 100 });
 			const [processed] = await processMediaAssets({ files: [file] });
 			if (!processed) {
 				throw new Error("Não foi possível preparar o áudio gerado.");
@@ -399,7 +413,7 @@ export function DarkCutSyncView() {
 				throw new Error(
 					"Narração pronta. Reabra o projeto de origem e clique em Retomar narração.",
 				);
-			task("running", "Salvando narração…");
+			task("running", "Salvando narração…", { done: 99, total: 100 });
 			const asset = await editor.media.addMediaAsset({
 				projectId: activeProject.metadata.id,
 				asset: processed,
@@ -410,7 +424,7 @@ export function DarkCutSyncView() {
 
 			setNarrationAssetId(asset.id);
 			setJobId(null);
-			task("done", "MP3 pronto • escolha como continuar");
+			task("done", "MP3 pronto • escolha como continuar", { done: 100, total: 100 });
 			setNarrationUrl(asset.url ?? URL.createObjectURL(blob));
 			setNarrationFileName(fileName);
 			setNarrationSignature(signature);
@@ -456,7 +470,7 @@ export function DarkCutSyncView() {
 
 	const downloadNarration = () => {
 		if (!narrationUrl) {
-			toast.error("Gere a narração primeiro.");
+			toast.error("O MP3 ainda não ficou pronto. Conclua ou retome a narração.");
 			return;
 		}
 		const link = document.createElement("a");
@@ -717,6 +731,30 @@ export function DarkCutSyncView() {
 							: "🎙️ Gerar narração"}
 				</Button>
 
+				<div className="space-y-2 rounded-md border border-primary/25 bg-background p-3" data-narration-mp3-download="true">
+					<div className="flex items-center justify-between gap-2">
+						<span className="text-xs font-semibold">🎧 Arquivo da narração · MP3</span>
+						<span className="text-[0.68rem] text-muted-foreground">
+							{narrationUrl ? "✓ Pronto" : isGenerating ? "Gerando blocos…" : jobId ? "Aguardando retomada" : "Não gerado"}
+						</span>
+					</div>
+					<Button
+						className="w-full"
+						variant="secondary"
+						disabled={!narrationUrl}
+						onClick={downloadNarration}
+						title={narrationUrl ? "Salvar o MP3 completo da narração no computador" : "O download será liberado após todos os blocos serem unidos"}
+					>
+						↓ Baixar narração em MP3
+					</Button>
+					{!narrationUrl && (
+						<p className="text-[0.68rem] text-muted-foreground">
+							O botão será liberado quando os blocos estiverem concluídos e o MP3 final estiver salvo.
+							Se houver erro HTTP 503, use Retomar narração para continuar do último bloco pronto.
+						</p>
+					)}
+				</div>
+
 				{isGenerating && narrationTask && (
 				<div role="status" className="space-y-2 rounded-md border border-primary/30 bg-primary/5 p-3 text-xs">
 					<div className="flex items-center justify-between">
@@ -725,9 +763,10 @@ export function DarkCutSyncView() {
 					</div>
 					<TaskStatus task={narrationTask} />
 					<p className="text-[0.68rem] leading-relaxed text-muted-foreground">
-						O Fish Audio não informa o percentual da síntese.
-						A barra acompanha as etapas e o tempo decorrido; quando
-						a transferência informar o tamanho, mostra o progresso em bytes.
+						A porcentagem representa blocos de voz realmente concluídos
+						pelo Fish Audio. Durante a síntese de cada bloco, ela aguarda
+						o resultado. Em caso de erro, clique em Retomar para aproveitar
+						os blocos já salvos.
 					</p>
 				</div>
 			)}
@@ -759,7 +798,6 @@ export function DarkCutSyncView() {
 								arquivos ficam independentes do projeto e podem ser usados depois.
 							</div>
 							<div className="mt-2 grid grid-cols-2 gap-2">
-							<Button variant="secondary" onClick={downloadNarration}>↓ Baixar MP3</Button>
 							<Button variant="secondary" onClick={downloadNarrationSrt} title="SRT estimado pelo texto e duração">↓ Salvar SRT</Button>
 							<Button variant="secondary" onClick={addNarrationToTimeline}>+ Adicionar à timeline</Button>
 							<Button onClick={() => setActiveTab("videos")}>Continuar → Vídeos</Button>
