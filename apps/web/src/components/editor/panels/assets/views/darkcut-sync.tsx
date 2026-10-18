@@ -308,8 +308,11 @@ export function DarkCutSyncView() {
 		}
 
 		if (narrationSignature !== signature) {
-			// Do not offer the previous narrator/script's MP3 as the new output.
+			// Keep the old file in the project library, but never label it as the
+			// newly requested narrator/script or allow a stale MP3 download.
 			setNarrationUrl(null);
+			setNarrationAssetId(null);
+			setNarrationSignature(null);
 		}
 		setIsGenerating(true);
 		task("running", "Enviando roteiro…", { done: 0, total: 100 });
