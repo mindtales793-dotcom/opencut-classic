@@ -97,6 +97,18 @@ export function StudioWorkflow() {
 						aria: "Cenas",
 					},
 					{
+						label: "Roteiro → SRT",
+						tab: "script-srt" as Tab,
+						section: "script" as const,
+						aria: "Roteiro e transcrição Whisper",
+					},
+					{
+						label: "DarkMiner",
+						tab: "darkminer" as Tab,
+						section: "script" as const,
+						aria: "Análise de canais e títulos",
+					},
+					{
 						label: "Mídias",
 						tab: "media" as Tab,
 						section: "script" as const,
