@@ -30,7 +30,7 @@ import { getElementFontFamilies } from "@/timeline/element-utils";
 import { getRaisedProjectFpsForImportedMedia } from "@/fps/utils";
 import type { MediaAsset } from "@/media/types";
 import { chooseProjectCover } from "@/project/cover-utils";
-import { mediaTimeToSeconds } from "@/wasm";
+import { mediaTimeFromSeconds } from "@/wasm";
 
 // Home cards are 16:9 and only need 640x360 JPEGs; avoid full-size PNGs.
 const COVER_WIDTH = 640;
@@ -826,7 +826,7 @@ export class ProjectManager {
 
 		await renderer.renderToCanvas({
 			node: scene,
-			time: mediaTimeToSeconds({ time: cover.startTime }) + 0.15,
+			time: mediaTimeFromSeconds({ seconds: cover.startTime + 0.15 }),
 			targetCanvas: tempCanvas,
 		});
 
