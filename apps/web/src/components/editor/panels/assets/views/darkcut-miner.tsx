@@ -6,6 +6,7 @@ import { NICHE_MARKETS, localTitleAngles, rankMinerOpportunities, sanitizeMinerV
 import { useDarkCutProductionStore } from "../darkcut-production-store";
 import { useAssetsPanelStore } from "../assets-panel-store";
 import { DarkMinerDesktopConnect } from "./darkcut-miner-desktop";
+import { mergeDarkMinerVideos } from "@/darkcut/darkminer-legacy-adapter";
 
 type AIResult = { summary:string; titles:{title:string;angle:string;hook:string;risk:string}[]; nicheDoubles:{angle:string;audience:string;why:string;culturalAdaptation:string;validation:string}[]; searchQueries:string[]; culturalChecks:string[]; confidenceNotes:string[] };
 const URL="/api/darkcut/miner/bridge";
@@ -29,18 +30,9 @@ export function DarkCutMinerView(){
   const script=useDarkCutProductionStore(s=>s.script);
   const geminiKey=useDarkCutProductionStore(s=>s.geminiApiKeys.find(Boolean)||s.geminiApiKey);
   const market=NICHE_MARKETS.find(m=>m.language===language)||NICHE_MARKETS[0];
-  const matches=useMemo(()=>{
-    // Extension and original desktop database remain independent. This single
-    // view deduplicates by YouTube video ID, retaining richer measured metrics.
-    const merged=new Map<string,MinerVideo>();
-    for (const item of [...videos,...desktopVideos]) {
-      const previous=merged.get(item.videoId);
-      if (!previous||(!previous.outlier&&item.outlier)||(!previous.subscribers&&item.subscribers)) {
-        merged.set(item.videoId,item);
-      }
-    }
-    return rankMinerOpportunities([...merged.values()].filter(v=>(v.title+" "+v.channel).toLocaleLowerCase().includes(search.toLocaleLowerCase()))).slice(0,70);
-  },[videos,desktopVideos,search]);
+  const matches=useMemo(()=>rankMinerOpportunities(
+    mergeDarkMinerVideos(videos,desktopVideos).filter(v=>(v.title+" "+v.channel).toLocaleLowerCase().includes(search.toLocaleLowerCase()))
+  ).slice(0,70),[videos,desktopVideos,search]);
 
   const load=async (key:string)=>{
     const r=await fetch(URL,{headers:{"x-darkcut-bridge-token":key},cache:"no-store"});
