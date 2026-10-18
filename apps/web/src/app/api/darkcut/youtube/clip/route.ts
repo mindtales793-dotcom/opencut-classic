@@ -14,11 +14,15 @@ type ClipRequest = {
 	durationSeconds?: unknown;
 	excludeVideoIds?: unknown;
 	youtubeApiKeys?: unknown;
+	previewOnly?: unknown;
+	preferredVideoId?: unknown;
 };
 
 type SearchEntry = {
 	id: string;
 	title: string;
+	channel: string;
+	thumbnailUrl: string;
 };
 
 // YouTube's search.list has a high quota cost; cache only public video
@@ -30,7 +34,11 @@ const searchCache = new Map<string, { expiresAt: number; entries: SearchEntry[] 
 type YouTubeSearchResponse = {
 	items?: Array<{
 		id?: { videoId?: string };
-		snippet?: { title?: string };
+		snippet?: {
+			title?: string;
+			channelTitle?: string;
+			thumbnails?: { medium?: { url?: string }; default?: { url?: string } };
+		};
 	}>;
 	error?: {
 		message?: string;
@@ -164,6 +172,9 @@ async function searchWithYouTubeApi({
 				.map((item) => ({
 					id: item.id?.videoId || "",
 					title: item.snippet?.title || "",
+					channel: item.snippet?.channelTitle || "",
+					thumbnailUrl: item.snippet?.thumbnails?.medium?.url ||
+						item.snippet?.thumbnails?.default?.url || "",
 				}))
 				.filter(
 					(entry) =>
@@ -210,6 +221,9 @@ export async function POST(request: Request) {
 			? body.durationSeconds
 			: 3;
 	const durationSeconds = Math.max(1, Math.min(15, requestedDuration));
+	const previewOnly = body.previewOnly === true;
+	const preferredVideoId = typeof body.preferredVideoId === "string"
+		? body.preferredVideoId.trim() : "";
 	const apiKeys = normalizeApiKeys(body.youtubeApiKeys);
 	const excluded = new Set(
 		Array.isArray(body.excludeVideoIds)
@@ -256,6 +270,26 @@ export async function POST(request: Request) {
 			videoDuration: "any",
 		});
 
+		if (previewOnly) {
+			return NextResponse.json({
+				query,
+				results: entries.slice(0, 8).map((entry) => ({
+					id: entry.id,
+					title: entry.title,
+					channel: entry.channel,
+					thumbnailUrl: entry.thumbnailUrl,
+					relevanceScore: scoreMediaCandidate({ query, title: entry.title }),
+				})),
+				cached,
+				note: "A correspondência é estimada pelo título e termos, não pelo conteúdo de cada quadro.",
+			}, { headers: { "Cache-Control": "no-store" } });
+		}
+		if (preferredVideoId && !entries.some(entry => entry.id === preferredVideoId)) {
+			return NextResponse.json({
+				error: "O vídeo selecionado não está mais entre os candidatos válidos. Atualize a prévia.",
+			}, { status: 404 });
+		}
+
 		if (!entries.length) {
 			return NextResponse.json(
 				{
@@ -267,7 +301,12 @@ export async function POST(request: Request) {
 			);
 		}
 
-		for (const candidate of entries.slice(0, 5)) {
+		// Explicit review mode downloads only the chosen result. Automatic
+		// mode keeps the existing fallback through at most five candidates.
+		const downloadCandidates = preferredVideoId
+			? entries.filter((entry) => entry.id === preferredVideoId)
+			: entries.slice(0, 5);
+		for (const candidate of downloadCandidates) {
 			excluded.add(candidate.id);
 			attemptedVideoIds.push(candidate.id);
 			const videoUrl = `https://www.youtube.com/watch?v=${candidate.id}`;
