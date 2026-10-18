@@ -324,39 +324,43 @@ export function DarkCutSyncView() {
 			const job = await creation.json();
 			if (!creation.ok) throw new Error(job.error || "Falha ao criar tarefa.");
 			setJobId(job.id);
-			task("running", "Gerando voz — modo rápido ativo…");
+			const initialTotal = Math.max(1, Number(job.totalChunks) || 1);
+			task("running", `Preparando blocos de narração (0/${initialTotal})…`, {
+				done: Number(job.completedChunks) || 0, total: initialTotal,
+			});
 			if (job.status !== "ready") {
+				const startedPolling = Date.now();
 				while (true) {
 					const check = await fetch(
 						`/api/darkcut/narration-jobs?id=${job.id}`,
 						{ cache: "no-store" },
 					);
 					const state = await check.json();
-					if (
-						!check.ok ||
-						state.status === "error" ||
-						state.status === "interrupted"
-					)
+					if (!check.ok || state.status === "error" || state.status === "interrupted") {
 						throw new Error(
 							state.error ||
-								"Tarefa interrompida. Clique em Retomar narração.",
+								"Tarefa interrompida. Os blocos prontos foram salvos; clique em Retomar narração.",
 						);
-					if (state.status === "ready") break;
-					const bytes = Number(state.bytesReceived) || 0;
-					const totalBytes = Number(state.totalBytes) || 0;
-					if (state.stage === "downloading" && totalBytes > 0) {
-						task("running", `Recebendo áudio: ${(bytes / 1048576).toFixed(1)} MB / ${(totalBytes / 1048576).toFixed(1)} MB`, {
-							done: Math.min(bytes, totalBytes),
-							total: totalBytes,
-						});
-					} else if (state.stage === "downloading") {
-						task("running", `Áudio recebido: ${(bytes / 1048576).toFixed(1)} MB`);
-					} else if (state.stage === "saving") {
-						task("running", "Finalizando e salvando o MP3…");
-					} else {
-						task("running", "Fish Audio processando a voz…");
 					}
-					await new Promise((resolve) => setTimeout(resolve, 500));
+					const total = Math.max(1, Number(state.totalChunks) || initialTotal);
+					const completed = Math.min(total, Number(state.completedChunks) || 0);
+					if (state.status === "ready") {
+						task("running", "Narração completa. Importando áudio para o projeto…", { done: total, total });
+						break;
+					}
+					const current = Math.max(1, Number(state.currentChunk) || completed + 1);
+					const detail = state.stage === "combining"
+						? "Unindo os blocos de áudio com FFmpeg…"
+						: state.stage === "saving"
+							? "Validando e salvando o MP3 completo…"
+							: state.stage === "downloading"
+								? `Recebendo bloco ${current}/${total} · ${((Number(state.bytesReceived) || 0) / 1048576).toFixed(1)} MB`
+								: `Fish Audio narrando bloco ${current}/${total}…`;
+					task("running", detail, { done: completed, total });
+					if (Date.now() - startedPolling > 90 * 60 * 1000) {
+						throw new Error("Limite de acompanhamento atingido. Clique em Retomar narração; os blocos concluídos permanecem salvos.");
+					}
+					await new Promise((resolve) => setTimeout(resolve, 1200));
 				}
 			}
 			task("running", "Baixando narração…");
@@ -725,9 +729,10 @@ export function DarkCutSyncView() {
 					</div>
 					<TaskStatus task={narrationTask} />
 					<p className="text-[0.68rem] leading-relaxed text-muted-foreground">
-						O Fish Audio não informa o percentual da síntese.
-						A barra acompanha as etapas e o tempo decorrido; quando
-						a transferência informar o tamanho, mostra o progresso em bytes.
+						A porcentagem representa blocos de voz realmente concluídos
+						pelo Fish Audio. Durante a síntese de cada bloco, ela aguarda
+						o resultado. Em caso de erro, clique em Retomar para aproveitar
+						os blocos já salvos.
 					</p>
 				</div>
 			)}
