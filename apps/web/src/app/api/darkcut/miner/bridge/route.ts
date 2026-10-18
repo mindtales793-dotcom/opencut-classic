@@ -11,7 +11,7 @@ type ImportRow={videoId:string;title:string;channel:string;views:number;subscrib
 const cfg=()=>process.env.DARKCUT_DATA_DIR&&process.env.DARKCUT_MEDIA_BRIDGE_TOKEN
  ?{directory:path.join(process.env.DARKCUT_DATA_DIR,"darkminer"),key:process.env.DARKCUT_MEDIA_BRIDGE_TOKEN}:null;
 const file=(folder:string)=>path.join(folder,"extension-videos.json");
-const originHeaders=(request:Request)=>{
+const originHeaders=(request:Request):Record<string,string>=>{
  const origin=request.headers.get("origin")||"";
  return EXTENSION_ORIGIN.test(origin)?{
   "Access-Control-Allow-Origin":origin, "Vary":"Origin",
