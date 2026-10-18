@@ -460,7 +460,7 @@ export function DarkCutSyncView() {
 
 	const downloadNarration = () => {
 		if (!narrationUrl) {
-			toast.error("Gere a narração primeiro.");
+			toast.error("O MP3 ainda não ficou pronto. Conclua ou retome a narração.");
 			return;
 		}
 		const link = document.createElement("a");
@@ -721,6 +721,30 @@ export function DarkCutSyncView() {
 							: "🎙️ Gerar narração"}
 				</Button>
 
+				<div className="space-y-2 rounded-md border border-primary/25 bg-background p-3" data-narration-mp3-download="true">
+					<div className="flex items-center justify-between gap-2">
+						<span className="text-xs font-semibold">🎧 Arquivo da narração · MP3</span>
+						<span className="text-[0.68rem] text-muted-foreground">
+							{narrationUrl ? "✓ Pronto" : isGenerating ? "Gerando blocos…" : jobId ? "Aguardando retomada" : "Não gerado"}
+						</span>
+					</div>
+					<Button
+						className="w-full"
+						variant="secondary"
+						disabled={!narrationUrl}
+						onClick={downloadNarration}
+						title={narrationUrl ? "Salvar o MP3 completo da narração no computador" : "O download será liberado após todos os blocos serem unidos"}
+					>
+						↓ Baixar narração em MP3
+					</Button>
+					{!narrationUrl && (
+						<p className="text-[0.68rem] text-muted-foreground">
+							O botão será liberado quando os blocos estiverem concluídos e o MP3 final estiver salvo.
+							Se houver erro HTTP 503, use Retomar narração para continuar do último bloco pronto.
+						</p>
+					)}
+				</div>
+
 				{isGenerating && narrationTask && (
 				<div role="status" className="space-y-2 rounded-md border border-primary/30 bg-primary/5 p-3 text-xs">
 					<div className="flex items-center justify-between">
@@ -764,7 +788,6 @@ export function DarkCutSyncView() {
 								arquivos ficam independentes do projeto e podem ser usados depois.
 							</div>
 							<div className="mt-2 grid grid-cols-2 gap-2">
-							<Button variant="secondary" onClick={downloadNarration}>↓ Baixar MP3</Button>
 							<Button variant="secondary" onClick={downloadNarrationSrt} title="SRT estimado pelo texto e duração">↓ Salvar SRT</Button>
 							<Button variant="secondary" onClick={addNarrationToTimeline}>+ Adicionar à timeline</Button>
 							<Button onClick={() => setActiveTab("videos")}>Continuar → Vídeos</Button>
