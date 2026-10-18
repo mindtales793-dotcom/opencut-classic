@@ -67,6 +67,7 @@ import { ProjectInfoDialog } from "@/project/components/project-info-dialog";
 import { RenameProjectDialog } from "@/project/components/rename-project-dialog";
 import { cn } from "@/utils/ui";
 import { ChangelogNotification } from "@/changelog/components/changelog-notification";
+import { createProjectPlaceholder } from "@/project/cover-utils";
 const formatProjectDuration = ({
 	duration,
 }: {
@@ -590,21 +591,641 @@ function ProjectItem({
 		<Card className="overflow-hidden rounded-xl border border-[#303037] bg-[#15161a] p-0 shadow-sm transition-all duration-200 group-hover:-translate-y-1 group-hover:border-[#f72c49]/65 group-hover:shadow-[0_14px_32px_#0006]">
 			<div className="relative aspect-video overflow-hidden bg-[linear-gradient(145deg,#28141d,#111827_52%,#090b0e)]">
 				<div className="absolute inset-0">
-					{project.thumbnail ? (
-						<Image
-							src={project.thumbnail}
-							alt="Project thumbnail"
-							fill
-							className="object-cover"
-						/>
-					) : (
-						<div className="flex size-full flex-col items-center justify-center gap-2">
-							<div className="rounded-2xl bg-gradient-to-br from-[#f72a49] to-[#721627] p-4 shadow-lg">
-								<OcVideoIcon className="size-10 shrink-0 text-white" />
-							</div>
-							<span className="text-[10px] font-bold tracking-[0.3em] text-[#c9a4aa]">DARKCUT STUDIO</span>
-						</div>
-					)}
+					<Image
+						src={project.thumbnail || createProjectPlaceholder(project.name)}
+						alt={`Capa do projeto ${project.name}`}
+						fill
+						unoptimized
+						className="object-cover"
+					/>
+				</div>
+
+				<div className="pointer-events-none absolute inset-x-0 bottom-0 h-16 bg-gradient-to-t from-black/70 to-transparent" />
+				<div className="absolute bottom-2 right-2 rounded-md border border-white/20 bg-black/80 px-2 py-1 text-xs font-bold tabular-nums text-white">{durationLabel || "00:00"}</div>
+				<span className="absolute bottom-2 left-3 text-[10px] font-bold tracking-wider text-white/90">▶ CONTINUAR</span>
+			</div>
+
+			<CardContent className="flex flex-col gap-2 px-3 pt-3 pb-3">
+				<h3 className="line-clamp-2 text-sm leading-snug font-semibold text-white">
+					{project.name}
+				</h3>
+				<div className="text-muted-foreground flex items-center gap-1.5 text-sm">
+					<HugeiconsIcon icon={Calendar04Icon} className="size-4" />
+					<span>Atualizado {formatDate({ date: project.updatedAt })}</span>
+				</div>
+			</CardContent>
+		</Card>
+	);
+
+	const listRowContent = (
+		<div className="flex items-center gap-3 flex-1 min-w-0">
+			<div className="bg-muted relative size-10 rounded overflow-hidden shrink-0">
+				<Image
+						src={project.thumbnail || createProjectPlaceholder(project.name)}
+						alt={`Capa do projeto ${project.name}`}
+						fill
+						unoptimized
+						className="object-cover"
+					/>ient";
+
+import Image from "next/image";
+import Link from "next/link";
+import { useRouter } from "next/navigation";
+import type { KeyboardEvent, MouseEvent } from "react";
+import { useEffect, useState } from "react";
+import { toast } from "sonner";
+import type { EditorCore } from "@/core";
+import { MigrationDialog } from "@/project/components/migration-dialog";
+import { StoragePersistenceDialog } from "@/services/storage/components/storage-persistence-dialog";
+import { Button } from "@/components/ui/button";
+import { Card, CardContent } from "@/components/ui/card";
+import { Checkbox } from "@/components/ui/checkbox";
+import { Input } from "@/components/ui/input";
+import { Skeleton } from "@/components/ui/skeleton";
+import { useEditor } from "@/editor/use-editor";
+import { useProjectsStore } from "./store";
+import type {
+	TProjectMetadata,
+	TProjectSortKey,
+	TProjectSortOption,
+} from "@/project/types";
+import { formatTimecode, mediaTimeToSeconds } from "opencut-wasm";
+import { formatDate } from "@/utils/date";
+import { HugeiconsIcon } from "@hugeicons/react";
+import {
+	Breadcrumb,
+	BreadcrumbItem,
+	BreadcrumbLink,
+	BreadcrumbList,
+	BreadcrumbPage,
+	BreadcrumbSeparator,
+} from "@/components/ui/breadcrumb";
+import {
+	Calendar04Icon,
+	GridViewIcon,
+	LeftToRightListDashIcon,
+	PlusSignIcon,
+	Search01Icon,
+	Video01Icon,
+	MoreHorizontalIcon,
+	Delete02Icon,
+	Copy01Icon,
+	Edit03Icon,
+	ArrowDown02Icon,
+	InformationCircleIcon,
+} from "@hugeicons/core-free-icons";
+import { OcVideoIcon } from "@/components/icons";
+import { Label } from "@/components/ui/label";
+import {
+	ContextMenu,
+	ContextMenuContent,
+	ContextMenuItem,
+	ContextMenuSeparator,
+	ContextMenuTrigger,
+} from "@/components/ui/context-menu";
+import {
+	DropdownMenu,
+	DropdownMenuCheckboxItem,
+	DropdownMenuContent,
+	DropdownMenuItem,
+	DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
+import { DeleteProjectDialog } from "@/project/components/delete-project-dialog";
+import { ProjectInfoDialog } from "@/project/components/project-info-dialog";
+import { RenameProjectDialog } from "@/project/components/rename-project-dialog";
+import { cn } from "@/utils/ui";
+import { ChangelogNotification } from "@/changelog/components/changelog-notification";
+import { createProjectPlaceholder } from "@/project/cover-utils";
+const formatProjectDuration = ({
+	duration,
+}: {
+	duration: number | undefined;
+}): string | null => {
+	if (duration === undefined) {
+		return null;
+	}
+
+	const durationSeconds = mediaTimeToSeconds({ time: duration });
+	const format = durationSeconds >= 3600 ? "HH:MM:SS" : "MM:SS";
+	return formatTimecode({ time: duration, format }) ?? "";
+};
+
+const VIEW_MODE_OPTIONS = [
+	{ mode: "grid" as const, icon: GridViewIcon, label: "Grid view" },
+	{ mode: "list" as const, icon: LeftToRightListDashIcon, label: "List view" },
+];
+
+export default function ProjectsPage() {
+	const { searchQuery, sortKey, sortOrder, viewMode } = useProjectsStore();
+	const editor = useEditor();
+	const sortOption: TProjectSortOption = `${sortKey}-${sortOrder}`;
+
+	const isLoading = useEditor((e) => e.project.getIsLoading());
+	const isInitialized = useEditor((e) => e.project.getIsInitialized());
+	const projectsToDisplay = useEditor((e) =>
+		e.project.getFilteredAndSortedProjects({ searchQuery, sortOption }),
+	);
+
+	useEffect(() => {
+		if (!editor.project.getIsInitialized()) {
+			editor.project.loadAllProjects();
+		}
+	}, [editor.project]);
+
+	return (
+		<div className="min-h-screen bg-[#090b0e] text-[#f6f6f7]">
+			<MigrationDialog />
+			<StoragePersistenceDialog />
+			<ChangelogNotification />
+			<ProjectsHeader />
+			<section className="relative mx-4 mt-4 overflow-hidden rounded-2xl border border-[#4f222b]/70 bg-[radial-gradient(circle_at_75%_20%,#48131c_0%,#181217_34%,#101115_75%)] px-6 py-7 sm:mx-8 sm:px-9">
+				<div className="pointer-events-none absolute -right-10 top-[-70px] select-none text-[160px] font-black tracking-[-0.12em] text-white/[0.035]" aria-hidden="true">DC</div>
+				<div className="relative">
+					<p className="text-xs font-bold tracking-[0.3em] text-[#ff6379]">DARKCUT STUDIO • WORKSPACE</p>
+					<h1 className="mt-2 text-3xl font-black tracking-tight sm:text-4xl">Seus projetos</h1>
+					<p className="mt-2 max-w-xl text-sm text-[#b0b2b8]">Continue de onde parou. Cada capa mostra a prévia salva do seu vídeo e a duração do material na timeline.</p>
+				</div>
+			</section>
+			<ProjectsToolbar projectIds={projectsToDisplay.map((p) => p.id)} />
+			<main className="mx-auto px-4 pt-2 pb-6 flex flex-col gap-4">
+				{isLoading || !isInitialized ? (
+					<ProjectsSkeleton />
+				) : projectsToDisplay.length === 0 ? (
+					<EmptyState />
+				) : (
+					<div
+						className={
+							viewMode === "grid"
+								? "xs:grid-cols-2 grid grid-cols-1 gap-6 sm:grid-cols-3 lg:grid-cols-4 px-4"
+								: "flex flex-col"
+						}
+					>
+						{projectsToDisplay.map((project) => (
+							<ProjectItem
+								key={project.id}
+								project={project}
+								allProjectIds={projectsToDisplay.map((p) => p.id)}
+							/>
+						))}
+					</div>
+				)}
+			</main>
+		</div>
+	);
+}
+
+function ProjectsHeader() {
+	const { viewMode, isHydrated, setViewMode } = useProjectsStore();
+
+	return (
+		<header className="sticky top-0 z-20 border-b border-[#26262a] bg-[#0c0d10]/95 px-8 backdrop-blur flex flex-col gap-2">
+			<div className="flex items-center justify-between h-16 pt-2">
+				<div className="flex items-center gap-5">
+					<Link href="/projects" className="hidden sm:flex h-10 w-10 items-center justify-center rounded-xl bg-gradient-to-br from-[#fa2643] to-[#8a102a] text-base font-black text-white shadow-[0_5px_20px_#f1254235]">DC</Link>
+					<Breadcrumb>
+						<BreadcrumbList>
+							<BreadcrumbItem>
+								<BreadcrumbLink asChild>
+									<Link href="/" className="text-sm sm:text-base">
+										Home
+									</Link>
+								</BreadcrumbLink>
+							</BreadcrumbItem>
+							<BreadcrumbSeparator />
+							<BreadcrumbItem>
+								<BreadcrumbPage className="text-sm sm:text-base font-medium">
+									Meus projetos
+								</BreadcrumbPage>
+							</BreadcrumbItem>
+						</BreadcrumbList>
+					</Breadcrumb>
+
+					<div className="hidden md:flex items-center rounded-md border p-1 px-1.5 h-10">
+						{VIEW_MODE_OPTIONS.map(({ mode, icon, label }) => (
+							<Button
+								key={mode}
+								variant="ghost"
+								size="icon"
+								className={cn(
+									"rounded-sm hover:bg-background",
+									isHydrated && viewMode === mode && "!bg-accent",
+								)}
+								onClick={() => setViewMode({ viewMode: mode })}
+								aria-label={label}
+								aria-pressed={isHydrated && viewMode === mode}
+							>
+								<HugeiconsIcon icon={icon} className="size-4" />
+							</Button>
+						))}
+					</div>
+				</div>
+
+				<div className="flex items-center gap-3 md:gap-4">
+					<SearchBar className="hidden md:block" />
+					<NewProjectButton />
+				</div>
+			</div>
+			<SearchBar className="block md:hidden mb-4" />
+		</header>
+	);
+}
+
+const SORT_LABELS: Record<TProjectSortKey, string> = {
+	createdAt: "Created",
+	updatedAt: "Modified",
+	name: "Name",
+	duration: "Duration",
+};
+
+function ProjectsToolbar({ projectIds }: { projectIds: string[] }) {
+	const {
+		selectedProjectIds,
+		sortKey,
+		sortOrder,
+		setSortOrder,
+		setSelectedProjects,
+		clearSelectedProjects,
+		viewMode,
+		setViewMode,
+	} = useProjectsStore();
+
+	const selectedProjectCount = selectedProjectIds.length;
+	const isAllSelected =
+		projectIds.length > 0 && selectedProjectCount === projectIds.length;
+	const hasSomeSelected =
+		selectedProjectCount > 0 && selectedProjectCount < projectIds.length;
+
+	const handleSelectAll = ({ checked }: { checked: boolean }) => {
+		if (checked) {
+			setSelectedProjects({ projectIds });
+			return;
+		}
+		clearSelectedProjects();
+	};
+
+	return (
+		<div className="sticky top-16 z-10 flex items-center justify-between px-6 h-14 pt-2 bg-[#0c0d10]/95 backdrop-blur">
+			<div className="flex items-center gap-2">
+				<Label
+					className="flex items-center gap-3 cursor-pointer px-2"
+					htmlFor="select-all-projects"
+				>
+					<Checkbox
+						className="size-5"
+						id="select-all-projects"
+						checked={
+							isAllSelected ? true : hasSomeSelected ? "indeterminate" : false
+						}
+						onCheckedChange={(checked) =>
+							handleSelectAll({ checked: checked === true })
+						}
+					/>
+					<span className="text-muted-foreground hidden md:block">
+						Select all
+					</span>
+				</Label>
+
+				<div className="h-4 w-px bg-border/50" />
+
+				<SortDropdown>
+					<Button variant="text" className="text-muted-foreground pl-2">
+						{SORT_LABELS[sortKey]}
+					</Button>
+				</SortDropdown>
+				<Button
+					variant="text"
+					className="text-muted-foreground"
+					onClick={() =>
+						setSortOrder({
+							sortOrder: sortOrder === "asc" ? "desc" : "asc",
+						})
+					}
+					onKeyDown={(event) => {
+						if (event.key === "Enter" || event.key === " ") {
+							setSortOrder({
+								sortOrder: sortOrder === "asc" ? "desc" : "asc",
+							});
+						}
+					}}
+					aria-label={`Sort ${sortOrder === "asc" ? "ascending" : "descending"}`}
+				>
+					<HugeiconsIcon
+						icon={ArrowDown02Icon}
+						className={sortOrder === "asc" ? "rotate-180" : ""}
+					/>
+				</Button>
+
+				<div className="h-4 w-px bg-border/50 block md:hidden" />
+
+				<div className="flex md:hidden items-center gap-4">
+					{VIEW_MODE_OPTIONS.map(({ mode, icon, label }) => (
+						<Button
+							key={mode}
+							variant="text"
+							onClick={() => setViewMode({ viewMode: mode })}
+							aria-label={label}
+						>
+							<HugeiconsIcon
+								icon={icon}
+								className={cn(
+									viewMode === mode ? "text-primary" : "text-muted-foreground",
+								)}
+							/>
+						</Button>
+					))}
+				</div>
+			</div>
+			{selectedProjectCount > 0 ? <ProjectActions /> : null}
+		</div>
+	);
+}
+
+function SearchBar({
+	className,
+	collapsed,
+}: {
+	className?: string;
+	collapsed?: boolean;
+}) {
+	const { searchQuery, setSearchQuery } = useProjectsStore();
+
+	return (
+		<>
+			{collapsed ? (
+				<div className="block md:hidden">
+					<Button
+						size="icon"
+						variant="outline"
+						className="size-10.5 rounded-full"
+					>
+						<HugeiconsIcon icon={Search01Icon} />
+					</Button>
+				</div>
+			) : (
+				<div className={cn("relative", className)}>
+					<HugeiconsIcon
+						icon={Search01Icon}
+						className="text-muted-foreground pointer-events-none absolute left-3 top-1/2 size-4 -translate-y-1/2"
+						aria-hidden="true"
+					/>
+					<Input
+						placeholder="Search..."
+						value={searchQuery}
+						onChange={(event) => setSearchQuery({ query: event.target.value })}
+						size="lg"
+						className="pl-9"
+					/>
+				</div>
+			)}
+		</>
+	);
+}
+
+const PROJECT_ACTIONS = [
+	{
+		id: "duplicate",
+		label: "Duplicate",
+		icon: Copy01Icon,
+		variant: "outline" as const,
+	},
+	{
+		id: "delete",
+		label: "Delete",
+		icon: Delete02Icon,
+		variant: "destructive-foreground" as const,
+	},
+] as const;
+
+async function deleteProjects({
+	editor,
+	ids,
+}: {
+	editor: EditorCore;
+	ids: string[];
+}) {
+	await editor.project.deleteProjects({ ids });
+}
+
+async function duplicateProjects({
+	editor,
+	ids,
+}: {
+	editor: EditorCore;
+	ids: string[];
+}) {
+	await editor.project.duplicateProjects({ ids });
+}
+
+async function renameProject({
+	editor,
+	id,
+	name,
+}: {
+	editor: EditorCore;
+	id: string;
+	name: string;
+}) {
+	await editor.project.renameProject({ id, name });
+}
+
+function ProjectActions() {
+	const editor = useEditor();
+	const { selectedProjectIds, clearSelectedProjects } = useProjectsStore();
+	const [isDeleteDialogOpen, setIsDeleteDialogOpen] = useState(false);
+
+	const savedProjects = editor.project.getSavedProjects();
+	const selectedProjectNames = savedProjects
+		.filter((project) => selectedProjectIds.includes(project.id))
+		.map((project) => project.name);
+
+	const handleDuplicate = async () => {
+		await duplicateProjects({ editor, ids: selectedProjectIds });
+		clearSelectedProjects();
+	};
+
+	const handleDeleteClick = () => {
+		setIsDeleteDialogOpen(true);
+	};
+
+	const handleDeleteConfirm = async () => {
+		await deleteProjects({ editor, ids: selectedProjectIds });
+		clearSelectedProjects();
+		setIsDeleteDialogOpen(false);
+	};
+
+	const actionHandlers: Record<string, () => void> = {
+		duplicate: handleDuplicate,
+		delete: handleDeleteClick,
+	};
+
+	return (
+		<>
+			<div className="flex items-center gap-2.5 px-3">
+				<div className="hidden sm:flex items-center gap-2.5">
+					{PROJECT_ACTIONS.map((action) => (
+						<Button
+							key={action.id}
+							size="icon"
+							variant={action.variant}
+							className="size-9"
+							onClick={actionHandlers[action.id]}
+						>
+							<HugeiconsIcon icon={action.icon} />
+						</Button>
+					))}
+				</div>
+
+				<DropdownMenu>
+					<DropdownMenuTrigger asChild className="sm:hidden">
+						<Button size="icon" variant="outline" className="size-9">
+							<HugeiconsIcon icon={MoreHorizontalIcon} />
+						</Button>
+					</DropdownMenuTrigger>
+					<DropdownMenuContent align="end">
+						{PROJECT_ACTIONS.map((action) => (
+							<DropdownMenuItem
+								key={action.id}
+								variant={action.id === "delete" ? "destructive" : undefined}
+								onClick={actionHandlers[action.id]}
+							>
+								<HugeiconsIcon icon={action.icon} />
+								{action.label}
+							</DropdownMenuItem>
+						))}
+					</DropdownMenuContent>
+				</DropdownMenu>
+			</div>
+
+			<DeleteProjectDialog
+				isOpen={isDeleteDialogOpen}
+				onOpenChange={setIsDeleteDialogOpen}
+				projectNames={selectedProjectNames}
+				onConfirm={handleDeleteConfirm}
+			/>
+		</>
+	);
+}
+
+function SortDropdown({ children }: { children: React.ReactNode }) {
+	const { sortKey, setSortKey } = useProjectsStore();
+
+	return (
+		<DropdownMenu>
+			<DropdownMenuTrigger asChild>{children}</DropdownMenuTrigger>
+			<DropdownMenuContent className="w-48" align="center">
+				<DropdownMenuCheckboxItem
+					checked={sortKey === "createdAt"}
+					onCheckedChange={() => setSortKey({ sortKey: "createdAt" })}
+				>
+					Created
+				</DropdownMenuCheckboxItem>
+				<DropdownMenuCheckboxItem
+					checked={sortKey === "updatedAt"}
+					onCheckedChange={() => setSortKey({ sortKey: "updatedAt" })}
+				>
+					Modified
+				</DropdownMenuCheckboxItem>
+				<DropdownMenuCheckboxItem
+					checked={sortKey === "name"}
+					onCheckedChange={() => setSortKey({ sortKey: "name" })}
+				>
+					Name
+				</DropdownMenuCheckboxItem>
+				<DropdownMenuCheckboxItem
+					checked={sortKey === "duration"}
+					onCheckedChange={() => setSortKey({ sortKey: "duration" })}
+				>
+					Duration
+				</DropdownMenuCheckboxItem>
+			</DropdownMenuContent>
+		</DropdownMenu>
+	);
+}
+
+function NewProjectButton() {
+	const editor = useEditor();
+	const router = useRouter();
+
+	const handleCreateProject = async () => {
+		const projectId = await editor.project.createNewProject({
+			name: "New project",
+		});
+		router.push(`/editor/${projectId}`);
+	};
+
+	return (
+		<Button
+			size="lg"
+			className="flex px-5 md:px-6"
+			onClick={handleCreateProject}
+		>
+			<span className="text-sm font-medium hidden md:block">+ Novo projeto</span>
+			<span className="text-sm font-medium block md:hidden">New</span>
+		</Button>
+	);
+}
+
+function ProjectItem({
+	project,
+	allProjectIds,
+}: {
+	project: TProjectMetadata;
+	allProjectIds: string[];
+}) {
+	const {
+		selectedProjectIds,
+		viewMode,
+		setProjectSelected,
+		selectProjectRange,
+	} = useProjectsStore();
+	const selectedProjectIdSet = new Set(selectedProjectIds);
+	const isSelected = selectedProjectIdSet.has(project.id);
+	const selectedProjectCount = selectedProjectIds.length;
+	const [isDropdownOpen, setIsDropdownOpen] = useState(false);
+	const [isRenameDialogOpen, setIsRenameDialogOpen] = useState(false);
+	const [isDeleteDialogOpen, setIsDeleteDialogOpen] = useState(false);
+	const [isInfoDialogOpen, setIsInfoDialogOpen] = useState(false);
+	const editor = useEditor();
+	const durationLabel = formatProjectDuration({ duration: project.duration });
+	const isMultiSelect = selectedProjectCount > 1;
+	const isGridView = viewMode === "grid";
+
+	const handleRename = () => setIsRenameDialogOpen(true);
+	const handleDuplicate = async () => {
+		await duplicateProjects({ editor, ids: [project.id] });
+	};
+	const handleDeleteClick = () => setIsDeleteDialogOpen(true);
+	const handleInfoClick = () => setIsInfoDialogOpen(true);
+	const handleDeleteConfirm = async () => {
+		await deleteProjects({ editor, ids: [project.id] });
+		setIsDeleteDialogOpen(false);
+	};
+
+	const handleCheckboxChange = ({
+		checked,
+		shiftKey,
+	}: {
+		checked: boolean;
+		shiftKey: boolean;
+	}) => {
+		if (shiftKey && checked) {
+			selectProjectRange({ projectId: project.id, allProjectIds });
+			return;
+		}
+		setProjectSelected({ projectId: project.id, isSelected: checked });
+	};
+
+	const gridContent = (
+		<Card className="overflow-hidden rounded-xl border border-[#303037] bg-[#15161a] p-0 shadow-sm transition-all duration-200 group-hover:-translate-y-1 group-hover:border-[#f72c49]/65 group-hover:shadow-[0_14px_32px_#0006]">
+			<div className="relative aspect-video overflow-hidden bg-[linear-gradient(145deg,#28141d,#111827_52%,#090b0e)]">
+				<div className="absolute inset-0">
+					<Image
+						src={project.thumbnail || createProjectPlaceholder(project.name)}
+						alt={`Capa do projeto ${project.name}`}
+						fill
+						unoptimized
+						className="object-cover"
+					/>
 				</div>
 
 				<div className="pointer-events-none absolute inset-x-0 bottom-0 h-16 bg-gradient-to-t from-black/70 to-transparent" />
