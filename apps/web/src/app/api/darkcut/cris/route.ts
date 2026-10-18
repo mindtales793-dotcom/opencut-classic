@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { CRIS_SOUND_PRESETS } from "@/darkcut/cris-sound-design";
 import {
 	buildLocalCrisPlan,
 	normalizeCrisPlan,
@@ -91,6 +92,9 @@ function promptForPlan({
 		"Não invente dados, preços ou modelos que não estejam no roteiro.",
 		"Use effect apenas none ou blur.",
 		"durationWeight deve ficar entre 0.6 e 1.6.",
+		`Para sound.preset, use exclusivamente: none, ${CRIS_SOUND_PRESETS.join(", ")}.`,
+		"sound.placement pode ser start, middle ou end. Não coloque sons em toda cena. Prefira silêncio durante fala emocional, conselho ou explicação.",
+		"Sugira efeitos apenas se uma ação aparecer no roteiro ou se for uma virada visual relevante. Nunca invente uma ação.",
 		"Retorne SOMENTE JSON válido no formato:",
 		JSON.stringify({
 			scenes: [
@@ -106,6 +110,7 @@ function promptForPlan({
 					effect: "none",
 					intensity: template.intensity,
 					durationWeight: 1,
+					sound: { preset: "none", placement: "start" },
 				},
 			],
 		}),
