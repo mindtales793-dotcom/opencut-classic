@@ -371,7 +371,7 @@ async function run(win) {
 	// The Electron package must bring up the actual bundled Python backend,
 	// not merely display a DarkMiner placeholder or a disconnected iframe.
 	let embeddedMinerReady = false;
-	for (let attempt = 0; attempt < 35 && !embeddedMinerReady; attempt++) {
+	for (let attempt = 0; attempt < 120 && !embeddedMinerReady; attempt++) {
 		for (let port = 8000; port <= 8010; port++) {
 			try {
 				const response = await fetch(`http://127.0.0.1:${port}/api/status`, {
