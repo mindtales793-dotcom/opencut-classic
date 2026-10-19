@@ -79,6 +79,7 @@ try {
         $released = $true
         break
       }
+      $listener.EndConnect($attemptConnection)
       $listener.Close()
     } catch {
       $released = $true
