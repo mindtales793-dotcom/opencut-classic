@@ -1,6 +1,8 @@
 import { describe, expect, test } from "bun:test";
 import { COLOR_GRADE_EFFECTS } from "../definitions/color-grade";
 import { colorAdjustFilter } from "../../services/renderer/color-adjust";
+import { prepareColorAdjustedFrame } from "../../services/renderer/compositor/color-pass-processing";
+import type { FrameItemDescriptor, TextureUploadDescriptor } from "../../services/renderer/compositor/types";
 
 describe("color grading", () => {
 	test("five presets expose real canvas-compatible color passes", () => {
@@ -31,4 +33,19 @@ describe("color grading", () => {
 		expect(uniforms.u_saturation).toBe(0);
 		expect(uniforms.u_temperature).toBe(-1);
 	});
+	test("separates scene and clip color passes from unsupported WASM shaders", () => {
+		const color = { shader: "color-adjust", uniforms: { u_brightness: 0, u_contrast: 1, u_saturation: 0, u_temperature: 0 } };
+		const blur = { shader: "gaussian-blur", uniforms: { u_sigma: 2, u_step: 1, u_direction: [1, 0] } };
+		const items: FrameItemDescriptor[] = [
+			{ type: "layer", textureId: "test", transform: { centerX: 10, centerY: 10, width: 20, height: 20, rotationDegrees: 0, flipX: false, flipY: false }, opacity: 1, blendMode: "normal", effectPassGroups: [[color, blur]], mask: null },
+			{ type: "sceneEffect", effectPassGroups: [[color]] },
+		];
+		const textures = new Map<string, TextureUploadDescriptor>([["test", { kind: "rendered", id: "test", contentHash: "fixture", width: 20, height: 20, draw: () => {} }]]);
+		const post = prepareColorAdjustedFrame({ items, textures });
+		expect(post).toHaveLength(1);
+		expect(items[0].effectPassGroups[0][0].shader).toBe("gaussian-blur");
+		expect(items[1].effectPassGroups).toEqual([]);
+		expect(textures.get("test")?.kind).toBe("rendered");
+	});
+
 });
