@@ -22,6 +22,7 @@
     },
     "files": [
       "main.cjs",
+      "preload.cjs",
       "package.json",
       "smoke.cjs",
       "!**/node_modules/**"
