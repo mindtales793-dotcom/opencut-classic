@@ -1,5 +1,7 @@
 import { describe, expect, test } from "bun:test";
 import { interpolate, spring } from "remotion";
+import { buildRemotionCompositionClip } from "../remotion-timeline";
+import { parseComposerFrameInput, DARKCUT_REMOTION_GRAPHIC_ID } from "../remotion-compositor-canvas";
 import { resolveAnimationPathValueAtTime } from "@/animation/resolve";
 import type { ElementAnimations } from "@/animation/types";
 import { mediaTimeFromSeconds, mediaTimeToSeconds } from "@/wasm";
@@ -172,4 +174,45 @@ describe("Remotion Composer motion as timeline keyframes", () => {
 			}
 		}
 	});
+});
+
+
+describe("Remotion full-frame timeline composition", () => {
+  test("constructs an editable export-ready graphic with exact frame duration and dimensions", () => {
+    const clip = buildRemotionCompositionClip({
+      startTime: mediaTimeFromSeconds({ seconds: 2 }),
+      duration: mediaTimeFromSeconds({ seconds: 5 }),
+      canvasWidth: 1920, canvasHeight: 1080,
+      templateId: "vox", templateTitle: "VOX", heading: "Comparação", subtitle: "Antes e depois",
+      sceneType: "problem", visualSlot: "comparison", intensity: "strong",
+    });
+    expect(clip.type).toBe("graphic");
+    expect(clip.definitionId).toBe(DARKCUT_REMOTION_GRAPHIC_ID);
+    expect(clip.duration).toBe(mediaTimeFromSeconds({ seconds: 5 }));
+    expect(clip.params["transform.scaleX"]).toBeCloseTo(1920 / 1080, 5);
+    expect(clip.params["transform.scaleY"]).toBe(1);
+    expect(clip.params.heading).toBe("Comparação");
+    expect(at({ animations: clip.animations ?? {}, path: "params.frame", seconds: 0 })).toBe(0);
+    expect(at({ animations: clip.animations ?? {}, path: "params.frame", seconds: 2.5 })).toBeCloseTo(45, 3);
+    expect(at({ animations: clip.animations ?? {}, path: "params.frame", seconds: 5 })).toBe(90);
+  });
+  test("keeps vertical exports full screen and rejects zero duration", () => {
+    const input = {
+      startTime: mediaTimeFromSeconds({ seconds: 0 }),
+      duration: mediaTimeFromSeconds({ seconds: 4 }),
+      canvasWidth: 1080, canvasHeight: 1920,
+      templateId: "shorts-hook", templateTitle: "Shorts", heading: "Gancho",
+      subtitle: "", sceneType: "hook" as const, visualSlot: "default" as const,
+      intensity: "normal" as const,
+    };
+    const result = buildRemotionCompositionClip(input);
+    expect(result.params["transform.scaleX"]).toBe(1);
+    expect(result.params["transform.scaleY"]).toBeCloseTo(1920 / 1080, 5);
+    expect(() => buildRemotionCompositionClip({ ...input, duration: 0 })).toThrow();
+  });
+  test("clamps invalid frame values for deterministic export", () => {
+    const p = parseComposerFrameInput({ templateId: "documentary", frame: 140 });
+    expect(p.frame).toBe(90);
+    expect(parseComposerFrameInput({ frame: -10 }).frame).toBe(0);
+  });
 });
