@@ -11,7 +11,7 @@ import type { EffectDefinition } from "@/effects/types";
 
 const GROUPS = [
 	{ label: "Todos", match: (_type: string) => true },
-	{ label: "Cinema", match: (type: string) => /cinematic|golden|noir|teal|night|thriller|mono|movie|grade/.test(type) },
+	{ label: "Cinema", match: (type: string) => /cinematic|golden|noir|teal|night|thriller|mono|movie/.test(type) },
 	{ label: "Retrô", match: (type: string) => /retro|vintage|matte|winter|sepia/.test(type) },
 	{ label: "Cores", match: (type: string) => /color|vibrant|summer|pop|cold|clean|toon/.test(type) },
 	{ label: "Documentário", match: (type: string) => /documentary|portrait|soft|bw/.test(type) },
