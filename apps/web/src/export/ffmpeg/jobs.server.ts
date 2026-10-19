@@ -126,6 +126,7 @@ export interface StartRequest {
 	fpsDenominator: number;
 	inputPixelFormat: RawPixelFormat;
 	filename: string;
+	preferSoftware: boolean;
 }
 
 function isInteger(value: unknown): value is number {
@@ -199,6 +200,7 @@ export function parseStartRequest(body: unknown): StartRequest {
 		fpsDenominator,
 		inputPixelFormat,
 		filename: sanitizeFilename(field("filename")),
+		preferSoftware: field("preferSoftware") === true,
 	};
 }
 
@@ -219,7 +221,9 @@ export async function createJob(request: StartRequest): Promise<{
 			probe.reason ?? "O FFmpeg não está disponível.",
 		);
 	}
-	const profile = getProfileById({ id: probe.selected.id });
+	const profile = getProfileById({ id: request.preferSoftware
+		? request.format === "mp4" ? "libx264" : "libvpx_vp9"
+		: probe.selected.id });
 	if (!profile) {
 		throw new ExportRequestError(500, "Perfil de encoder desconhecido.");
 	}
@@ -259,7 +263,7 @@ export async function createJob(request: StartRequest): Promise<{
 	};
 	store().jobs.set(id, job);
 
-	return { id, encoder: probe.selected };
+	return { id, encoder: { id: profile.id, label: profile.label, hardware: profile.hardware } };
 }
 
 export function getJob(id: string): ExportJob {
