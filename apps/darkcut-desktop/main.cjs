@@ -1,4 +1,4 @@
-const { app, BrowserWindow, dialog, shell, Tray, Menu, nativeImage, nativeTheme, ipcMain } = require("electron");
+const { app, BrowserWindow, dialog, shell, Tray, Menu, nativeImage, nativeTheme, ipcMain, safeStorage } = require("electron");
 const path = require("node:path");
 const fs = require("node:fs");
 const http = require("node:http");
@@ -253,6 +253,42 @@ ipcMain.handle("darkcut:darkminer:connection", event => {
   if (!canControlMiner(event)) return { ok: false, error: "Origem não autorizada." };
   return { ok: true, remembered: !!localMinerPath(),
     startedByDarkCut: !!darkMinerProcess && darkMinerProcess.exitCode === null };
+});
+
+
+const groqSecretFile = path.join(app.getPath("userData"), "groq-key.dpapi");
+function groqStoreAvailable() {
+  return process.platform === "win32" && safeStorage.isEncryptionAvailable();
+}
+ipcMain.handle("darkcut:srt:key-status", event => {
+  if (!canControlMiner(event)) return {ok:false,error:"Origem não autorizada."};
+  return {ok:true,configured:fs.existsSync(groqSecretFile),secure:groqStoreAvailable()};
+});
+ipcMain.handle("darkcut:srt:key-save", (event, secret) => {
+  if (!canControlMiner(event)) return {ok:false,error:"Origem não autorizada."};
+  if (!groqStoreAvailable()) return {ok:false,error:"Proteção do Windows indisponível."};
+  if (typeof secret !== "string" || !/^gsk_[A-Za-z0-9_-]{15,300}$/.test(secret)) {
+    return {ok:false,error:"Chave Groq inválida."};
+  }
+  try {
+    const encrypted = safeStorage.encryptString(secret);
+    fs.writeFileSync(groqSecretFile+".tmp",encrypted,{mode:0o600});
+    fs.renameSync(groqSecretFile+".tmp",groqSecretFile);
+    return {ok:true,configured:true};
+  } catch {return {ok:false,error:"Não foi possível proteger sua chave no Windows."};}
+});
+ipcMain.handle("darkcut:srt:key-load", event => {
+  if (!canControlMiner(event)) return {ok:false,error:"Origem não autorizada."};
+  if (!groqStoreAvailable()) return {ok:false,error:"Proteção do Windows indisponível."};
+  try {
+    const encrypted = fs.readFileSync(groqSecretFile);
+    return {ok:true,secret:safeStorage.decryptString(encrypted)};
+  } catch {return {ok:false,error:"Chave não cadastrada ou inacessível."};}
+});
+ipcMain.handle("darkcut:srt:key-delete", event => {
+  if (!canControlMiner(event)) return {ok:false,error:"Origem não autorizada."};
+  try {fs.rmSync(groqSecretFile,{force:true});return {ok:true,configured:false};}
+  catch {return {ok:false,error:"Falha ao apagar a chave."};}
 });
 
 async function createWindow() {
