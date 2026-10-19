@@ -82,6 +82,7 @@ export function getFfmpegCapabilities({
 export type FfmpegExportOutput = {
 	downloadUrl: string;
 	encoderLabel: string;
+	verified?: { format: ExportFormat; codec: string; width: number; height: number; fps: number; audioCodec: string | null; quality: ExportQuality };
 };
 
 export type FfmpegExporterEvents = {
@@ -94,6 +95,8 @@ export type FfmpegExporterEvents = {
 type FfmpegExporterParams = {
 	width: number;
 	height: number;
+	sourceWidth?: number;
+	sourceHeight?: number;
 	fps: FrameRate;
 	format: ExportFormat;
 	quality: ExportQuality;
@@ -171,6 +174,9 @@ async function copyFrameTight({
 
 export class FfmpegSceneExporter extends EventEmitter<FfmpegExporterEvents> {
 	private renderer: CanvasRenderer;
+	private targetWidth: number;
+	private targetHeight: number;
+	private targetCanvas: HTMLCanvasElement | null = null;
 	private format: ExportFormat;
 	private quality: ExportQuality;
 	private filename: string;
@@ -183,6 +189,8 @@ export class FfmpegSceneExporter extends EventEmitter<FfmpegExporterEvents> {
 	constructor({
 		width,
 		height,
+		sourceWidth,
+		sourceHeight,
 		fps,
 		format,
 		quality,
@@ -191,7 +199,9 @@ export class FfmpegSceneExporter extends EventEmitter<FfmpegExporterEvents> {
 		audioBuffer,
 	}: FfmpegExporterParams) {
 		super();
-		this.renderer = new CanvasRenderer({ width, height, fps });
+		this.targetWidth = width;
+		this.targetHeight = height;
+		this.renderer = new CanvasRenderer({ width: sourceWidth ?? width, height: sourceHeight ?? height, fps });
 		this.format = format;
 		this.quality = quality;
 		this.filename = filename;
@@ -239,6 +249,24 @@ export class FfmpegSceneExporter extends EventEmitter<FfmpegExporterEvents> {
 		}
 	}
 
+	/** Scale an unchanged project layout into the exact requested encoded resolution. */
+	private getFrameCanvas(): HTMLCanvasElement {
+		const original = this.renderer.getOutputCanvas();
+		if (original.width === this.targetWidth && original.height === this.targetHeight) return original;
+		if (!this.targetCanvas) {
+			this.targetCanvas = document.createElement("canvas");
+			this.targetCanvas.width = this.targetWidth;
+			this.targetCanvas.height = this.targetHeight;
+		}
+		const ctx = this.targetCanvas.getContext("2d");
+		if (!ctx) throw new Error("Não foi possível preparar a resolução escolhida.");
+		ctx.clearRect(0, 0, this.targetWidth, this.targetHeight);
+		ctx.imageSmoothingEnabled = true;
+		ctx.imageSmoothingQuality = "high";
+		ctx.drawImage(original, 0, 0, this.targetWidth, this.targetHeight);
+		return this.targetCanvas;
+	}
+
 	private async run({
 		rootNode,
 	}: {
@@ -248,19 +276,19 @@ export class FfmpegSceneExporter extends EventEmitter<FfmpegExporterEvents> {
 		const ticksPerFrame = Math.round(
 			(TICKS_PER_SECOND * fps.denominator) / fps.numerator,
 		);
-		const frameCount = Math.floor(rootNode.duration / ticksPerFrame);
+		const frameCount = Math.ceil(rootNode.duration / ticksPerFrame);
 		if (frameCount < 1)
 			throw new Error("O projeto não tem quadros para exportar.");
 
 		const fpsFloat = fps.numerator / fps.denominator;
-		const canvas = this.renderer.getOutputCanvas();
+
 
 		// Render the first frame up front: it tells us the real frame size and
 		// pixel layout, which FFmpeg must know before it starts.
 		await this.renderer.render({ node: rootNode, time: 0 });
 		if (this.isCancelled) return null;
 
-		const firstFrame = new VideoFrame(canvas, { timestamp: 0 });
+		const firstFrame = new VideoFrame(this.getFrameCanvas(), { timestamp: 0 });
 		const width = firstFrame.codedWidth;
 		const height = firstFrame.codedHeight;
 		const inputPixelFormat = toRawPixelFormat({
@@ -344,7 +372,7 @@ export class FfmpegSceneExporter extends EventEmitter<FfmpegExporterEvents> {
 			const time = index * ticksPerFrame;
 			await this.renderer.render({ node: rootNode, time });
 
-			const frame = new VideoFrame(canvas, {
+			const frame = new VideoFrame(this.getFrameCanvas(), {
 				timestamp: Math.round((index * 1_000_000) / fpsFloat),
 			});
 			try {
@@ -378,6 +406,7 @@ export class FfmpegSceneExporter extends EventEmitter<FfmpegExporterEvents> {
 		return {
 			downloadUrl: finished.downloadUrl,
 			encoderLabel: encoder.label,
+			verified: isRecord(finished.verified) ? finished.verified as FfmpegExportOutput["verified"] : undefined,
 		};
 	}
 
