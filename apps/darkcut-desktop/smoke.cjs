@@ -351,7 +351,7 @@ async function run(win) {
 		 const workspace=document.querySelector('[data-darkcut-workspace="tools"]')?.getBoundingClientRect();
 		 const assets=document.querySelector('.studio-assets')?.getBoundingClientRect();
 		 const sidebar=document.querySelector('.studio-sidebar')?.getBoundingClientRect();
-		 const preview=document.querySelector('[aria-hidden="true"]')?.getAttribute("class") || "";
+		 const preview=document.querySelector('[aria-hidden="true"].invisible')?.getAttribute("class") || "";
 		 return {workspaceWidth:workspace?.width, assetsWidth:assets?.width, sidebarWidth:sidebar?.width, previewHidden:preview.includes("invisible")};
 		})()`,
 		"design:workspace-geometry",
