@@ -44,7 +44,7 @@ function soundFromSuno(song: LocalSunoSong, port: number): SoundEffect {
 export function SunoLocalMusicView() {
 	const addSoundToTimeline = useSoundsStore((state) => state.addSoundToTimeline);
 	const [portText, setPortText] = useState(String(SUNO_DEFAULT_PORT));
-	const [prompt, setPrompt] = useState(STYLES[0].prompt);
+	const [prompt, setPrompt] = useState<string>(STYLES[0].prompt);
 	const [instrumental, setInstrumental] = useState(true);
 	const [songs, setSongs] = useState<LocalSunoSong[]>([]);
 	const [credits, setCredits] = useState<number | null>(null);
