@@ -33,6 +33,7 @@ import {
 	mergePreviewOverlaySources,
 } from "@/preview/overlays";
 import { usePreviewStore } from "@/preview/preview-store";
+import { ZERO_MEDIA_TIME } from "@/wasm";
 import { getGuidePreviewOverlaySource } from "@/guides";
 import {
 	bookmarkNotesPreviewOverlay,
@@ -170,7 +171,7 @@ function EditorPreview({ active }: { active: boolean }) {
 	);
 	// Tool tabs keep the preview mounted, but should not subscribe to every
 	// playback tick while the canvas is invisible.
-	const currentTime = useEditor((editor) => active ? editor.playback.getCurrentTime() : 0);
+	const currentTime = useEditor((editor) => active ? editor.playback.getCurrentTime() : ZERO_MEDIA_TIME);
 	const activeGuide = usePreviewStore((state) => state.activeGuide);
 	const overlays = usePreviewStore((state) => state.overlays);
 	const setOverlayVisibility = usePreviewStore(
