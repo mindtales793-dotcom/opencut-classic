@@ -1,5 +1,6 @@
 import type { MaskableElement, VisualElement } from "./types";
 import type { ParamValues } from "@/params";
+import type { ElementAnimations } from "@/animation/types";
 
 interface BaseDragData {
 	id: string;
