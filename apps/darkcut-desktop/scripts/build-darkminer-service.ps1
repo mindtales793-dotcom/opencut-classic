@@ -43,7 +43,7 @@ try {
   Remove-Item Env:DARK_MINER_ENV_PATH -ErrorAction SilentlyContinue
   Push-Location $src
   try {
-    & $Python -m PyInstaller --noconfirm --clean --onefile --windowed --name "DarkMiner-Service" --add-data "static;static" --collect-submodules uvicorn --hidden-import "anyio._backends._asyncio" --distpath (Join-Path $work "dist") --workpath (Join-Path $work "pyi") --specpath (Join-Path $work "spec") desktop_launcher.py
+    & $Python -m PyInstaller --noconfirm --clean --onefile --windowed --name "DarkMiner-Service" --add-data "$src/static;static" --collect-submodules uvicorn --hidden-import "anyio._backends._asyncio" --distpath (Join-Path $work "dist") --workpath (Join-Path $work "pyi") --specpath (Join-Path $work "spec") desktop_launcher.py
     if ($LASTEXITCODE -ne 0) { throw "Bundled service compilation failed." }
   } finally { Pop-Location }
   $exe = Join-Path $work "dist/DarkMiner-Service.exe"
