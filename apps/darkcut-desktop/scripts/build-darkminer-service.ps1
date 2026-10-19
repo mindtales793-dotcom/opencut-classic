@@ -65,15 +65,35 @@ try {
     Start-Sleep -Milliseconds 400
   }
   if (!$ready) { throw "DarkMiner backend did not respond." }
-  Stop-Process -Id $process.Id -Force -ErrorAction SilentlyContinue
+  # PyInstaller one-file launches a child Python process. Killing only its
+  # bootloader parent leaves an orphan holding the Windows named mutex.
+  & taskkill.exe /PID $process.Id /T /F 2>$null | Out-Null
   $process = $null
+  $released = $false
+  for ($attempt=0; $attempt -lt 50; $attempt++) {
+    try {
+      $listener = New-Object System.Net.Sockets.TcpClient
+      $attemptConnection = $listener.BeginConnect("127.0.0.1", 8000, $null, $null)
+      if (!$attemptConnection.AsyncWaitHandle.WaitOne(250)) {
+        $listener.Close()
+        $released = $true
+        break
+      }
+      $listener.Close()
+    } catch {
+      $released = $true
+      break
+    }
+    Start-Sleep -Milliseconds 200
+  }
+  if (!$released) { throw "DarkMiner smoke left an orphan backend on port 8000." }
   New-Item -ItemType Directory -Force $target | Out-Null
   Copy-Item $exe (Join-Path $target "DarkMiner-Service.exe") -Force
   # Legacy extension is NOT installed automatically: use the separate modern Chrome extension.
   Copy-Item (Join-Path $src "extension") (Join-Path $target "extension-legacy") -Recurse -Force
   Write-Host "Verified bundled service prepared at $target"
 } finally {
-  if ($process -and !$process.HasExited) { Stop-Process -Id $process.Id -Force -ErrorAction SilentlyContinue }
+  if ($process -and !$process.HasExited) { & taskkill.exe /PID $process.Id /T /F 2>$null | Out-Null }
   $env:LOCALAPPDATA = $oldLocal
   if ($null -eq $oldEmbedded) { Remove-Item Env:DARKMINER_EMBEDDED -ErrorAction SilentlyContinue } else { $env:DARKMINER_EMBEDDED = $oldEmbedded }
   Remove-Item Env:DATABASE_PATH -ErrorAction SilentlyContinue
