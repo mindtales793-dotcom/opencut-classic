@@ -42,6 +42,9 @@ jobs:
       - name: Test karaoke captions, animated stickers and color grades
         run: bun test --preload ./apps/web/scripts/test-wasm-preload.ts apps/web/src/subtitles/__tests__/karaoke.test.ts apps/web/src/stickers/__tests__/animated.test.ts apps/web/src/effects/__tests__/color-grade.test.ts
 
+      - name: Verify exact export quality, FPS, format and codec
+        run: bun test apps/web/src/export/ffmpeg/__tests__/ffmpeg-export.test.ts
+
       - name: Test optional Suno local API connector
         run: bun test apps/web/src/darkcut/__tests__/suno-local.test.ts
 
