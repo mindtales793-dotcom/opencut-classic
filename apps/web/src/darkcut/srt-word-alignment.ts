@@ -46,8 +46,9 @@ export function alignSrtToWordTimings(draft:ScriptSrtResult, words:GroqTimedWord
   bounds.push(t);
  }
  bounds.push(durationMs);
+ const originMs=Math.max(0,Math.round((draft.cues[0]?.startSeconds??0)*1000));
  const srt=draft.cues.map((cue,i)=>[
-  String(i+1),`${toValidSrtTimestamp(bounds[i])} --> ${toValidSrtTimestamp(bounds[i+1])}`,cue.text,"",
+  String(i+1),`${toValidSrtTimestamp(bounds[i]+originMs)} --> ${toValidSrtTimestamp(bounds[i+1]+originMs)}`,cue.text,"",
  ].join("\n")).join("\n");
  return {srt,coverage,cueCount:draft.cues.length,mode:"word-aligned"};
 }
