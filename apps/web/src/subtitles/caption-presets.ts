@@ -125,26 +125,39 @@ export const CAPTION_PRESETS: readonly CaptionPreset[] = [
 export function applyCaptionPreset({
 	captions,
 	presetId,
+	overrides,
 }: {
 	captions: readonly SubtitleCue[];
 	presetId: CaptionPresetId;
+	overrides?: SubtitleStyleOverrides;
 }): SubtitleCue[] {
-	if (presetId === "original") return captions.map((caption) => ({ ...caption }));
+	if (presetId === "original" && !overrides) {
+		return captions.map((caption) => ({ ...caption }));
+	}
 	const preset = CAPTION_PRESETS.find((item) => item.id === presetId);
-	if (!preset) return captions.map((caption) => ({ ...caption }));
-	return captions.map((caption) => ({
-		...caption,
-		style: {
-			...caption.style,
-			...preset.style,
-			background: {
-				...caption.style?.background,
-				...preset.style.background,
+	return captions.map((caption) => {
+		const selectedBackground = overrides?.background ??
+			preset?.style.background ?? caption.style?.background;
+		return {
+			...caption,
+			style: {
+				...caption.style,
+				...preset?.style,
+				...overrides,
+				...(selectedBackground ? {
+					background: {
+						...selectedBackground,
+						...caption.style?.background,
+						...preset?.style.background,
+						...overrides?.background,
+					},
+				} : {}),
+				placement: {
+					...caption.style?.placement,
+					...preset?.style.placement,
+					...overrides?.placement,
+				},
 			},
-			placement: {
-				...caption.style?.placement,
-				...preset.style.placement,
-			},
-		},
-	}));
+		};
+	});
 }
