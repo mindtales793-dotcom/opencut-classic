@@ -85,7 +85,8 @@ export function downloadBuffer({
 	document.body.appendChild(downloadLink);
 	downloadLink.click();
 	document.body.removeChild(downloadLink);
-	URL.revokeObjectURL(url);
+	// Keep the Blob URL alive until Chromium has started the download.
+	window.setTimeout(() => URL.revokeObjectURL(url), 60_000);
 }
 
 /** Downloads a file that already lives on the local server, without loading it into memory. */
