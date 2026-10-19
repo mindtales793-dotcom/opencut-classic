@@ -1,6 +1,10 @@
 "use client";
 
-import { DarkCutTemplatesView } from "./darkcut-templates";
+import dynamic from "next/dynamic";
+
+const DarkCutTemplatesView = dynamic(() => import("./darkcut-templates").then((module) => module.DarkCutTemplatesView), {
+	loading: () => <div className="p-4 text-sm text-muted-foreground">Carregando templates…</div>,
+});
 import { DarkCutMediaBridge } from "./darkcut-media-bridge";
 import { useStudioNavigation } from "@/darkcut/studio-navigation";
 import { ChannelPanel } from "@/darkcut/channel-panel";

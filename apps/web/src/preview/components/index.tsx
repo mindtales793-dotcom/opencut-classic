@@ -56,10 +56,12 @@ function normalizeWheelDelta({
 }
 
 export function PreviewPanel({
+	active = true,
 	overlayControls,
 	overlayInstances,
 	onOverlayVisibilityChange,
 }: {
+	active?: boolean;
 	overlayControls: PreviewOverlayControl[];
 	overlayInstances: PreviewOverlayInstance[];
 	onOverlayVisibilityChange: (params: {
@@ -81,6 +83,7 @@ export function PreviewPanel({
 			className="panel bg-background relative flex size-full min-h-0 min-w-0 flex-col rounded-sm border"
 		>
 			<PreviewCanvas
+				active={active}
 				container={container}
 				onToggleFullscreen={toggleFullscreen}
 				overlayControls={overlayControls}
@@ -122,12 +125,14 @@ function RenderTreeController() {
 }
 
 function PreviewCanvas({
+	active,
 	container,
 	onToggleFullscreen,
 	overlayControls,
 	overlayInstances,
 	onOverlayVisibilityChange,
 }: {
+	active: boolean;
 	container: HTMLElement | null;
 	onToggleFullscreen: () => void;
 	overlayControls: PreviewOverlayControl[];
@@ -227,7 +232,9 @@ function PreviewCanvas({
 		isExporting,
 	]);
 
-	useRafLoop(render);
+	// Preserve the render tree for export, but stop GPU/CPU preview work in
+	// Produção, Mídia and DarkMiner where the monitor is hidden.
+	useRafLoop(render, active);
 
 	useEffect(() => {
 		const container = viewportRef.current;

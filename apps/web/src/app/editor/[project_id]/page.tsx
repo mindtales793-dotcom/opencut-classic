@@ -106,7 +106,7 @@ function EditorLayout() {
 					: "pointer-events-none invisible absolute left-0 top-0 z-[-1] h-[540px] w-[960px] overflow-hidden"
 			}
 		>
-			<EditorPreview />
+			<EditorPreview active={isTimelineWorkspace} />
 		</div>
 	);
 
@@ -164,11 +164,13 @@ function EditorLayout() {
 }
 
 // Keep playback updates inside the preview, away from the asset grid and timeline layout.
-function EditorPreview() {
+function EditorPreview({ active }: { active: boolean }) {
 	const activeScene = useEditor((editor) =>
 		editor.scenes.getActiveSceneOrNull(),
 	);
-	const currentTime = useEditor((editor) => editor.playback.getCurrentTime());
+	// Tool tabs keep the preview mounted, but should not subscribe to every
+	// playback tick while the canvas is invisible.
+	const currentTime = useEditor((editor) => active ? editor.playback.getCurrentTime() : 0);
 	const activeGuide = usePreviewStore((state) => state.activeGuide);
 	const overlays = usePreviewStore((state) => state.overlays);
 	const setOverlayVisibility = usePreviewStore(
@@ -211,6 +213,7 @@ function EditorPreview() {
 
 	return (
 		<PreviewPanel
+			active={active}
 			overlayControls={overlayControls}
 			overlayInstances={overlaySource.instances}
 			onOverlayVisibilityChange={setOverlayVisibility}
