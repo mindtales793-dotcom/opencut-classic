@@ -16,7 +16,7 @@ import { TextView } from "@/text/components/assets-view";
 import { EffectsView } from "@/effects/components/assets-view";
 import { DarkCutProductionView } from "./views/darkcut-production";
 import { DarkCutSyncView } from "./views/darkcut-sync";
-import { DarkCutScriptSrtView } from "./views/darkcut-script-srt";
+import { DarkCutSrtStudio } from "./views/darkcut-srt-studio";
 import { DarkCutMinerView } from "./views/darkcut-miner";
 import { DarkCutVideosView } from "./views/darkcut-videos";
 import { DarkCutTemplatesView } from "./views/darkcut-templates";
@@ -28,7 +28,7 @@ export function AssetsPanel() {
 	const viewMap: Record<Tab, React.ReactNode> = {
 		production: <DarkCutProductionView />,
 		sync: <DarkCutSyncView />,
-		"script-srt": <DarkCutScriptSrtView />,
+		"script-srt": <DarkCutSrtStudio />,
 		darkminer: <DarkCutMinerView />,
 		videos: <DarkCutVideosView />,
 		media: <MediaView />,
