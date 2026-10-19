@@ -310,6 +310,31 @@ async function run(win) {
 		"renderer:responsive",
 	);
 
+
+	// Verify the actual MEDIA SORT menu, not just the sorting helper.
+	await clickByAria(win, "Mídia", "media:open");
+	await until(win, "!!document.querySelector('button[aria-label=\"Organizar mídias\"]')", 15000, "media:sort-visible");
+	await clickByText(win, "1→N", "media:scene-sort-click");
+	await until(win, "document.body.innerText.includes('Ordem: cenas numeradas · crescente')", 10000, "media:scene-sort-applied");
+	for (const [order, label] of [["desc", "mais recentes"], ["asc", "mais antigas"]]) {
+		const open = await execute(win, "(()=>{const button=document.querySelector('button[aria-label=\"Organizar mídias\"]');if(!button)return false;button.dispatchEvent(new PointerEvent('pointerdown',{bubbles:true,cancelable:true,button:0,pointerType:'mouse',isPrimary:true}));return true;})()", "media:sort-menu-open");
+		if (!open) throw new Error("Media sort menu trigger did not respond");
+		await until(win, "Array.from(document.querySelectorAll('[role=\"menuitem\"]')).some(item=>item.textContent?.includes(\"Data do arquivo\"))", 10000, "media:sort-menu-items");
+		const chosen = await execute(win, "(()=>{const item=Array.from(document.querySelectorAll('[role=\"menuitem\"]')).find(item=>item.textContent?.includes(\"Data do arquivo\"));if(!item)return false;item.click();return true;})()", "media:sort-date-select");
+		if (!chosen) throw new Error("Date sorting menu item did not respond");
+		await until(win, "document.body.innerText.includes('Ordem: data do arquivo · ' + (order==='desc'?'decrescente':'crescente'))", 10000, "media:date-" + label);
+	}
+
+	// The effects library must expose functional category buttons.
+	await clickByAria(win, "Efeitos", "filters:open");
+	await until(win, "!!document.querySelector('input[aria-label=\"Pesquisar filtros e efeitos\"]')", 15000, "filters:search-visible");
+	const onlyBlur = await execute(win, "(()=>{const item=Array.from(document.querySelectorAll('button')).find(button=>button.textContent.trim()==='Desfoque');if(!item)return false;item.click();return true;})()", "filters:select-blur");
+	if (!onlyBlur) throw new Error("Filter category 'Desfoque' did not respond");
+	await until(win, "document.body.innerText.includes('Efeitos e filtros · 1/22')", 10000, "filters:category-filtered");
+	const allFilters = await execute(win, "(()=>{const item=Array.from(document.querySelectorAll('button')).find(button=>button.textContent.trim()==='Todos');if(!item)return false;item.click();return true;})()", "filters:reset-category");
+	if (!allFilters) throw new Error("Filter category 'Todos' did not respond");
+	await until(win, "document.body.innerText.includes('Efeitos e filtros · 22/22')", 10000, "filters:all-restored");
+
 	await clickByAria(win, "Produção", "design:production");
 	await until(
 		win,
@@ -355,6 +380,8 @@ async function run(win) {
 			"eleven or more template previews and live animation",
 			"music fixture downloaded, decoded and inserted in A2",
 			"indeterminate import progress visible",
+			"media sort buttons: scene and date ascending/descending",
+			"effects category buttons filter and reset 22 real filters",
 			"reference layout: labeled sidebar, preview left and production right",
 		],
 	});
