@@ -24,6 +24,7 @@ import { buildCaptionChunks } from "@/transcription/caption";
 import { insertCaptionChunksAsTextTrack } from "@/subtitles/insert";
 import { parseSubtitleFile } from "@/subtitles/parse";
 import { CAPTION_PRESETS, applyCaptionPreset, type CaptionPresetId } from "@/subtitles/caption-presets";
+import type { CaptionAnimationMode } from "@/subtitles/karaoke";
 import { Spinner } from "@/components/ui/spinner";
 import {
 	Section,
@@ -86,6 +87,8 @@ function processingReducer(
 
 export function Captions() {
 	const [captionPreset, setCaptionPreset] = useState<CaptionPresetId>("original");
+	const [captionAnimation, setCaptionAnimation] = useState<CaptionAnimationMode>("none");
+	const [highlightColor, setHighlightColor] = useState("#fde047");
 	const [captionColor, setCaptionColor] = useState<string | null>(null);
 	const [captionFontSize, setCaptionFontSize] = useState<number | null>(null);
 	const [selectedLanguage, setSelectedLanguage] =
@@ -128,6 +131,8 @@ export function Captions() {
 		const trackId = insertCaptionChunksAsTextTrack({
 			editor,
 			captions: applyCaptionPreset({ captions, presetId: captionPreset, overrides }),
+			animation: captionAnimation,
+			highlightColor,
 		});
 		return trackId !== null;
 	};
@@ -321,6 +326,24 @@ export function Captions() {
 									))}
 								</SelectContent>
 							</Select>
+						</SectionField>
+						<SectionField label="Animação de palavras">
+							<Select value={captionAnimation} onValueChange={(value) => setCaptionAnimation(value as CaptionAnimationMode)} disabled={isProcessing}>
+								<SelectTrigger aria-label="Animação de legenda"><SelectValue /></SelectTrigger>
+								<SelectContent>
+									<SelectItem value="none">Sem animação</SelectItem>
+									<SelectItem value="karaoke">Karaokê · palavra destacada</SelectItem>
+									<SelectItem value="karaoke-pop">Karaokê Pop · palavra com zoom</SelectItem>
+								</SelectContent>
+							</Select>
+							{captionAnimation !== "none" && (
+								<div className="mt-2 flex items-center gap-3">
+									<label className="flex items-center gap-2 text-xs">Cor do destaque
+										<input type="color" value={highlightColor} aria-label="Cor da palavra destacada" disabled={isProcessing} onChange={(event) => setHighlightColor(event.target.value)} className="h-9 w-14 rounded border bg-background" />
+									</label>
+								</div>
+							)}
+							<p className="mt-1 text-xs text-muted-foreground">SRT e transcrições por trecho não têm tempos individuais das palavras. O DarkCut estima os destaques; ajuste a timeline para sincronização exata. Cada palavra é um clipe editável e exportável.</p>
 						</SectionField>
 						<SectionField label="Template de legenda">
 							<Select value={captionPreset} onValueChange={(value) => setCaptionPreset(value as CaptionPresetId)} disabled={isProcessing}>
