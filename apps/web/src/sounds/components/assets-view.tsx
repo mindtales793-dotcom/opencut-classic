@@ -30,6 +30,7 @@ import { useSoundsStore } from "@/sounds/sounds-store";
 import { useDarkCutProductionStore } from "@/components/editor/panels/assets/darkcut-production-store";
 import type { SavedSound, SoundEffect } from "@/sounds/types";
 import { cn } from "@/utils/ui";
+import { AceStepPanel } from "@/darkcut/ace-step-panel";
 import {
 	FavouriteIcon,
 	FilterMailIcon,
@@ -47,6 +48,7 @@ export function SoundsView() {
 					<TabsList className="w-full">
 						<TabsTrigger value="music">Músicas</TabsTrigger>
 						<TabsTrigger value="suno">Suno IA</TabsTrigger>
+						<TabsTrigger value="ace-step">ACE-Step IA</TabsTrigger>
 						<TabsTrigger value="sound-effects">Efeitos</TabsTrigger>
 						<TabsTrigger value="saved">Favoritos</TabsTrigger>
 					</TabsList>
@@ -60,6 +62,9 @@ export function SoundsView() {
 				</TabsContent>
 				<TabsContent value="suno" className="mt-0 flex min-h-0 flex-1 flex-col p-3 pt-0">
 					<SunoLocalMusicView />
+				</TabsContent>
+				<TabsContent value="ace-step" className="mt-0 flex min-h-0 flex-1 flex-col">
+					<AceStepPanel />
 				</TabsContent>
 				<TabsContent
 					value="sound-effects"
