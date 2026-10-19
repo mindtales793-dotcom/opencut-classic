@@ -226,9 +226,7 @@ export function MediaView() {
 
 	const batchSelectableItems = useMemo(
 		() =>
-			filteredMediaItems.filter(
-				(item) => item.type === "image" || item.type === "video",
-			),
+			filteredMediaItems,
 		[filteredMediaItems],
 	);
 	const batchSelectableIds = useMemo(
@@ -261,6 +259,18 @@ export function MediaView() {
 		setBatchSelectedIds(allBatchSelected ? [] : batchSelectableIds);
 	};
 
+
+	const removeSelectedMedia = () => {
+		const ids = batchSelectedIds.filter((id) => mediaFiles.some((asset) => asset.id === id && !asset.ephemeral));
+		if (!ids.length) return;
+		if (!window.confirm(`Excluir ${ids.length} mídia(s) selecionada(s) da biblioteca do projeto? Isso pode afetar os clipes que usam esses arquivos.`)) return;
+		invokeAction("remove-media-assets", {
+			projectId: activeProject.metadata.id,
+			assetIds: ids,
+		});
+		setBatchSelectedIds([]);
+		toast.success(`${ids.length} mídia(s) removida(s) da biblioteca do projeto.`);
+	};
 
 	const exportSelectedMedia = async ({ ids }: { ids: string[] }) => {
 		const selected = mediaFiles.filter((asset) => ids.includes(asset.id) && !asset.ephemeral);
@@ -487,6 +497,7 @@ export function MediaView() {
 						someSelected={someBatchSelected}
 						onToggleSelectAll={toggleSelectAll}
 						onAddSelected={() => void addSelectedToTimeline()}
+						onRemoveSelected={removeSelectedMedia}
 					/>
 				}
 				className={cn(isDragOver && "bg-accent/30")}
@@ -699,7 +710,7 @@ function MediaItemList({
 			{items.map((item) => (
 				<MediaItemWithContextMenu item={item} onRemove={onRemove} onExport={onExport} key={item.id}>
 					<SelectableItem className={cn(!isGrid && "w-full")} id={item.id}>
-						{item.type === "image" || item.type === "video" ? (
+						{item.type === "image" || item.type === "video" || item.type === "audio" ? (
 							<label
 								className="absolute top-1 left-1 z-20 flex size-6 cursor-pointer items-center justify-center rounded bg-background/90 shadow-sm backdrop-blur"
 								title="Selecionar para adicionar em lote"
@@ -871,6 +882,7 @@ function MediaActions({
 	someSelected,
 	onToggleSelectAll,
 	onAddSelected,
+	onRemoveSelected,
 }: {
 	mediaViewMode: MediaViewMode;
 	setMediaViewMode: (mode: MediaViewMode) => void;
@@ -887,6 +899,7 @@ function MediaActions({
 	someSelected: boolean;
 	onToggleSelectAll: () => void;
 	onAddSelected: () => void;
+	onRemoveSelected: () => void;
 }) {
 	return (
 		<div className="flex flex-wrap gap-1.5">
@@ -1016,6 +1029,14 @@ function MediaActions({
 			>
 				+ Timeline{selectedCount > 0 ? ` (${selectedCount})` : ""}
 			</Button>
+			<Button
+				variant="destructive"
+				onClick={onRemoveSelected}
+				disabled={isProcessing || selectedCount === 0}
+				size="sm"
+				aria-label="Excluir mídias selecionadas do projeto"
+				title="Excluir arquivos selecionados após confirmação"
+			>Excluir selecionadas{selectedCount > 0 ? ` (${selectedCount})` : ""}</Button>
 			<Button
 				variant="outline"
 				onClick={onImportFolder}

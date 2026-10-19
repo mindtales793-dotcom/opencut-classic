@@ -17,7 +17,7 @@ import { EffectsView } from "@/effects/components/assets-view";
 import { DarkCutProductionView } from "./views/darkcut-production";
 import { DarkCutSyncView } from "./views/darkcut-sync";
 import { DarkCutSrtStudio } from "./views/darkcut-srt-studio";
-import { DarkCutMinerView } from "./views/darkcut-miner";
+import { DarkMinerWorkspace } from "./views/darkcut-miner-workspace";
 import { DarkCutVideosView } from "./views/darkcut-videos";
 import { DarkCutTemplatesView } from "./views/darkcut-templates";
 import { DarkCutTransitionsView } from "./views/darkcut-transitions";
@@ -26,10 +26,11 @@ export function AssetsPanel() {
 	const { activeTab } = useAssetsPanelStore();
 
 	const viewMap: Record<Tab, React.ReactNode> = {
+		timeline: null,
 		production: <DarkCutProductionView />,
 		sync: <DarkCutSyncView />,
 		"script-srt": <DarkCutSrtStudio />,
-		darkminer: <DarkCutMinerView />,
+		darkminer: <DarkMinerWorkspace />,
 		videos: <DarkCutVideosView />,
 		media: <MediaView />,
 		sounds: <SoundsView />,
@@ -45,9 +46,9 @@ export function AssetsPanel() {
 
 	return (
 		<div className="studio-assets panel flex h-full flex-col overflow-hidden">
-			<StudioWorkflow />
-			<div className="studio-assets-scroll min-h-0 flex-1 overflow-y-auto overscroll-contain">
-				<div className="min-h-full min-w-0">
+			{activeTab !== "darkminer" && <StudioWorkflow />}
+			<div className={"studio-assets-scroll min-h-0 flex-1 " + (activeTab === "darkminer" ? "overflow-hidden" : "overflow-y-auto overscroll-contain")}>
+				<div className={activeTab === "darkminer" ? "h-full min-w-0" : "min-h-full min-w-0"}>
 					{viewMap[activeTab]}
 				</div>
 			</div>
