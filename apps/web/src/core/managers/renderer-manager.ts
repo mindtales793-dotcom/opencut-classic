@@ -166,6 +166,11 @@ export class RendererManager {
 
 			const exportFps = fps ?? activeProject.settings.fps;
 			const canvasSize = activeProject.settings.canvasSize;
+			const exportSize = options.canvasSize ?? canvasSize;
+			if (![exportSize.width, exportSize.height].every(value =>
+				Number.isInteger(value) && value >= 16 && value <= 7680)) {
+				return { success: false, error: "Escolha uma resolução válida entre 16 e 7680 pixels." };
+			}
 
 			let audioBuffer: AudioBuffer | null = null;
 			if (includeAudio) {
@@ -200,8 +205,10 @@ export class RendererManager {
 			) {
 				const ffmpegResult = await this.exportWithFfmpeg({
 					scene,
-					width: canvasSize.width,
-					height: canvasSize.height,
+					width: exportSize.width,
+					height: exportSize.height,
+					sourceWidth: canvasSize.width,
+					sourceHeight: canvasSize.height,
 					fps: exportFps,
 					format,
 					quality,
@@ -210,14 +217,14 @@ export class RendererManager {
 					onProgress: reportProgress,
 					onCancel,
 				});
-				if (ffmpegResult) return ffmpegResult;
-				// null means FFmpeg failed: continue with the in-browser encoder.
-				onProgress?.({ progress: includeAudio ? 0.05 : 0 });
+				return ffmpegResult;
 			}
 
 			const exporter = new SceneExporter({
-				width: canvasSize.width,
-				height: canvasSize.height,
+				width: exportSize.width,
+				height: exportSize.height,
+				sourceWidth: canvasSize.width,
+				sourceHeight: canvasSize.height,
 				fps: exportFps,
 				format,
 				quality,
@@ -266,14 +273,13 @@ export class RendererManager {
 		}
 	}
 
-	/**
-	 * Returns the result, or null when FFmpeg failed for a reason other than
-	 * cancellation so the caller can retry with the in-browser encoder.
-	 */
+	/** Retries a failed hardware FFmpeg export using the CPU without changing quality. */
 	private async exportWithFfmpeg({
 		scene,
 		width,
 		height,
+		sourceWidth,
+		sourceHeight,
 		fps,
 		format,
 		quality,
@@ -285,6 +291,8 @@ export class RendererManager {
 		scene: RootNode;
 		width: number;
 		height: number;
+		sourceWidth: number;
+		sourceHeight: number;
 		fps: NonNullable<ExportOptions["fps"]>;
 		format: ExportOptions["format"];
 		quality: ExportOptions["quality"];
@@ -292,45 +300,61 @@ export class RendererManager {
 		audioBuffer: AudioBuffer | null;
 		onProgress: (progress: number) => void;
 		onCancel?: () => boolean;
-	}): Promise<ExportResult | null> {
-		const exporter = new FfmpegSceneExporter({
-			width,
-			height,
-			fps,
-			format,
-			quality,
-			filename,
-			shouldIncludeAudio: !!audioBuffer,
-			audioBuffer: audioBuffer ?? undefined,
-		});
-		exporter.on("progress", onProgress);
+	}): Promise<ExportResult> {
+		// Hardware encoders can pass a small capability probe but fail when an
+		// actual 4K project is fed to the driver. Retry once on the CPU with
+		// the SAME selected codec container and quality (never silently downgrade).
+		for (const preferSoftware of [false, true]) {
+			const exporter = new FfmpegSceneExporter({
+				width,
+				height,
+				sourceWidth,
+				sourceHeight,
+				fps,
+				format,
+				quality,
+				filename,
+				preferSoftware,
+				shouldIncludeAudio: !!audioBuffer,
+				audioBuffer: audioBuffer ?? undefined,
+			});
+			exporter.on("progress", onProgress);
 
-		let cancelled = false;
-		const cancelInterval = setInterval(() => {
-			if (onCancel?.()) {
-				cancelled = true;
-				exporter.cancel();
+			let cancelled = false;
+			const cancelInterval = setInterval(() => {
+				if (onCancel?.()) {
+					cancelled = true;
+					exporter.cancel();
+				}
+			}, 100);
+
+			try {
+				const output = await exporter.export({ rootNode: scene });
+				if (cancelled || !output) return { success: false, cancelled: true };
+				return {
+					success: true,
+					downloadUrl: output.downloadUrl,
+					encoderLabel: output.encoderLabel,
+					verified: output.verified,
+				};
+			} catch (error) {
+				if (cancelled) return { success: false, cancelled: true };
+				if (!preferSoftware && exporter.getUsedHardware() === true) {
+					console.warn("Hardware encoder failed; retrying with CPU at the same quality.", error);
+					onProgress(0);
+					continue;
+				}
+				console.error("FFmpeg export failed:", error);
+				return {
+					success: false,
+					error: (error instanceof Error ? error.message : "Falha desconhecida do FFmpeg.") +
+						" Tente Renderização → Compatível (navegador), se necessário.",
+				};
+			} finally {
+				clearInterval(cancelInterval);
 			}
-		}, 100);
-
-		try {
-			const output = await exporter.export({ rootNode: scene });
-			if (cancelled || !output) return { success: false, cancelled: true };
-			return {
-				success: true,
-				downloadUrl: output.downloadUrl,
-				encoderLabel: output.encoderLabel,
-			};
-		} catch (error) {
-			if (cancelled) return { success: false, cancelled: true };
-			console.warn(
-				"FFmpeg export failed, falling back to the browser encoder:",
-				error,
-			);
-			return null;
-		} finally {
-			clearInterval(cancelInterval);
 		}
+		return { success: false, error: "Nenhum encoder FFmpeg pôde concluir a exportação." };
 	}
 
 	subscribe(listener: () => void): () => void {

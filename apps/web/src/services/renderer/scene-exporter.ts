@@ -23,6 +23,8 @@ import { CanvasRenderer } from "./canvas-renderer";
 type ExportParams = {
 	width: number;
 	height: number;
+	sourceWidth?: number;
+	sourceHeight?: number;
 	fps: FrameRate;
 	format: ExportFormat;
 	quality: ExportQuality;
@@ -46,6 +48,9 @@ export type SceneExporterEvents = {
 
 export class SceneExporter extends EventEmitter<SceneExporterEvents> {
 	private renderer: CanvasRenderer;
+	private targetWidth: number;
+	private targetHeight: number;
+	private targetCanvas: HTMLCanvasElement | null = null;
 	private format: ExportFormat;
 	private quality: ExportQuality;
 	private shouldIncludeAudio: boolean;
@@ -56,6 +61,8 @@ export class SceneExporter extends EventEmitter<SceneExporterEvents> {
 	constructor({
 		width,
 		height,
+		sourceWidth,
+		sourceHeight,
 		fps,
 		format,
 		quality,
@@ -64,10 +71,12 @@ export class SceneExporter extends EventEmitter<SceneExporterEvents> {
 	}: ExportParams) {
 		super();
 		this.renderer = new CanvasRenderer({
-			width,
-			height,
+			width: sourceWidth ?? width,
+			height: sourceHeight ?? height,
 			fps,
 		});
+		this.targetWidth = width;
+		this.targetHeight = height;
 
 		this.format = format;
 		this.quality = quality;
@@ -77,6 +86,23 @@ export class SceneExporter extends EventEmitter<SceneExporterEvents> {
 
 	cancel(): void {
 		this.isCancelled = true;
+	}
+
+	private drawOutputCanvas(): HTMLCanvasElement {
+		const source = this.renderer.getOutputCanvas();
+		if (source.width === this.targetWidth && source.height === this.targetHeight) return source;
+		if (!this.targetCanvas) {
+			this.targetCanvas = document.createElement("canvas");
+			this.targetCanvas.width = this.targetWidth;
+			this.targetCanvas.height = this.targetHeight;
+		}
+		const context = this.targetCanvas.getContext("2d");
+		if (!context) throw new Error("Não foi possível preparar a resolução escolhida.");
+		context.clearRect(0, 0, this.targetWidth, this.targetHeight);
+		context.imageSmoothingEnabled = true;
+		context.imageSmoothingQuality = "high";
+		context.drawImage(source, 0, 0, this.targetWidth, this.targetHeight);
+		return this.targetCanvas;
 	}
 
 	async export({
@@ -89,7 +115,8 @@ export class SceneExporter extends EventEmitter<SceneExporterEvents> {
 		const ticksPerFrame = Math.round(
 			(TICKS_PER_SECOND * fps.denominator) / fps.numerator,
 		);
-		const frameCount = Math.floor(rootNode.duration / ticksPerFrame);
+		const frameCount = Math.ceil(rootNode.duration / ticksPerFrame);
+		if (frameCount < 1) throw new Error("O projeto não tem quadros para exportar.");
 
 		const outputFormat =
 			this.format === "webm" ? new WebMOutputFormat() : new Mp4OutputFormat();
@@ -99,7 +126,10 @@ export class SceneExporter extends EventEmitter<SceneExporterEvents> {
 			target: new BufferTarget(),
 		});
 
-		const videoSource = new CanvasSource(this.renderer.getOutputCanvas(), {
+		const outputCanvas = this.targetWidth === this.renderer.width && this.targetHeight === this.renderer.height
+			? this.renderer.getOutputCanvas()
+			: (this.targetCanvas ??= (() => { const canvas = document.createElement("canvas"); canvas.width = this.targetWidth; canvas.height = this.targetHeight; return canvas; })());
+		const videoSource = new CanvasSource(outputCanvas, {
 			codec: this.format === "webm" ? "vp9" : "avc",
 			bitrate: qualityMap[this.quality],
 			// Ask Chromium/WebCodecs to use the hardware encoder whenever the
@@ -114,7 +144,7 @@ export class SceneExporter extends EventEmitter<SceneExporterEvents> {
 
 		let audioSource: AudioBufferSource | null = null;
 		if (this.shouldIncludeAudio && this.audioBuffer) {
-			let audioCodec: "aac" | "opus" = this.format === "webm" ? "opus" : "aac";
+			const audioCodec: "aac" | "opus" = this.format === "webm" ? "opus" : "aac";
 
 			if (audioCodec === "aac" && typeof AudioEncoder !== "undefined") {
 				const { supported } = await AudioEncoder.isConfigSupported({
@@ -123,7 +153,7 @@ export class SceneExporter extends EventEmitter<SceneExporterEvents> {
 					numberOfChannels: this.audioBuffer.numberOfChannels,
 					bitrate: 192000,
 				});
-				if (!supported) audioCodec = "opus";
+				if (!supported) throw new Error("O navegador não suporta áudio AAC neste MP4. Selecione a renderização automática com FFmpeg.");
 			}
 
 			audioSource = new AudioBufferSource({
@@ -150,6 +180,7 @@ export class SceneExporter extends EventEmitter<SceneExporterEvents> {
 			const timeTicks = i * ticksPerFrame;
 			const timeSeconds = mediaTimeToSeconds({ time: timeTicks });
 			await this.renderer.render({ node: rootNode, time: timeTicks });
+			this.drawOutputCanvas();
 			await videoSource.add(timeSeconds, 1 / fpsFloat);
 
 			this.emit("progress", i / frameCount);

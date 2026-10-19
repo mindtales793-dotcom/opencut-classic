@@ -2,6 +2,7 @@ import { spawn, type ChildProcess } from "node:child_process";
 import { randomUUID } from "node:crypto";
 import { mkdir, readdir, rm, stat, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
+import { verifyExportFile, type VerifiedExport } from "./verify.server";
 import { join } from "node:path";
 import {
 	EXPORT_FORMAT_VALUES,
@@ -125,6 +126,7 @@ export interface StartRequest {
 	fpsDenominator: number;
 	inputPixelFormat: RawPixelFormat;
 	filename: string;
+	preferSoftware: boolean;
 }
 
 function isInteger(value: unknown): value is number {
@@ -198,6 +200,7 @@ export function parseStartRequest(body: unknown): StartRequest {
 		fpsDenominator,
 		inputPixelFormat,
 		filename: sanitizeFilename(field("filename")),
+		preferSoftware: field("preferSoftware") === true,
 	};
 }
 
@@ -218,7 +221,9 @@ export async function createJob(request: StartRequest): Promise<{
 			probe.reason ?? "O FFmpeg não está disponível.",
 		);
 	}
-	const profile = getProfileById({ id: probe.selected.id });
+	const profile = getProfileById({ id: request.preferSoftware
+		? request.format === "mp4" ? "libx264" : "libvpx_vp9"
+		: probe.selected.id });
 	if (!profile) {
 		throw new ExportRequestError(500, "Perfil de encoder desconhecido.");
 	}
@@ -258,7 +263,7 @@ export async function createJob(request: StartRequest): Promise<{
 	};
 	store().jobs.set(id, job);
 
-	return { id, encoder: probe.selected };
+	return { id, encoder: { id: profile.id, label: profile.label, hardware: profile.hardware } };
 }
 
 export function getJob(id: string): ExportJob {
@@ -440,7 +445,7 @@ export function finishJob({
 	job,
 }: {
 	job: ExportJob;
-}): Promise<{ size: number }> {
+}): Promise<{ size: number; verified: VerifiedExport }> {
 	return enqueue({
 		job,
 		task: async () => {
@@ -457,8 +462,30 @@ export function finishJob({
 			}
 
 			const info = await stat(job.outputPath);
+			if (info.size < 1024) {
+				job.status = "failed";
+				throw new ExportRequestError(500, "O FFmpeg gerou um arquivo vazio ou corrompido.");
+			}
+			let verified: VerifiedExport;
+			try {
+				verified = await verifyExportFile({
+					filePath: job.outputPath,
+					expected: {
+						format: job.format,
+						width: job.width,
+						height: job.height,
+						fpsNumerator: job.fpsNumerator,
+						fpsDenominator: job.fpsDenominator,
+						quality: job.quality,
+						withAudio: Boolean(job.audioPath),
+					},
+				});
+			} catch (error) {
+				job.status = "failed";
+				throw error;
+			}
 			job.status = "finished";
-			return { size: info.size };
+			return { size: info.size, verified };
 		},
 	});
 }

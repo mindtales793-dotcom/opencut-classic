@@ -25,6 +25,8 @@ export interface ExportOptions {
 	format: ExportFormat;
 	quality: ExportQuality;
 	fps?: FrameRate;
+	/** Dimensions of the encoded file. Keeps the original project layout. */
+	canvasSize?: { width: number; height: number };
 	includeAudio?: boolean;
 	engine?: ExportEngine;
 	/** Used as the downloaded file name by the FFmpeg engine (no extension). */
@@ -39,6 +41,7 @@ export interface ExportResult {
 	downloadUrl?: string;
 	/** Human readable encoder that produced the file. */
 	encoderLabel?: string;
+	verified?: { format: ExportFormat; codec: string; width: number; height: number; fps: number; audioCodec: string | null; quality: ExportQuality };
 	error?: string;
 	cancelled?: boolean;
 }
@@ -82,7 +85,8 @@ export function downloadBuffer({
 	document.body.appendChild(downloadLink);
 	downloadLink.click();
 	document.body.removeChild(downloadLink);
-	URL.revokeObjectURL(url);
+	// Keep the Blob URL alive until Chromium has started the download.
+	window.setTimeout(() => URL.revokeObjectURL(url), 60_000);
 }
 
 /** Downloads a file that already lives on the local server, without loading it into memory. */
