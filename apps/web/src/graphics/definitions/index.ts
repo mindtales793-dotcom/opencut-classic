@@ -1,3 +1,4 @@
+import { darkcutRemotionGraphicDefinition } from "@/darkcut/remotion-compositor-canvas";
 import { graphicsRegistry } from "../registry";
 import { ellipseGraphicDefinition } from "./ellipse";
 import { polygonGraphicDefinition } from "./polygon";
@@ -9,6 +10,7 @@ const defaultGraphicDefinitions = [
 	ellipseGraphicDefinition,
 	polygonGraphicDefinition,
 	starGraphicDefinition,
+	darkcutRemotionGraphicDefinition,
 ];
 
 export function registerDefaultGraphics(): void {
