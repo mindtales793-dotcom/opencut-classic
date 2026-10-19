@@ -1021,6 +1021,63 @@ export function DarkCutTemplatesView({
 		}
 	};
 
+	// Template title layers are regular timeline elements and participate in Undo/Redo.
+	const applyTemplateTitles = (template: DarkCutTemplate) => {
+		if (addTitles) {
+			const updated = editor.scenes.getActiveScene();
+			const visuals = [updated.tracks.main, ...updated.tracks.overlay]
+				.flatMap((t) => t.elements as TimelineElement[])
+				.filter((e) => e.type === "image" || e.type === "video");
+			const start = Math.min(
+				...visuals.map((e) => mediaTimeToSeconds({ time: e.startTime })),
+			);
+			const end = Math.max(
+				...visuals.map(
+					(e) =>
+						mediaTimeToSeconds({ time: e.startTime }) +
+						mediaTimeToSeconds({ time: e.duration }),
+				),
+			);
+			const length = Math.min(template.durationSeconds, (end - start) / 2);
+			const old = updated.tracks.overlay.find((t) => t.name === "T • Template");
+			if (old?.elements.length)
+				editor.timeline.deleteElements({
+					elements: old.elements.map((e) => ({
+						trackId: old.id,
+						elementId: e.id,
+					})),
+				});
+			const trackId =
+				old?.id ??
+				editor.timeline.addTrack({ type: "text", name: "T • Template" });
+			for (const [content, seconds, name] of [
+				[opening.trim(), start, "Abertura"],
+				[ending.trim(), end - length, "Encerramento"],
+			] as const) {
+				if (!content || length <= 0) continue;
+				editor.timeline.insertElement({
+					placement: { mode: "explicit", trackId },
+					element: buildTextElement({
+						startTime: mediaTimeFromSeconds({ seconds }),
+						raw: {
+							name: `${name} • ${template.title}`,
+							duration: mediaTimeFromSeconds({ seconds: length }),
+							params: {
+								...templateTextParams(content, 64),
+								fontWeight: "bold",
+								color: "#ffffff",
+								"background.enabled": true,
+								"background.color": "#101525cc",
+								"background.paddingX": 24,
+								"background.paddingY": 16,
+							},
+						},
+					}),
+				});
+			}
+		}
+	};
+
 	const applyTemplate = async (sourceTemplate: DarkCutTemplate) => {
 		const template: DarkCutTemplate = {
 			...sourceTemplate,
@@ -1131,7 +1188,10 @@ export function DarkCutTemplatesView({
 			if (editor.scenes.getActiveSceneOrNull()?.id !== scene.id)
 				throw new Error("O projeto mudou durante a análise.");
 			setCrisPlan(plan);
-			applyCrisPlan({ plan, refs, template });
+			editor.command.runAsSingleUndoStep(() => {
+				applyCrisPlan({ plan, refs, template });
+				applyTemplateTitles(template);
+			});
 		} catch (error) {
 			console.error(error);
 			if (narrationTrackId) {
@@ -1142,6 +1202,7 @@ export function DarkCutTemplatesView({
 				);
 				return;
 			}
+			editor.command.runAsSingleUndoStep(() => {
 			if (hasNarration) {
 				const result = autoEditWithNarration({
 					editor,
@@ -1164,6 +1225,8 @@ export function DarkCutTemplatesView({
 					presets: template.transitions,
 				});
 			}
+				applyTemplateTitles(template);
+			});
 			toast.error("A Cris falhou; o template básico foi aplicado.");
 		} finally {
 			setIsCrisAnalyzing(false);
@@ -1171,59 +1234,6 @@ export function DarkCutTemplatesView({
 			setAnalysisStep("");
 		}
 
-		if (addTitles) {
-			const updated = editor.scenes.getActiveScene();
-			const visuals = [updated.tracks.main, ...updated.tracks.overlay]
-				.flatMap((t) => t.elements as TimelineElement[])
-				.filter((e) => e.type === "image" || e.type === "video");
-			const start = Math.min(
-				...visuals.map((e) => mediaTimeToSeconds({ time: e.startTime })),
-			);
-			const end = Math.max(
-				...visuals.map(
-					(e) =>
-						mediaTimeToSeconds({ time: e.startTime }) +
-						mediaTimeToSeconds({ time: e.duration }),
-				),
-			);
-			const length = Math.min(template.durationSeconds, (end - start) / 2);
-			const old = updated.tracks.overlay.find((t) => t.name === "T • Template");
-			if (old?.elements.length)
-				editor.timeline.deleteElements({
-					elements: old.elements.map((e) => ({
-						trackId: old.id,
-						elementId: e.id,
-					})),
-				});
-			const trackId =
-				old?.id ??
-				editor.timeline.addTrack({ type: "text", name: "T • Template" });
-			for (const [content, seconds, name] of [
-				[opening.trim(), start, "Abertura"],
-				[ending.trim(), end - length, "Encerramento"],
-			] as const) {
-				if (!content || length <= 0) continue;
-				editor.timeline.insertElement({
-					placement: { mode: "explicit", trackId },
-					element: buildTextElement({
-						startTime: mediaTimeFromSeconds({ seconds }),
-						raw: {
-							name: `${name} • ${template.title}`,
-							duration: mediaTimeFromSeconds({ seconds: length }),
-							params: {
-								...templateTextParams(content, 64),
-								fontWeight: "bold",
-								color: "#ffffff",
-								"background.enabled": true,
-								"background.color": "#101525cc",
-								"background.paddingX": 24,
-								"background.paddingY": 16,
-							},
-						},
-					}),
-				});
-			}
-		}
 		setSelectedTemplate(template.id);
 		toast.success(`${template.title} aplicado pela Cris.`, {
 			description: `${changed} cena(s) montadas. Movimentos, transições, textos e efeitos continuam editáveis.`,
