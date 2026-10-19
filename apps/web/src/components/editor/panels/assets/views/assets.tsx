@@ -699,6 +699,8 @@ function MediaItemList({
 	onToggleBatchSelection: (id: string) => void;
 }) {
 	const isGrid = mode === "grid";
+	// Multi-select used to scan the full array for each media card (O(n²)).
+	const selectedBatchSet = useMemo(() => new Set(batchSelectedIds), [batchSelectedIds]);
 
 	return (
 		<div
@@ -719,7 +721,7 @@ function MediaItemList({
 							>
 								<input
 									type="checkbox"
-									checked={batchSelectedIds.includes(item.id)}
+									checked={selectedBatchSet.has(item.id)}
 									onChange={() => onToggleBatchSelection(item.id)}
 									className="size-4 accent-primary"
 									aria-label={`Selecionar ${item.name}`}
@@ -808,10 +810,10 @@ function MediaPreview({
 		return (
 			<div className="relative flex size-full items-center justify-center bg-muted">
 				<Image
-					src={item.url ?? ""}
+					src={item.thumbnailUrl ?? item.url ?? ""}
 					alt={item.name}
 					fill
-					sizes="100vw"
+					sizes={variant === "grid" ? "112px" : "72px"}
 					className="object-cover"
 					loading="lazy"
 					unoptimized
@@ -828,7 +830,7 @@ function MediaPreview({
 						src={item.thumbnailUrl}
 						alt={item.name}
 						fill
-						sizes="100vw"
+						sizes={variant === "grid" ? "112px" : "72px"}
 						className="rounded object-cover"
 						loading="lazy"
 						unoptimized
