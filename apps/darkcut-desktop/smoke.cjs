@@ -322,7 +322,8 @@ async function run(win) {
 		await until(win, "Array.from(document.querySelectorAll('[role=\"menuitem\"]')).some(item=>item.textContent?.includes(\"Data do arquivo\"))", 10000, "media:sort-menu-items");
 		const chosen = await execute(win, "(()=>{const item=Array.from(document.querySelectorAll('[role=\"menuitem\"]')).find(item=>item.textContent?.includes(\"Data do arquivo\"));if(!item)return false;item.click();return true;})()", "media:sort-date-select");
 		if (!chosen) throw new Error("Date sorting menu item did not respond");
-		await until(win, "document.body.innerText.includes('Ordem: data do arquivo · ' + (order==='desc'?'decrescente':'crescente'))", 10000, "media:date-" + label);
+		const expectedOrderLabel = order === "desc" ? "decrescente" : "crescente";
+		await until(win, `document.body.innerText.includes(${JSON.stringify(`Ordem: data do arquivo · ${expectedOrderLabel}`)})`, 10000, "media:date-" + label);
 	}
 
 	// The effects library must expose functional category buttons.
