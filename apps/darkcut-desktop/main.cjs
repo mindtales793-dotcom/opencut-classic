@@ -221,9 +221,11 @@ function startMinerExe(executable) {
   try {
     darkMinerProcess = spawn(executable, [], {
       cwd: path.dirname(executable), windowsHide: true,
-      stdio: "ignore",
+      stdio: ["ignore", "pipe", "pipe"],
       env: { ...process.env, DARKMINER_EMBEDDED: "1" },
     });
+    darkMinerProcess.stdout?.on("data", data => log("DarkMiner stdout: " + data.toString().trim().slice(0, 2000)));
+    darkMinerProcess.stderr?.on("data", data => log("DarkMiner stderr: " + data.toString().trim().slice(0, 2000)));
     darkMinerProcess.once("error", e => {
       log("DarkMiner launch failed: " + e.message);
       darkMinerProcess = null;
