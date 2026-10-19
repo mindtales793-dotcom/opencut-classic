@@ -18,6 +18,7 @@ import {
 import { STICKER_CATEGORIES } from "@/stickers/categories";
 import { getRegionLabel, resolveQueryToRegions } from "@/stickers";
 import { parseShapeStickerId } from "@/stickers/providers/shapes";
+import { buildAnimatedGraphicElement, buildAnimatedStickerAnimations, parseAnimatedStickerId } from "@/stickers/providers/animated";
 import type { TimelineDragData } from "@/timeline/drag";
 import type {
 	StickerBrowseSection,
@@ -344,6 +345,7 @@ function StickerItem({
 	const displayName = item.name;
 	const shapePreset =
 		item.provider === "shapes" ? parseShapeStickerId({ stickerId: item.id }) : null;
+	const animatedPreset = item.provider === "animated" ? parseAnimatedStickerId({ stickerId: item.id }) : null;
 
 	const handleAdd = async () => {
 		setIsAdding(true);
@@ -353,7 +355,9 @@ function StickerItem({
 			let element:
 				| ReturnType<typeof buildGraphicElement>
 				| ReturnType<typeof buildStickerElement>;
-			if (shapePreset) {
+			if (animatedPreset) {
+				element = buildAnimatedGraphicElement({ preset: animatedPreset, startTime: currentTime });
+			} else if (shapePreset) {
 				element = buildGraphicElement({
 					definitionId: shapePreset.definitionId,
 					name: shapePreset.name,
@@ -415,7 +419,16 @@ function StickerItem({
 		</div>
 	);
 
-	const dragData: TimelineDragData = shapePreset
+	const dragData: TimelineDragData = animatedPreset
+		? {
+				id: item.id,
+				type: "graphic",
+				name: displayName,
+				definitionId: animatedPreset.definitionId,
+				params: animatedPreset.params,
+				animations: buildAnimatedStickerAnimations({ preset: animatedPreset }),
+			}
+		: shapePreset
 		? {
 				id: item.id,
 				type: "graphic",
