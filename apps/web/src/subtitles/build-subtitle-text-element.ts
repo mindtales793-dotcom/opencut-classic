@@ -15,6 +15,7 @@ import type {
 	TextFontWeight,
 } from "@/text/primitives";
 import type { SubtitleCue, SubtitleStyleOverrides } from "./types";
+import { estimateKaraokeWords, type CaptionAnimationMode } from "./karaoke";
 
 const SUBTITLE_MAX_WIDTH_RATIO = 0.8;
 const SUBTITLE_BOTTOM_MARGIN_RATIO = 0.05;
@@ -345,4 +346,90 @@ export function buildSubtitleTextElement({
 			"transform.positionY": positionY,
 		},
 	};
+}
+
+/**
+ * Builds a highlight layer over the fully visible subtitle. Each word uses
+ * the same font metrics and line layout as the underlying text element.
+ * This makes karaoke visible in canvas preview AND the MP4 frame renderer.
+ */
+export function buildKaraokeHighlightElements({
+	index,
+	caption,
+	canvasSize,
+	animation,
+	highlightColor,
+}: {
+	index: number;
+	caption: SubtitleCue;
+	canvasSize: { width: number; height: number };
+	animation: Exclude<CaptionAnimationMode, "none">;
+	highlightColor: string;
+}): CreateTextElement[] {
+	const base = buildSubtitleTextElement({ index, caption, canvasSize });
+	const content = String(base.params.content ?? "");
+	const words = estimateKaraokeWords({ caption });
+	const ctx = createMeasurementContext();
+	if (!ctx || words.length === 0) return [];
+	const fontSize = Number(base.params.fontSize ?? SUBTITLE_FONT_SIZE);
+	const fontFamily = String(base.params.fontFamily ?? "Arial");
+	const fontWeight = String(base.params.fontWeight ?? "bold");
+	const fontStyle = String(base.params.fontStyle ?? "normal");
+	const textAlign = String(base.params.textAlign ?? "center");
+	const letterSpacing = Number(base.params.letterSpacing ?? 0);
+	const lineHeight = Number(base.params.lineHeight ?? DEFAULTS.text.lineHeight);
+	const scaledFontSize = fontSize * (canvasSize.height / FONT_SIZE_SCALE_REFERENCE);
+	ctx.font = `${fontStyle} ${fontWeight} ${scaledFontSize}px ${quoteFontFamily({ fontFamily })}, sans-serif`;
+	setCanvasLetterSpacing({ ctx, letterSpacingPx: letterSpacing });
+	const lines = content.split("\n");
+	const lineHeightPx = scaledFontSize * lineHeight;
+	const x = Number(base.params["transform.positionX"] ?? 0);
+	const y = Number(base.params["transform.positionY"] ?? 0);
+	const highlights: CreateTextElement[] = [];
+	let wordIndex = 0;
+	for (let lineIndex = 0; lineIndex < lines.length; lineIndex++) {
+		const line = lines[lineIndex];
+		const width = ctx.measureText(line).width;
+		const lineX = textAlign === "left" ? 0 : textAlign === "right" ? -width : -width / 2;
+		for (const match of line.matchAll(/\S+/gu)) {
+			const timing = words[wordIndex];
+			if (!timing) break;
+			const prefix = line.slice(0, match.index);
+			const localX = lineX + ctx.measureText(prefix).width;
+			const localY = (lineIndex - (lines.length - 1) / 2) * lineHeightPx;
+			const duration = Math.max(0.001, timing.duration);
+			const popEnd = Math.min(0.18, duration / 2);
+			const popStart = Math.min(0.08, popEnd / 2);
+			const scaleKeys = (property: string) => ({
+				keys: [
+					{ id: `karaoke-${index}-${wordIndex}-${property}-start`, time: mediaTimeFromSeconds({ seconds: 0 }), value: 0.82, segmentToNext: "linear" as const, tangentMode: "auto" as const },
+					{ id: `karaoke-${index}-${wordIndex}-${property}-peak`, time: mediaTimeFromSeconds({ seconds: popStart }), value: 1.12, segmentToNext: "linear" as const, tangentMode: "auto" as const },
+					{ id: `karaoke-${index}-${wordIndex}-${property}-end`, time: mediaTimeFromSeconds({ seconds: popEnd }), value: 1, segmentToNext: "linear" as const, tangentMode: "auto" as const },
+				],
+			});
+			highlights.push({
+				...base,
+				name: `Karaokê ${index + 1} · palavra ${wordIndex + 1}`,
+				startTime: mediaTimeFromSeconds({ seconds: timing.startTime }),
+				duration: mediaTimeFromSeconds({ seconds: duration }),
+				params: {
+					...base.params,
+					content: match[0],
+					color: highlightColor,
+					textAlign: "left",
+					"background.enabled": false,
+					"transform.positionX": x + localX,
+					"transform.positionY": y + localY,
+				},
+				...(animation === "karaoke-pop" ? {
+					animations: {
+						"transform.scaleX": scaleKeys("scaleX"),
+						"transform.scaleY": scaleKeys("scaleY"),
+					},
+				} : {}),
+			});
+			wordIndex++;
+		}
+	}
+	return highlights;
 }
