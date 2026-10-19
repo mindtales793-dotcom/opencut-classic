@@ -56,6 +56,7 @@ import {
 import { MASKABLE_ELEMENT_TYPES } from "@/timeline";
 import { useTimelineStore } from "@/timeline/timeline-store";
 import type { MediaAsset } from "@/media/types";
+import { sortProjectMedia } from "@/darkcut/media-sort";
 import { cn } from "@/utils/ui";
 import {
 	CloudUploadIcon,
@@ -205,57 +206,20 @@ export function MediaView() {
 				order: mediaSortOrder === "asc" ? "desc" : "asc",
 			});
 		} else {
-			setMediaSort({ key, order: "asc" });
+			setMediaSort({ key, order: key === "date" ? "desc" : "asc" });
 		}
 	};
 
-	const naturalOrder = useMemo(() => new Intl.Collator("pt-BR", { numeric: true, sensitivity: "base" }), []);
-	const filteredMediaItems = useMemo(() => {
-		const filtered = mediaFiles.filter(
-			(item) =>
-				!item.ephemeral &&
-				(mediaCategory === "audio"
-					? item.type === "audio"
-					: item.type !== "audio"),
-		);
-
-		filtered.sort((a, b) => {
-			// Preserve natural ordering: Cena 2 comes before Cena 10.
-			if (mediaSortBy === "scene" || mediaSortBy === "name") {
-				const value = naturalOrder.compare(a.name, b.name);
-				return (mediaSortOrder === "asc" ? value : -value) || naturalOrder.compare(a.id, b.id);
-			}
-			if (mediaSortBy === "date") {
-				const value = (a.file?.lastModified ?? 0) - (b.file?.lastModified ?? 0);
-				return (mediaSortOrder === "asc" ? value : -value) || naturalOrder.compare(a.name, b.name);
-			}
-			let valueA: string | number;
-			let valueB: string | number;
-
-			switch (mediaSortBy) {
-				case "type":
-					valueA = a.type;
-					valueB = b.type;
-					break;
-				case "duration":
-					valueA = a.duration || 0;
-					valueB = b.duration || 0;
-					break;
-				case "size":
-					valueA = a.file.size;
-					valueB = b.file.size;
-					break;
-				default:
-					return 0;
-			}
-
-			if (valueA < valueB) return mediaSortOrder === "asc" ? -1 : 1;
-			if (valueA > valueB) return mediaSortOrder === "asc" ? 1 : -1;
-			return 0;
-		});
-
-		return filtered;
-	}, [mediaFiles, mediaSortBy, mediaSortOrder, mediaCategory, naturalOrder]);
+	const filteredMediaItems = useMemo(
+		() => sortProjectMedia(
+			mediaFiles.filter((item) => !item.ephemeral && (
+				mediaCategory === "audio" ? item.type === "audio" : item.type !== "audio"
+			)),
+			mediaSortBy,
+			mediaSortOrder,
+		),
+		[mediaFiles, mediaCategory, mediaSortBy, mediaSortOrder],
+	);
 	const orderedMediaIds = useMemo(() => {
 		return filteredMediaItems.map((item) => item.id);
 	}, [filteredMediaItems]);
@@ -875,6 +839,7 @@ function MediaActions({
 							}
 							disabled={isProcessing}
 							className="items-center justify-center"
+							aria-label="Alternar visualização em lista e grade"
 						>
 							{mediaViewMode === "grid" ? (
 								<HugeiconsIcon icon={LeftToRightListDashIcon} />
@@ -900,6 +865,7 @@ function MediaActions({
 									variant="ghost"
 									disabled={isProcessing}
 									className="items-center justify-center"
+									aria-label="Organizar mídias"
 								>
 									<HugeiconsIcon icon={SortingOneNineIcon} />
 								</Button>
@@ -921,28 +887,28 @@ function MediaActions({
 								onSort={onSort}
 							/>
 							<SortMenuItem
-								label="Name"
+								label="Nome"
 								sortKey="name"
 								currentSortBy={sortBy}
 								currentSortOrder={sortOrder}
 								onSort={onSort}
 							/>
 							<SortMenuItem
-								label="Type"
+								label="Tipo"
 								sortKey="type"
 								currentSortBy={sortBy}
 								currentSortOrder={sortOrder}
 								onSort={onSort}
 							/>
 							<SortMenuItem
-								label="Duration"
+								label="Duração"
 								sortKey="duration"
 								currentSortBy={sortBy}
 								currentSortOrder={sortOrder}
 								onSort={onSort}
 							/>
 							<SortMenuItem
-								label="File size"
+								label="Tamanho do arquivo"
 								sortKey="size"
 								currentSortBy={sortBy}
 								currentSortOrder={sortOrder}
@@ -963,7 +929,7 @@ function MediaActions({
 				size="sm"
 				onClick={onSetSceneOrder}
 				disabled={isProcessing}
-				title="Ordenar imagens por número de cena para o SRT"
+				title="Ordenar imagens por número de cena para o SRT" aria-label="Ordenar mídias de 1 até N"
 			>1→N</Button>
 			<label className="flex h-8 cursor-pointer items-center gap-1.5 rounded-md border px-2 text-xs">
 				<input
