@@ -1,4 +1,5 @@
 import { mediaTimeFromSeconds, mediaTimeToSeconds } from "@/wasm";
+import type { MediaTime } from "@/wasm";
 import { buildGraphicElement } from "@/timeline/element-utils";
 import type { CreateGraphicElement } from "@/timeline/types";
 import type { CrisSceneType, CrisVisualSlot } from "@/darkcut/cris";
@@ -16,8 +17,8 @@ export function buildRemotionCompositionClip({
   templateId, templateTitle, heading, subtitle, sceneType, visualSlot,
   intensity, retroMode = "auto",
 }: {
-  startTime: number;
-  duration: number;
+  startTime: MediaTime;
+  duration: MediaTime;
   canvasWidth: number;
   canvasHeight: number;
   templateId: string;
