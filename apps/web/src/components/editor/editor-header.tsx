@@ -22,6 +22,7 @@ import { DEFAULT_LOGO_URL } from "@/site/brand";
 import { SOCIAL_LINKS } from "@/site/social";
 import { toast } from "sonner";
 import { useEditor } from "@/editor/use-editor";
+import { invokeAction } from "@/actions";
 import { CommandIcon, Logout05Icon } from "@hugeicons/core-free-icons";
 import { HugeiconsIcon } from "@hugeicons/react";
 import { ShortcutsDialog } from "@/actions/components/shortcuts-dialog";
@@ -33,6 +34,7 @@ export function EditorHeader() {
 	const resolution = useEditor(
 		(e) => e.project.getActive().settings.canvasSize,
 	);
+	const [canUndo, canRedo] = useEditor((e) => [e.command.canUndo(), e.command.canRedo()]);
 	const showProperties = usePanelStore((s) => s.showProperties);
 	const toggleProperties = usePanelStore((s) => s.toggleProperties);
 	return (
@@ -60,6 +62,14 @@ export function EditorHeader() {
 				<EditableProjectName />
 			</div>
 			<nav className="flex items-center gap-2">
+				<div className="flex items-center gap-1 rounded-md border border-border/60 p-0.5" role="group" aria-label="Histórico de edição">
+					<Button variant="ghost" size="sm" disabled={!canUndo} onClick={() => invokeAction("undo")} title="Desfazer (Ctrl+Z)" aria-label="Desfazer última edição">
+						<span aria-hidden="true" className="text-lg leading-none">↶</span> <span className="hidden xl:inline">Desfazer</span>
+					</Button>
+					<Button variant="ghost" size="sm" disabled={!canRedo} onClick={() => invokeAction("redo")} title="Refazer (Ctrl+Y / Ctrl+Shift+Z)" aria-label="Refazer última edição">
+						<span aria-hidden="true" className="text-lg leading-none">↷</span> <span className="hidden xl:inline">Refazer</span>
+					</Button>
+				</div>
 				<Button
 					variant="ghost"
 					size="sm"
