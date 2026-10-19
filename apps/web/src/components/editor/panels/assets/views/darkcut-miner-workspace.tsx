@@ -122,10 +122,10 @@ export function DarkMinerWorkspace() {
         <div className="flex min-h-0 flex-1 items-center justify-center p-8">
           <div className="max-w-md space-y-4 rounded-xl border border-red-900/40 bg-[#161417] p-6 text-center text-white">
             <div className="text-4xl">📡</div>
-            <h3 className="text-lg font-semibold">Conectar o Dark Miner 3.6.1</h3>
+            <h3 className="text-lg font-semibold">Iniciando o DarkMiner integrado</h3>
             <p className="text-sm leading-relaxed text-slate-300">
-              O Dark Miner precisa executar o serviço local na porta 8000.
-              Assim a extensão do Chrome e esta tela compartilham os canais, favoritos e monitoramento.
+              O DARKCUT inicia automaticamente o serviço DarkMiner incluído no instalador.
+              O banco local preserva os canais, favoritos e monitoramento da extensão Chrome.
             </p>
             <div className="flex flex-wrap justify-center gap-2">
               <Button disabled={busy} onClick={() => { void launch(); }}>
@@ -142,8 +142,8 @@ export function DarkMinerWorkspace() {
                 status.message || "Ao abrir a aba, o DARKCUT tenta iniciar automaticamente o executável já cadastrado."}
             </p>
             <p className="text-xs text-slate-500">
-              A versão 3.6.1 original pode abrir uma janela separada.
-              Para usar somente esta tela, instale o launcher de integração sem janela extra.
+              Se o serviço integrado falhar, você ainda pode selecionar um executável antigo.
+              Não é necessário abrir outra janela nem usar o CMD.
             </p>
           </div>
         </div>

@@ -186,7 +186,38 @@ function startServer() {
 // The user chooses an existing, trusted Dark Miner EXE through a native file
 // picker. Web content NEVER supplies a process path or shell arguments.
 const minerPreferencesFile = path.join(app.getPath("userData"), "darkminer-integration.json");
+function bundledMinerPath() {
+  const toolsRoot = app.isPackaged ? path.join(process.resourcesPath, "tools") : path.join(__dirname, "tools");
+  const exe = path.join(toolsRoot, "darkminer", "DarkMiner-Service.exe");
+  return fs.existsSync(exe) ? exe : null;
+}
+async function minerAlreadyOnline() {
+  return new Promise(resolve => {
+    const req = http.get({host: HOST, port: 8000, path: "/api/status", timeout: 800}, res => {
+      if (res.statusCode !== 200) { res.resume(); resolve(false); return; }
+      let body = "";
+      res.on("data", chunk => { if (body.length < 8192) body += chunk; });
+      res.on("end", () => {
+        try { const data = JSON.parse(body); resolve(data.ok === true && /^3\\./.test(data.version || "")); }
+        catch { resolve(false); }
+      });
+      res.on("error", () => resolve(false));
+    });
+    req.on("timeout", () => req.destroy());
+    req.on("error", () => resolve(false));
+  });
+}
+async function startBundledMiner() {
+  const exe = bundledMinerPath();
+  if (!exe) { log("Bundled DarkMiner service not available; legacy manual integration remains."); return; }
+  if (await minerAlreadyOnline()) { log("Reusing already-running DarkMiner on port 8000."); return; }
+  const result = startMinerExe(exe);
+  if (!result.ok) log("Bundled DarkMiner launch failed: " + result.error);
+}
+
 function localMinerPath() {
+  const bundled = bundledMinerPath();
+  if (bundled) return bundled;
   try {
     const config = JSON.parse(fs.readFileSync(minerPreferencesFile, "utf8"));
     if (typeof config.executable !== "string" ||
@@ -224,7 +255,7 @@ function startMinerExe(executable) {
       log("DarkMiner stopped: " + code);
       darkMinerProcess = null;
     });
-    log("DarkMiner started from user-approved local executable.");
+    log("DarkMiner background service started (" + (executable === bundledMinerPath() ? "bundled" : "custom") + ").");
     return { ok: true, alreadyRunning: false };
   } catch (error) {
     return { ok: false, error: error instanceof Error ? error.message : "Falha ao abrir o Dark Miner." };
@@ -388,6 +419,8 @@ if (hasLock) app.whenReady().then(async () => {
     await ensurePortAvailable();
     startServer();
     await waitForServer();
+    // Start the packaged service automatically. Both editor and extension use localhost:8000.
+    await startBundledMiner();
     await win.loadURL(`http://${HOST}:${PORT}/projects`);
     if (smokeTest) {
       await require("./smoke.cjs").run(win);
