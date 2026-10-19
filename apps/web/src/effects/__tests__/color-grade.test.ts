@@ -6,7 +6,9 @@ import type { FrameItemDescriptor, TextureUploadDescriptor } from "../../service
 
 describe("color grading", () => {
 	test("five presets expose real canvas-compatible color passes", () => {
-		expect(COLOR_GRADE_EFFECTS).toHaveLength(5);
+		expect(COLOR_GRADE_EFFECTS).toHaveLength(21);
+		expect(new Set(COLOR_GRADE_EFFECTS.map(effect => effect.type)).size).toBe(21);
+		const keys = new Set<string>();
 		for (const effect of COLOR_GRADE_EFFECTS) {
 			const params = Object.fromEntries(effect.params.map((param) => [param.key, param.default]));
 			const pass = effect.renderer.passes[0];
@@ -17,8 +19,10 @@ describe("color grading", () => {
 			expect(css.filter).toContain("brightness(");
 			expect(css.filter).toContain("contrast(");
 			expect(css.filter).toContain("saturate(");
+			keys.add(JSON.stringify(uniforms));
 			expect(css.tintOpacity).toBeGreaterThanOrEqual(0);
 		}
+		expect(keys.size).toBe(21);
 	});
 
 	test("out-of-range values are clamped", () => {
