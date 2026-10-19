@@ -261,6 +261,61 @@ export function MediaView() {
 		setBatchSelectedIds(allBatchSelected ? [] : batchSelectableIds);
 	};
 
+
+	const exportSelectedMedia = async ({ ids }: { ids: string[] }) => {
+		const selected = mediaFiles.filter((asset) => ids.includes(asset.id) && !asset.ephemeral);
+		if (selected.length === 0) {
+			toast.error("Selecione uma mídia do projeto para exportar.");
+			return;
+		}
+		try {
+			const used = new Set<string>();
+			const filename = (asset: MediaAsset) => {
+				const sanitized = (asset.name || "midia")
+					.replace(/[<>:"/\\|?*\\x00-\\x1f]/g, "-").trim() || "midia";
+				const dot = sanitized.lastIndexOf(".");
+				const base = dot > 0 ? sanitized.slice(0, dot) : sanitized;
+				const ext = dot > 0 ? sanitized.slice(dot) : "";
+				let candidate = sanitized;
+				for (let index = 2; used.has(candidate.toLowerCase()); index++) {
+					candidate = `${base} (${index})${ext}`;
+				}
+				used.add(candidate.toLowerCase());
+				return candidate;
+			};
+			const picker = (window as Window & {
+				showDirectoryPicker?: () => Promise<FileSystemDirectoryHandle>;
+			}).showDirectoryPicker;
+			if (selected.length > 1 && typeof picker === "function") {
+				const directory = await picker();
+				for (const asset of selected) {
+					const target = await directory.getFileHandle(filename(asset), { create: true });
+					const writer = await target.createWritable();
+					try { await writer.write(asset.file); }
+					finally { await writer.close(); }
+				}
+				toast.success(`${selected.length} mídias exportadas para a pasta escolhida.`);
+				return;
+			}
+			for (const asset of selected) {
+				const url = URL.createObjectURL(asset.file);
+				const link = document.createElement("a");
+				link.href = url;
+				link.download = filename(asset);
+				document.body.append(link);
+				link.click();
+				link.remove();
+				window.setTimeout(() => URL.revokeObjectURL(url), 60_000);
+			}
+			toast.success(selected.length === 1
+				? "Download da mídia iniciado."
+				: `${selected.length} downloads iniciados. Autorize múltiplos arquivos se o navegador solicitar.`);
+		} catch (error) {
+			if (error instanceof DOMException && error.name === "AbortError") return;
+			toast.error(error instanceof Error ? error.message : "Não foi possível exportar as mídias.");
+		}
+	};
+
 	const addSelectedToTimeline = async () => {
 		if (isAddingBatch) return;
 
@@ -493,6 +548,7 @@ export function MediaView() {
 							items={filteredMediaItems}
 							mode={mediaViewMode}
 							onRemove={handleRemove}
+							onExport={exportSelectedMedia}
 							batchSelectedIds={batchSelectedIds}
 							onToggleBatchSelection={toggleBatchSelection}
 						/>
@@ -572,6 +628,7 @@ function MediaItemWithContextMenu({
 	item,
 	children,
 	onRemove,
+	onExport,
 }: {
 	item: MediaAsset;
 	children: React.ReactNode;
@@ -582,6 +639,7 @@ function MediaItemWithContextMenu({
 		event: React.MouseEvent;
 		ids: string[];
 	}) => void;
+	onExport: ({ ids }: { ids: string[] }) => void;
 }) {
 	const { isSelected, selectedIds } = useSelection();
 	const idsToDelete = isSelected(item.id) ? selectedIds : [item.id];
@@ -592,7 +650,9 @@ function MediaItemWithContextMenu({
 		<ContextMenu>
 			<ContextMenuTrigger asChild>{children}</ContextMenuTrigger>
 			<ContextMenuContent>
-				<ContextMenuItem>Export clips</ContextMenuItem>
+				<ContextMenuItem onSelect={() => onExport({ ids: idsToDelete })}>
+					Exportar {idsToDelete.length === 1 ? "arquivo" : `${idsToDelete.length} arquivos`}
+				</ContextMenuItem>
 				<ContextMenuItem
 					variant="destructive"
 					onClick={(event: React.MouseEvent<HTMLDivElement>) =>
@@ -610,6 +670,7 @@ function MediaItemList({
 	items,
 	mode,
 	onRemove,
+	onExport,
 	batchSelectedIds,
 	onToggleBatchSelection,
 }: {
@@ -622,6 +683,7 @@ function MediaItemList({
 		event: React.MouseEvent;
 		ids: string[];
 	}) => void;
+	onExport: ({ ids }: { ids: string[] }) => void;
 	batchSelectedIds: string[];
 	onToggleBatchSelection: (id: string) => void;
 }) {
@@ -635,7 +697,7 @@ function MediaItemList({
 			}
 		>
 			{items.map((item) => (
-				<MediaItemWithContextMenu item={item} onRemove={onRemove} key={item.id}>
+				<MediaItemWithContextMenu item={item} onRemove={onRemove} onExport={onExport} key={item.id}>
 					<SelectableItem className={cn(!isGrid && "w-full")} id={item.id}>
 						{item.type === "image" || item.type === "video" ? (
 							<label
