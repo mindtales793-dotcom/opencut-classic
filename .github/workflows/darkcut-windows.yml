@@ -4,6 +4,9 @@ name: DarkCut Windows App
 
 on:
   workflow_dispatch:
+  pull_request:
+    branches:
+      - darkcut-studio
   push:
     branches:
       - darkcut-studio
