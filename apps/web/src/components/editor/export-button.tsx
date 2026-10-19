@@ -42,6 +42,7 @@ import {
 } from "@/services/renderer/ffmpeg-exporter";
 import { useEditor } from "@/editor/use-editor";
 import { DEFAULT_EXPORT_OPTIONS } from "@/export/defaults";
+import { EXPORT_RESOLUTIONS, EXPORT_FPS_PRESETS, getExportDimensions, getExportFps, type ExportResolution, type ExportFpsPreset } from "@/export/presets";
 
 function isExportFormat(value: string): value is ExportFormat {
 	return EXPORT_FORMAT_VALUES.some((formatValue) => formatValue === value);
@@ -144,6 +145,8 @@ function ExportPopover({
 		DEFAULT_EXPORT_OPTIONS.includeAudio ?? true,
 	);
 	const [engine, setEngine] = useState<ExportEngine>("auto");
+	const [resolution, setResolution] = useState<ExportResolution>("original");
+	const [fpsPreset, setFpsPreset] = useState<ExportFpsPreset>("project");
 	const [capabilities, setCapabilities] = useState<FfmpegCapabilities | null>(
 		null,
 	);
@@ -161,6 +164,14 @@ function ExportPopover({
 
 	const handleExport = async () => {
 		if (!activeProject) return;
+		let dimensions: { width: number; height: number };
+		try {
+			dimensions = getExportDimensions({ source: activeProject.settings.canvasSize, resolution });
+		} catch (error) {
+			toast.error(error instanceof Error ? error.message : "Resolução inválida.");
+			return;
+		}
+		const selectedFps = getExportFps({ fps: activeProject.settings.fps, preset: fpsPreset });
 
 		// Export is independent from preview playback. Free preview resources and
 		// keep the UI usable while the renderer continues in the background.
@@ -170,7 +181,8 @@ function ExportPopover({
 			options: {
 				format,
 				quality,
-				fps: activeProject.settings.fps,
+				fps: selectedFps,
+				canvasSize: dimensions,
 				includeAudio: shouldIncludeAudio,
 				engine,
 				filename: activeProject.metadata.name,
@@ -197,9 +209,9 @@ function ExportPopover({
 
 			editor.project.clearExportState();
 			toast.success("Exportação concluída.", {
-				description: result.encoderLabel
-					? `Renderizado com ${result.encoderLabel}.`
-					: "O arquivo foi enviado para a pasta de downloads.",
+				description: result.verified
+					? `${result.verified.width}×${result.verified.height} · ${result.verified.fps.toFixed(2)} FPS · ${result.verified.codec.toUpperCase()} · qualidade ${result.verified.quality} (verificado com FFprobe).`
+					: `${dimensions.width}×${dimensions.height} · ${(selectedFps.numerator / selectedFps.denominator).toFixed(2)} FPS · qualidade ${quality} · ${result.encoderLabel || "encoder do navegador"}.`,
 			});
 			onOpenChange(false);
 			return;
@@ -218,7 +230,7 @@ function ExportPopover({
 	};
 
 	return (
-		<PopoverContent className="bg-background mr-4 flex w-80 flex-col p-0">
+		<PopoverContent className="bg-background mr-4 flex max-h-[85vh] w-88 flex-col overflow-y-auto p-0">
 			{exportResult && !exportResult.success ? (
 				<ExportError
 					error={exportResult.error || "Ocorreu um erro desconhecido."}
@@ -236,6 +248,24 @@ function ExportPopover({
 						{!isExporting && (
 							<>
 								<div className="flex flex-col">
+									<Section collapsible defaultOpen={true} showTopBorder={false}>
+										<SectionHeader><SectionTitle>Resolução e FPS</SectionTitle></SectionHeader>
+										<SectionContent>
+											<div className="grid grid-cols-2 gap-2">
+												<label className="flex flex-col gap-1 text-xs">Resolução
+													<select aria-label="Resolução de exportação" className="w-full rounded-md border bg-background p-2" value={resolution} onChange={e=>setResolution(e.target.value as ExportResolution)}>
+														{EXPORT_RESOLUTIONS.map(value=><option key={value} value={value}>{value === "original" ? "Original" : value}</option>)}
+													</select>
+												</label>
+												<label className="flex flex-col gap-1 text-xs">FPS
+													<select aria-label="FPS de exportação" className="w-full rounded-md border bg-background p-2" value={fpsPreset} onChange={e=>setFpsPreset(e.target.value as ExportFpsPreset)}>
+														{EXPORT_FPS_PRESETS.map(value=><option key={value.id} value={value.id}>{value.label}</option>)}
+													</select>
+												</label>
+											</div>
+											<p className="mt-2 text-xs text-muted-foreground">O enquadramento é mantido na resolução escolhida. O arquivo FFmpeg é verificado antes do download.</p>
+										</SectionContent>
+									</Section>
 									<Section
 										collapsible
 										defaultOpen={false}
