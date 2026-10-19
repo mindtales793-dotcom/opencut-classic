@@ -16,9 +16,9 @@ export type ExportQuality = (typeof EXPORT_QUALITY_VALUES)[number];
 /**
  * - "auto": FFmpeg with GPU encoding when the desktop runtime provides it,
  *   otherwise the in-browser encoder.
- * - "browser": always use the in-browser (WebCodecs) encoder.
+ * - "software": FFmpeg CPU encoder only, prioritizes stability and repeatable quality.\n * - "browser": always use the in-browser (WebCodecs) encoder.
  */
-export const EXPORT_ENGINE_VALUES = ["auto", "browser"] as const;
+export const EXPORT_ENGINE_VALUES = ["auto", "software", "browser"] as const;
 export type ExportEngine = (typeof EXPORT_ENGINE_VALUES)[number];
 
 export interface ExportOptions {
