@@ -6,7 +6,7 @@ import {
 } from "../template-visual-profiles";
 
 describe("All DarkCut template families", () => {
-	const ids=["retro-automotive","pov-finance","pov-car","dark-channel","documentary","pov","vox","cinematic","educational","list","storytelling"];
+	const ids=["retro-automotive","pov-finance","pov-car","dark-channel","documentary","pov","vox","cinematic","educational","list","storytelling","shorts-hook","tech-neon","news-brief","podcast-cuts","minimal-clean","meme-reaction","travel-vlog","real-estate"];
 	test("every existing template has a full visual profile", () => {
 		expect(Object.keys(TEMPLATE_VISUAL_PROFILES).sort()).toEqual([...ids].sort());
 		for(const id of ids) {
