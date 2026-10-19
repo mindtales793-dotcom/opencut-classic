@@ -25,7 +25,6 @@ import type {
 	TextureCanvasDrawFn,
 	TextureUploadDescriptor,
 } from "./types";
-import { DEFAULT_GRAPHIC_SOURCE_SIZE } from "@/graphics";
 import { prepareColorAdjustedFrame } from "./color-pass-processing";
 import type { EffectPass } from "@/effects/types";
 
@@ -237,11 +236,11 @@ async function collectVisualSourceNode({
 
 	const sourceWidth =
 		node instanceof GraphicNode
-			? DEFAULT_GRAPHIC_SOURCE_SIZE
+			? node.sourceSize
 			: (node.resolved as ResolvedVisualSourceNodeState).sourceWidth;
 	const sourceHeight =
 		node instanceof GraphicNode
-			? DEFAULT_GRAPHIC_SOURCE_SIZE
+			? node.sourceSize
 			: (node.resolved as ResolvedVisualSourceNodeState).sourceHeight;
 
 	const textureId = `${path}:source`;
