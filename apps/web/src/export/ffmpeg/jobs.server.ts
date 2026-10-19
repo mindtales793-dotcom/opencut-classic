@@ -476,8 +476,15 @@ export function getFinishedFile(job: ExportJob): {
 
 export async function removeJob(job: ExportJob): Promise<void> {
 	store().jobs.delete(job.id);
-	if (job.child) killProcessTree(job.child);
-	await rm(job.dir, { recursive: true, force: true }).catch(() => undefined);
+	if (job.child) {
+		job.child.stdin?.destroy();
+		killProcessTree(job.child);
+		await Promise.race([
+			job.exit ?? Promise.resolve(0),
+			new Promise<void>((resolve) => setTimeout(resolve, 5000)),
+		]);
+	}
+	await rm(job.dir, { recursive: true, force: true, maxRetries: 15, retryDelay: 200 });
 }
 
 export async function cancelJob(id: string): Promise<void> {
