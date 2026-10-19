@@ -43,9 +43,10 @@ export async function POST(request: Request, { params }: RouteContext) {
 		}
 
 		if (action === "finish") {
-			const { size } = await finishJob({ job });
+			const { size, verified } = await finishJob({ job });
 			return NextResponse.json({
 				size,
+				verified,
 				downloadUrl: `/api/darkcut/export/${job.id}`,
 			});
 		}
