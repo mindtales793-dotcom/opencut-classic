@@ -368,6 +368,34 @@ async function run(win) {
 	await clickByAria(win, "Produção", "layout:return-production");
 	await until(win, `!!document.querySelector('[data-darkcut-workspace="tools"]')`, 10000, "layout:return-production-check");
 
+	// The Electron package must bring up the actual bundled Python backend,
+	// not merely display a DarkMiner placeholder or a disconnected iframe.
+	let embeddedMinerReady = false;
+	for (let attempt = 0; attempt < 35 && !embeddedMinerReady; attempt++) {
+		for (let port = 8000; port <= 8010; port++) {
+			try {
+				const response = await fetch(`http://127.0.0.1:${port}/api/status`, {
+					signal: AbortSignal.timeout(1200),
+				});
+				if (!response.ok) continue;
+				const data = await response.json();
+				if (data.ok === true && data.version === "3.6.2") {
+					const channels = await fetch(`http://127.0.0.1:${port}/api/v3/channels`, {
+						signal: AbortSignal.timeout(1200),
+					});
+					if (channels.ok) embeddedMinerReady = true;
+					break;
+				}
+			} catch {
+				// PyInstaller one-file extraction and service initialization take time.
+			}
+		}
+		if (!embeddedMinerReady) await new Promise(resolve => setTimeout(resolve, 500));
+	}
+	if (!embeddedMinerReady) {
+		throw new Error("Bundled DarkMiner 3.6.2 did not respond from the packaged Electron app.");
+	}
+
 	const screenshot = await win.webContents.capturePage();
 	if (process.env.DARKCUT_SMOKE_REPORT) {
 		fs.writeFileSync(
@@ -380,6 +408,7 @@ async function run(win) {
 		ok: true,
 		checks: [
 			"packaged server started",
+			"embedded DarkMiner 3.6.2 API started from packaged Electron",
 			"projects hydrated",
 			"project created",
 			"editor loaded",
