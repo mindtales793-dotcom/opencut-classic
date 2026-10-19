@@ -272,7 +272,7 @@ export function MediaView() {
 			const used = new Set<string>();
 			const filename = (asset: MediaAsset) => {
 				const sanitized = (asset.name || "midia")
-					.replace(/[<>:"/\\|?*\\x00-\\x1f]/g, "-").trim() || "midia";
+					.replace(/[<>:"|?*\u0000-\u001f]/g, "-").replaceAll("/", "-").replaceAll("\\", "-").trim() || "midia";
 				const dot = sanitized.lastIndexOf(".");
 				const base = dot > 0 ? sanitized.slice(0, dot) : sanitized;
 				const ext = dot > 0 ? sanitized.slice(dot) : "";
