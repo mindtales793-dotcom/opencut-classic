@@ -210,8 +210,8 @@ function ExportPopover({
 			editor.project.clearExportState();
 			toast.success("Exportação concluída.", {
 				description: result.verified
-					? `${result.verified.width}×${result.verified.height} · ${result.verified.fps.toFixed(2)} FPS · ${result.verified.codec.toUpperCase()} · qualidade ${result.verified.quality} (verificado com FFprobe).`
-					: `${dimensions.width}×${dimensions.height} · ${(selectedFps.numerator / selectedFps.denominator).toFixed(2)} FPS · qualidade ${quality} · ${result.encoderLabel || "encoder do navegador"}.`,
+					? `${result.verified.width}×${result.verified.height} · ${result.verified.fps.toFixed(2)} FPS · ${result.verified.codec.toUpperCase()} · preset ${result.verified.quality} aplicado (codec, resolução e FPS verificados com FFprobe).`
+					: `${dimensions.width}×${dimensions.height} · ${(selectedFps.numerator / selectedFps.denominator).toFixed(2)} FPS · preset ${quality} solicitado · ${result.encoderLabel || "encoder do navegador"} (sem validação FFprobe).`,
 			});
 			onOpenChange(false);
 			return;
@@ -348,7 +348,7 @@ function ExportPopover({
 													</Label>
 												</div>
 												<div className="flex items-center space-x-2">
-													<RadioGroupItem value="browser" id="engine-browser" />
+													<RadioGroupItem value="software" id="engine-software" />\n\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t<Label htmlFor="engine-software">Estável - FFmpeg no processador (mantém formato e qualidade)</Label>\n\t\t\t\t\t\t\t\t\t\t\t\t\t\t</div>\n\t\t\t\t\t\t\t\t\t\t\t\t\t\t<div className="flex items-center space-x-2">\n\t\t\t\t\t\t\t\t\t\t\t\t\t\t<RadioGroupItem value="browser" id="engine-browser" />
 													<Label htmlFor="engine-browser">
 														Compatível - encoder do navegador
 													</Label>
