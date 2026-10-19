@@ -221,6 +221,10 @@ export class RendererManager {
 				return ffmpegResult;
 			}
 
+			if (engine === "software") {
+				return { success: false, error: "FFmpeg indisponível. Instale as ferramentas de vídeo do DarkCut para exportar no modo estável, ou selecione explicitamente o encoder do navegador." };
+			}
+
 			const exporter = new SceneExporter({
 				width: exportSize.width,
 				height: exportSize.height,
