@@ -213,6 +213,7 @@ export class RendererManager {
 					format,
 					quality,
 					filename: options.filename ?? activeProject.metadata.name,
+					preferSoftwareOnly: engine === "software",
 					audioBuffer,
 					onProgress: reportProgress,
 					onCancel,
@@ -284,6 +285,7 @@ export class RendererManager {
 		format,
 		quality,
 		filename,
+		preferSoftwareOnly = false,
 		audioBuffer,
 		onProgress,
 		onCancel,
@@ -297,6 +299,7 @@ export class RendererManager {
 		format: ExportOptions["format"];
 		quality: ExportOptions["quality"];
 		filename: string;
+		preferSoftwareOnly?: boolean;
 		audioBuffer: AudioBuffer | null;
 		onProgress: (progress: number) => void;
 		onCancel?: () => boolean;
@@ -304,7 +307,7 @@ export class RendererManager {
 		// Hardware encoders can pass a small capability probe but fail when an
 		// actual 4K project is fed to the driver. Retry once on the CPU with
 		// the SAME selected codec container and quality (never silently downgrade).
-		for (const preferSoftware of [false, true]) {
+		for (const preferSoftware of (preferSoftwareOnly ? [true] : [false, true])) {
 			const exporter = new FfmpegSceneExporter({
 				width,
 				height,
