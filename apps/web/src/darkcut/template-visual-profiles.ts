@@ -70,6 +70,46 @@ export const TEMPLATE_VISUAL_PROFILES: Record<string, TemplateVisualProfile> = {
 		background: "#211b30", foreground: "#faf0ff", accent: "#cf99ff", card: "#332743", cardText: "#faf0ff", tempo: "medium",
 		graphics: ["Personagem e ambiente", "Conflito visual", "Virada dramática", "Antes x depois", "Conclusão"],
 	},
+	"shorts-hook": {
+		id: "shorts-hook", name: "Shorts • Gancho", family: "social",
+		background: "#201126", foreground: "#fff7ff", accent: "#fb7185", card: "#3a1743", cardText: "#ffffff", tempo: "fast",
+		graphics: ["Gancho inicial","Cartela de benefício","CTA curto"],
+	},
+	"tech-neon": {
+		id: "tech-neon", name: "Tecnologia Neon", family: "explainer",
+		background: "#081928", foreground: "#e0faff", accent: "#22d3ee", card: "#10324b", cardText: "#e0faff", tempo: "medium",
+		graphics: ["Comparação de recursos","Número-chave","Etiqueta técnica"],
+	},
+	"news-brief": {
+		id: "news-brief", name: "Noticiário Express", family: "editorial",
+		background: "#0d1c36", foreground: "#ffffff", accent: "#60a5fa", card: "#193253", cardText: "#ffffff", tempo: "medium",
+		graphics: ["Cartela de local","Identificação","Resumo da notícia"],
+	},
+	"podcast-cuts": {
+		id: "podcast-cuts", name: "Cortes de Podcast", family: "social",
+		background: "#1a1430", foreground: "#f9f5ff", accent: "#c4b5fd", card: "#302448", cardText: "#ffffff", tempo: "medium",
+		graphics: ["Frase em destaque","Identificação de convidado","CTA final"],
+	},
+	"minimal-clean": {
+		id: "minimal-clean", name: "Minimalista Clean", family: "explainer",
+		background: "#f3f6f8", foreground: "#10202d", accent: "#2563eb", card: "#ffffff", cardText: "#142132", tempo: "slow",
+		graphics: ["Título limpo","Lista objetiva","Conclusão"],
+	},
+	"meme-reaction": {
+		id: "meme-reaction", name: "Meme & Reação", family: "social",
+		background: "#2a1630", foreground: "#fff8c7", accent: "#facc15", card: "#452240", cardText: "#fff8c7", tempo: "fast",
+		graphics: ["Texto de reação","Comparação divertida","Punchline"],
+	},
+	"travel-vlog": {
+		id: "travel-vlog", name: "Vlog de Viagem", family: "pov",
+		background: "#102a2a", foreground: "#f2fff8", accent: "#6ee7b7", card: "#194344", cardText: "#ffffff", tempo: "medium",
+		graphics: ["Nome do destino","Rota do dia","Resumo da experiência"],
+	},
+	"real-estate": {
+		id: "real-estate", name: "Imóveis Premium", family: "cinema",
+		background: "#1f2925", foreground: "#fff9e7", accent: "#eabf76", card: "#34443c", cardText: "#fff9e7", tempo: "slow",
+		graphics: ["Ficha de imóvel","Área e cômodos","Destaque de valor"],
+	},
 };
 
 export function getTemplateVisualProfile(id: string): TemplateVisualProfile {
