@@ -55,6 +55,8 @@ export function AceStepPanel() {
 					setTaskState("ready");
 					toast.success("Trilha instrumental gerada. Você já pode ouvir ou adicionar à timeline.");
 				}
+			} catch {
+				// ACE-Step may be temporarily unavailable while the model loads; retry.
 			} finally { running = false; }
 		};
 		void check();
