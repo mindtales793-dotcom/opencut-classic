@@ -11,7 +11,7 @@ import {
 	toRawPixelFormat,
 } from "../profiles";
 import { audioBufferToWav } from "../wav";
-import { checkExportStreams } from "../verify.server";
+import { checkExportContainer, checkExportStreams } from "../verify.server";
 import { getExportDimensions, getExportFps } from "../../presets";
 
 const hasFfmpeg = (() => {
@@ -24,6 +24,12 @@ const hasFfmpeg = (() => {
 })();
 
 describe("ffmpeg profiles", () => {
+	test("checks the actual container instead of trusting the file extension", () => {
+		expect(() => checkExportContainer({ formatName: "mov,mp4,m4a,3gp,3g2,mj2", expected: "mp4" })).not.toThrow();
+		expect(() => checkExportContainer({ formatName: "matroska,webm", expected: "webm" })).not.toThrow();
+		expect(() => checkExportContainer({ formatName: "matroska,webm", expected: "mp4" })).toThrow("Contêiner incorreto");
+		expect(() => checkExportContainer({ formatName: undefined, expected: "mp4" })).toThrow("Contêiner incorreto");
+	});
 	test("prefers GPU encoders before the software fallback", () => {
 		const ids = getProfilesForFormat({ format: "mp4" }).map((p) => p.id);
 		expect(ids).toEqual([
@@ -370,6 +376,31 @@ describe.skipIf(!hasFfmpeg)("ffmpeg job pipeline (real ffmpeg)", () => {
 		});
 		await jobs.cancelJob(id);
 	}, 60_000);
+
+	for (const format of ["mp4", "webm"] as const) {
+		for (const quality of ["low", "medium", "high", "very_high"] as const) {
+			test(`real ${format} export preserves ${quality} with audio`, async () => {
+				const width = 160, height = 90;
+				const { id } = await jobs.createJob(jobs.parseStartRequest({
+					format, quality, width, height, preferSoftware: true,
+					fpsNumerator: 25, fpsDenominator: 1, inputPixelFormat: "rgba", filename: "matrix",
+				}));
+				try {
+					const job = jobs.getJob(id);
+					const samples = new Float32Array(48000 / 5);
+					await jobs.saveAudio({ job, data: Buffer.from(audioBufferToWav({ audioBuffer: {
+						numberOfChannels: 1, sampleRate: 48000, length: samples.length, getChannelData: () => samples,
+					} })) });
+					await jobs.pushFrames({ job, data: frames({ width, height, count: 5 }) });
+					const { verified } = await jobs.finishJob({ job });
+					expect(verified).toMatchObject({ format, quality, width, height, fps: 25,
+						codec: format === "mp4" ? "h264" : "vp9", audioCodec: format === "mp4" ? "aac" : "opus" });
+					const video = probe(jobs.getFinishedFile(job).path).streams.find(s => s.codec_type === "video");
+					expect(video?.nb_read_frames).toBe("5");
+				} finally { await jobs.cancelJob(id); }
+			}, 60_000);
+		}
+	}
 
 	test("cancelling mid-export stops ffmpeg and removes the files", async () => {
 		const width = 320;

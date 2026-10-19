@@ -24,6 +24,13 @@ type Stream = {
 	r_frame_rate?: string;
 };
 
+export function checkExportContainer({ formatName, expected }: { formatName: string | undefined; expected: ExportFormat }): void {
+	const formats = (formatName ?? "").split(",");
+	if (!formats.includes(expected)) {
+		throw new Error(`Contêiner incorreto: esperado ${expected.toUpperCase()}, mas FFprobe identificou ${formatName || "desconhecido"}.`);
+	}
+}
+
 export function checkExportStreams({
 	streams,
 	expected,
@@ -88,15 +95,16 @@ export async function verifyExportFile({
 	try {
 		const result = await run(ffprobe, [
 			"-v", "error", "-show_entries",
-			"stream=codec_type,codec_name,width,height,r_frame_rate",
+			"format=format_name:stream=codec_type,codec_name,width,height,r_frame_rate",
 			"-of", "json", filePath,
 		], { windowsHide: true, timeout: 20_000, maxBuffer: 1_000_000 });
 		stdout = result.stdout;
 	} catch {
 		throw new Error("Não foi possível verificar o arquivo exportado com FFprobe. Verifique as ferramentas de vídeo do DarkCut.");
 	}
-	let parsed: { streams?: Stream[] };
+	let parsed: { streams?: Stream[]; format?: { format_name?: string } };
 	try { parsed = JSON.parse(stdout); }
 	catch { throw new Error("FFprobe retornou informações de vídeo inválidas."); }
+	checkExportContainer({ formatName: parsed.format?.format_name, expected: expected.format });
 	return checkExportStreams({ streams: parsed.streams ?? [], expected });
 }

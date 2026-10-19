@@ -61,7 +61,7 @@ export function assertEnabled(): void {
 	}
 }
 
-type JobStatus = "created" | "running" | "finished" | "failed" | "cancelled";
+type JobStatus = "created" | "running" | "finalizing" | "finished" | "failed" | "cancelled";
 
 interface ExportJob {
 	id: string;
@@ -454,8 +454,10 @@ export function finishJob({
 				throw new ExportRequestError(409, "Nenhum quadro foi enviado.");
 			}
 
+			job.status = "finalizing";
 			job.child.stdin?.end();
 			const code = await job.exit;
+			assertUsable(job);
 			if (code !== 0) {
 				job.status = "failed";
 				throw failure({ job });
@@ -484,6 +486,7 @@ export function finishJob({
 				job.status = "failed";
 				throw error;
 			}
+			job.lastActivity = Date.now();
 			job.status = "finished";
 			return { size: info.size, verified };
 		},
@@ -536,6 +539,8 @@ function startSweeper() {
 	state.sweeper = setInterval(() => {
 		const now = Date.now();
 		for (const job of state.jobs.values()) {
+			// Encoding/faststart can take longer than the upload idle timeout.
+			if (job.status === "finalizing") continue;
 			const idle = now - job.lastActivity;
 			const expired =
 				job.status === "running" || job.status === "created"
