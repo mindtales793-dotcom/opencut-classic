@@ -101,6 +101,7 @@ type FfmpegExporterParams = {
 	format: ExportFormat;
 	quality: ExportQuality;
 	filename: string;
+	preferSoftware?: boolean;
 	shouldIncludeAudio?: boolean;
 	audioBuffer?: AudioBuffer;
 };
@@ -180,6 +181,8 @@ export class FfmpegSceneExporter extends EventEmitter<FfmpegExporterEvents> {
 	private format: ExportFormat;
 	private quality: ExportQuality;
 	private filename: string;
+	private preferSoftware: boolean;
+	private usedHardware: boolean | null = null;
 	private shouldIncludeAudio: boolean;
 	private audioBuffer?: AudioBuffer;
 	private abortController = new AbortController();
@@ -195,6 +198,7 @@ export class FfmpegSceneExporter extends EventEmitter<FfmpegExporterEvents> {
 		format,
 		quality,
 		filename,
+		preferSoftware,
 		shouldIncludeAudio,
 		audioBuffer,
 	}: FfmpegExporterParams) {
@@ -205,6 +209,7 @@ export class FfmpegSceneExporter extends EventEmitter<FfmpegExporterEvents> {
 		this.format = format;
 		this.quality = quality;
 		this.filename = filename;
+		this.preferSoftware = preferSoftware ?? false;
 		this.shouldIncludeAudio = shouldIncludeAudio ?? false;
 		this.audioBuffer = audioBuffer;
 	}
@@ -215,6 +220,10 @@ export class FfmpegSceneExporter extends EventEmitter<FfmpegExporterEvents> {
 		format: ExportFormat;
 	}): Promise<boolean> {
 		return (await getFfmpegCapabilities({ format })).available;
+	}
+
+	getUsedHardware(): boolean | null {
+		return this.usedHardware;
 	}
 
 	cancel(): void {
@@ -318,6 +327,7 @@ export class FfmpegSceneExporter extends EventEmitter<FfmpegExporterEvents> {
 				fpsDenominator: fps.denominator,
 				inputPixelFormat,
 				filename: this.filename,
+				preferSoftware: this.preferSoftware,
 			}),
 			contentType: "application/json",
 		});
@@ -326,6 +336,7 @@ export class FfmpegSceneExporter extends EventEmitter<FfmpegExporterEvents> {
 		if (typeof jobId !== "string" || !encoder) {
 			throw new Error("Resposta inválida do servidor de exportação.");
 		}
+		this.usedHardware = encoder.hardware;
 		this.jobId = jobId;
 		const jobUrl = `${API_BASE}/${jobId}`;
 
