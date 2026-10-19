@@ -149,6 +149,7 @@ export class RendererManager {
 		onCancel?: () => boolean;
 	}): Promise<ExportResult> {
 		const { format, quality, fps, includeAudio, engine } = options;
+		if (onCancel?.()) return { success: false, cancelled: true };
 
 		try {
 			const tracks = this.editor.scenes.getActiveScene().tracks;
@@ -182,6 +183,8 @@ export class RendererManager {
 				});
 			}
 
+			if (onCancel?.()) return { success: false, cancelled: true };
+
 			const scene = buildScene({
 				tracks,
 				mediaAssets,
@@ -213,6 +216,7 @@ export class RendererManager {
 					format,
 					quality,
 					filename: options.filename ?? activeProject.metadata.name,
+					preferSoftwareOnly: engine === "software",
 					audioBuffer,
 					onProgress: reportProgress,
 					onCancel,
@@ -220,6 +224,11 @@ export class RendererManager {
 				return ffmpegResult;
 			}
 
+			if (engine === "software") {
+				return { success: false, error: "FFmpeg indisponível. Instale as ferramentas de vídeo do DarkCut para exportar no modo estável, ou selecione explicitamente o encoder do navegador." };
+			}
+
+			if (onCancel?.()) return { success: false, cancelled: true };
 			const exporter = new SceneExporter({
 				width: exportSize.width,
 				height: exportSize.height,
@@ -242,6 +251,7 @@ export class RendererManager {
 				}
 			};
 
+			checkCancel();
 			const cancelInterval = setInterval(checkCancel, 100);
 
 			try {
@@ -284,6 +294,7 @@ export class RendererManager {
 		format,
 		quality,
 		filename,
+		preferSoftwareOnly = false,
 		audioBuffer,
 		onProgress,
 		onCancel,
@@ -297,6 +308,7 @@ export class RendererManager {
 		format: ExportOptions["format"];
 		quality: ExportOptions["quality"];
 		filename: string;
+		preferSoftwareOnly?: boolean;
 		audioBuffer: AudioBuffer | null;
 		onProgress: (progress: number) => void;
 		onCancel?: () => boolean;
@@ -304,7 +316,8 @@ export class RendererManager {
 		// Hardware encoders can pass a small capability probe but fail when an
 		// actual 4K project is fed to the driver. Retry once on the CPU with
 		// the SAME selected codec container and quality (never silently downgrade).
-		for (const preferSoftware of [false, true]) {
+		for (const preferSoftware of (preferSoftwareOnly ? [true] : [false, true])) {
+			if (onCancel?.()) return { success: false, cancelled: true };
 			const exporter = new FfmpegSceneExporter({
 				width,
 				height,

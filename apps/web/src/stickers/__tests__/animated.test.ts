@@ -1,4 +1,5 @@
 import { describe, expect, test } from "bun:test";
+import { ZERO_MEDIA_TIME } from "@/wasm";
 import { ANIMATED_STICKER_PRESETS, animatedStickerProvider, buildAnimatedStickerAnimations, parseAnimatedStickerId } from "../providers/animated";
 
 describe("animated sticker presets", () => {
@@ -8,9 +9,9 @@ describe("animated sticker presets", () => {
 			const channels = buildAnimatedStickerAnimations({ preset });
 			expect(Object.keys(channels).length).toBeGreaterThan(0);
 			for (const channel of Object.values(channels)) {
-				if (!channel || !("keys" in channel)) continue;
+				if (!channel || !("keys" in channel) || !Array.isArray(channel.keys)) continue;
 				expect(channel.keys.length).toBeGreaterThan(1);
-				expect(channel.keys[0].time).toBe(0);
+				expect(channel.keys[0].time).toBe(ZERO_MEDIA_TIME);
 				expect(channel.keys.at(-1)?.time).toBeGreaterThan(0);
 			}
 			expect(parseAnimatedStickerId({ stickerId: `animated:${preset.id}` })?.name).toBe(preset.name);

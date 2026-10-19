@@ -342,6 +342,9 @@ export class ProjectManager {
 	}
 
 	async export({ options }: { options: ExportOptions }): Promise<ExportResult> {
+		if (this.exportState.isExporting) {
+			return { success: false, error: "Já existe uma exportação em andamento. Aguarde ou cancele antes de iniciar outra." };
+		}
 		this.exportCancelRequested = false;
 		this.exportState = { isExporting: true, progress: 0, result: null };
 		this.notify();
@@ -370,6 +373,8 @@ export class ProjectManager {
 	}
 
 	clearExportState(): void {
+		// Keep the lock until the renderer has actually stopped.
+		if (this.exportState.isExporting) return;
 		this.exportState = { isExporting: false, progress: 0, result: null };
 		this.notify();
 	}
