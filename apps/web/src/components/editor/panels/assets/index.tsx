@@ -26,6 +26,7 @@ export function AssetsPanel() {
 	const { activeTab } = useAssetsPanelStore();
 
 	const viewMap: Record<Tab, React.ReactNode> = {
+		timeline: null,
 		production: <DarkCutProductionView />,
 		sync: <DarkCutSyncView />,
 		"script-srt": <DarkCutSrtStudio />,
