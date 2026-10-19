@@ -22,7 +22,7 @@ declare global {
     darkCutMinerDesktop?: {
       chooseAndStart: () => Promise<{ok:boolean;cancelled?:boolean;error?:string}>;
       startSaved: () => Promise<{ok:boolean;cancelled?:boolean;error?:string}>;
-      connection: () => Promise<{ok:boolean;remembered:boolean;startedByDarkCut:boolean}>;
+      connection: () => Promise<{ok:boolean;remembered:boolean;bundled?:boolean;startedByDarkCut:boolean}>;
     };
   }
 }
