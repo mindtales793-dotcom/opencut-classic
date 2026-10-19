@@ -16,6 +16,7 @@ export function DarkMinerWorkspace() {
   const [status, setStatus] = useState<DesktopMinerStatus>({ connected: false });
   const [started, setStarted] = useState(false);
   const [remembered, setRemembered] = useState(false);
+  const [bundled, setBundled] = useState(false);
   const [busy, setBusy] = useState(false);
   const [advanced, setAdvanced] = useState(false);
   const [refreshCount, setRefreshCount] = useState(0);
@@ -48,6 +49,7 @@ export function DarkMinerWorkspace() {
         const connection = await native.connection();
         if (!active) return;
         setRemembered(Boolean(connection.remembered));
+        setBundled(Boolean(connection.bundled));
         if (connection.remembered) {
           const launched = await native.startSaved();
           if (launched.ok && active) setStarted(true);
@@ -122,15 +124,16 @@ export function DarkMinerWorkspace() {
         <div className="flex min-h-0 flex-1 items-center justify-center p-8">
           <div className="max-w-md space-y-4 rounded-xl border border-red-900/40 bg-[#161417] p-6 text-center text-white">
             <div className="text-4xl">📡</div>
-            <h3 className="text-lg font-semibold">Conectar o Dark Miner 3.6.1</h3>
+            <h3 className="text-lg font-semibold">{bundled ? "Iniciando DarkMiner integrado" : "Conectar DarkMiner"}</h3>
             <p className="text-sm leading-relaxed text-slate-300">
-              O Dark Miner precisa executar o serviço local na porta 8000.
-              Assim a extensão do Chrome e esta tela compartilham os canais, favoritos e monitoramento.
+              {bundled
+                ? "O DARKCUT inclui o serviço DarkMiner. Aguarde alguns segundos para iniciar o painel com seus canais e favoritos locais."
+                : "O DarkMiner precisa do serviço local. Se ainda não estiver integrado neste instalador, selecione seu executável."}
             </p>
             <div className="flex flex-wrap justify-center gap-2">
-              <Button disabled={busy} onClick={() => { void launch(); }}>
+              {!bundled && <Button disabled={busy} onClick={() => { void launch(); }}>
                 {busy ? "Iniciando…" : "Selecionar Dark Miner.exe"}
-              </Button>
+              </Button>}
               {remembered && (
                 <Button variant="outline" onClick={() => {
                   void window.darkCutMinerDesktop?.startSaved().then(() => setStarted(true));
@@ -142,8 +145,8 @@ export function DarkMinerWorkspace() {
                 status.message || "Ao abrir a aba, o DARKCUT tenta iniciar automaticamente o executável já cadastrado."}
             </p>
             <p className="text-xs text-slate-500">
-              A versão 3.6.1 original pode abrir uma janela separada.
-              Para usar somente esta tela, instale o launcher de integração sem janela extra.
+              {bundled ? "Não é necessário abrir um segundo aplicativo. Seus dados ficam salvos no computador." :
+                "O executável antigo pode abrir uma janela separada. Atualize o DARKCUT para usar a integração automática."}
             </p>
           </div>
         </div>

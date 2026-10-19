@@ -1,6 +1,6 @@
 {
   "name": "@darkcut/desktop",
-  "version": "0.2.1",
+  "version": "0.3.0",
   "private": true,
   "description": "DarkCut Studio desktop app for Windows",
   "main": "main.cjs",
@@ -31,6 +31,10 @@
       {
         "from": "tools",
         "to": "tools"
+      },
+      {
+        "from": "darkminer-bin",
+        "to": "darkminer"
       }
     ],
     "win": {

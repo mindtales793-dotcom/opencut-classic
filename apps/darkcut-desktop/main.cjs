@@ -186,6 +186,14 @@ function startServer() {
 // The user chooses an existing, trusted Dark Miner EXE through a native file
 // picker. Web content NEVER supplies a process path or shell arguments.
 const minerPreferencesFile = path.join(app.getPath("userData"), "darkminer-integration.json");
+function bundledMinerPath() {
+  const root = app.isPackaged ? path.join(process.resourcesPath, "darkminer") : path.join(__dirname, "darkminer-bin");
+  const executable = path.join(root, "DarkMiner-Service.exe");
+  return fs.existsSync(executable) ? executable : null;
+}
+function preferredMinerPath() {
+  return bundledMinerPath() || localMinerPath();
+}
 function localMinerPath() {
   try {
     const config = JSON.parse(fs.readFileSync(minerPreferencesFile, "utf8"));
@@ -224,7 +232,9 @@ function startMinerExe(executable) {
       log("DarkMiner stopped: " + code);
       darkMinerProcess = null;
     });
-    log("DarkMiner started from user-approved local executable.");
+    log(executable === bundledMinerPath()
+      ? "Bundled DarkMiner service started."
+      : "DarkMiner started from user-approved local executable.");
     return { ok: true, alreadyRunning: false };
   } catch (error) {
     return { ok: false, error: error instanceof Error ? error.message : "Falha ao abrir o Dark Miner." };
@@ -247,11 +257,11 @@ ipcMain.handle("darkcut:darkminer:choose-and-start", async event => {
 });
 ipcMain.handle("darkcut:darkminer:start-saved", event => {
   if (!canControlMiner(event)) return { ok: false, error: "Origem não autorizada." };
-  return startMinerExe(localMinerPath());
+  return startMinerExe(preferredMinerPath());
 });
 ipcMain.handle("darkcut:darkminer:connection", event => {
   if (!canControlMiner(event)) return { ok: false, error: "Origem não autorizada." };
-  return { ok: true, remembered: !!localMinerPath(),
+  return { ok: true, remembered: !!preferredMinerPath(), bundled: !!bundledMinerPath(),
     startedByDarkCut: !!darkMinerProcess && darkMinerProcess.exitCode === null };
 });
 
@@ -388,6 +398,12 @@ if (hasLock) app.whenReady().then(async () => {
     await ensurePortAvailable();
     startServer();
     await waitForServer();
+    // The bundled FastAPI backend starts with DarkCut. Its data remains in
+    // %LOCALAPPDATA%/DarkMiner, separate from installed program files.
+    if (bundledMinerPath()) {
+      const miner = startMinerExe(bundledMinerPath());
+      if (!miner.ok) log("Bundled DarkMiner startup: " + miner.error);
+    }
     await win.loadURL(`http://${HOST}:${PORT}/projects`);
     if (smokeTest) {
       await require("./smoke.cjs").run(win);
