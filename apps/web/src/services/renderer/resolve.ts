@@ -296,8 +296,8 @@ function resolveGraphicNode({
 	const visualState = resolveVisualState({
 		params: node.params,
 		context,
-		sourceWidth: DEFAULT_GRAPHIC_SOURCE_SIZE,
-		sourceHeight: DEFAULT_GRAPHIC_SOURCE_SIZE,
+		sourceWidth: node.sourceSize,
+		sourceHeight: node.sourceSize,
 	});
 	if (!visualState) {
 		return null;
