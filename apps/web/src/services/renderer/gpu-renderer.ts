@@ -4,6 +4,7 @@ import {
 	initializeGpu,
 } from "opencut-wasm";
 import type { EffectPass, EffectUniformValue } from "@/effects/types";
+import { applyColorAdjustPass } from "./color-adjust";
 
 let gpuAvailable = false;
 let initPromise: Promise<void> | null = null;
@@ -39,16 +40,31 @@ export const gpuRenderer = {
 		height: number;
 		passes: EffectPass[];
 	}): OffscreenCanvas {
-		if (passes.length === 0 || !gpuAvailable) {
-			return source;
-		}
+		if (passes.length === 0) return source;
 
-		return applyEffectPasses({
-			source,
-			width,
-			height,
-			passes: serializeEffectPasses(passes),
-		});
+		let current = source;
+		let gpuPasses: EffectPass[] = [];
+		const flushGpuPasses = () => {
+			if (gpuAvailable && gpuPasses.length > 0) {
+				current = applyEffectPasses({
+					source: current,
+					width,
+					height,
+					passes: serializeEffectPasses(gpuPasses),
+				});
+			}
+			gpuPasses = [];
+		};
+		for (const pass of passes) {
+			if (pass.shader === "color-adjust") {
+				flushGpuPasses();
+				current = applyColorAdjustPass({ source: current, width, height, pass });
+			} else {
+				gpuPasses.push(pass);
+			}
+		}
+		flushGpuPasses();
+		return current;
 	},
 
 	applyMaskFeather({

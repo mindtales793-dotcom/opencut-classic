@@ -1,5 +1,6 @@
 import type { MaskableElement, VisualElement } from "./types";
 import type { ParamValues } from "@/params";
+import type { ElementAnimations } from "@/animation/types";
 
 interface BaseDragData {
 	id: string;
@@ -26,6 +27,7 @@ export interface GraphicDragData extends BaseDragData {
 	type: "graphic";
 	definitionId: string;
 	params: Partial<ParamValues>;
+	animations?: ElementAnimations;
 }
 
 export interface EffectDragData extends BaseDragData {

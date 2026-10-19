@@ -422,7 +422,7 @@ export class DragDropController {
 			startTime: target.xPosition,
 			params: dragData.params,
 		});
-		this.insertAtTarget({ element, target, trackType: "graphic" });
+		this.insertAtTarget({ element: { ...element, animations: dragData.animations }, target, trackType: "graphic" });
 	}
 
 	private executeMediaDrop({
