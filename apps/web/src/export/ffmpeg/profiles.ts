@@ -92,13 +92,13 @@ function bitrateArgs(params: CodecParams): string[] {
 	];
 }
 
-/** Keeps even dimensions (required by every YUV 4:2:0 encoder). */
+/** Preserve the full frame: odd-sized YUV 4:2:0 inputs are padded, never cropped. */
 function evenCropFilter({
 	width,
 	height,
 }: Pick<CodecParams, "width" | "height">): string | null {
 	if (width % 2 === 0 && height % 2 === 0) return null;
-	return "crop=trunc(iw/2)*2:trunc(ih/2)*2";
+	return "pad=ceil(iw/2)*2:ceil(ih/2)*2:0:0:color=black";
 }
 
 function chain(...parts: Array<string | null>): string {
