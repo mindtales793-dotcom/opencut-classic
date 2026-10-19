@@ -126,6 +126,80 @@ jobs:
           $env:DARKCUT_FFMPEG_EXPORT = "1"
           bun test apps/web/src/export/ffmpeg/__tests__/ffmpeg-export.test.ts
 
+      - name: Setup Python for embedded DarkMiner
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Compile DarkMiner background service
+        shell: pwsh
+        run: |
+          $archivePath = Join-Path $PWD "apps/darkminer/vendor/darkminer-sources.tar.xz"
+          if (-not (Test-Path $archivePath)) { throw "Missing sanitized DarkMiner archive" }
+          $sourceRoot = Join-Path $env:RUNNER_TEMP "darkminer-source"
+          New-Item -ItemType Directory -Force -Path $sourceRoot | Out-Null
+          @'
+          import pathlib, sys, tarfile
+          archive_path, target = sys.argv[1:]
+          with tarfile.open(archive_path, "r:xz") as package:
+              for member in package.getmembers():
+                  rel = pathlib.PurePosixPath(member.name)
+                  if not member.isfile() or rel.is_absolute() or ".." in rel.parts or rel.parts[0] != "DarkMiner-Integrado-DarkCut":
+                      raise RuntimeError("Unexpected/unsafe archive entry")
+              package.extractall(target, filter="data")
+          '@ | python - $archivePath $sourceRoot
+          if ($LASTEXITCODE -ne 0) { throw "Source extraction failed" }
+          $src = Join-Path $sourceRoot "DarkMiner-Integrado-DarkCut"
+          # Missing private graphic assets are replaced by our own bundled SVG.
+          Copy-Item (Join-Path $src "extension/logo.svg") (Join-Path $src "static/darkminer-mark.svg") -Force
+          $uiFile = Join-Path $src "static/index.html"
+          $html = (Get-Content $uiFile -Raw).Replace("darkminer-mark.png", "darkminer-mark.svg").Replace('type="image/png"', 'type="image/svg+xml"')
+          Set-Content -Path $uiFile -Value $html -Encoding utf8
+          $manifestPath = Join-Path $src "extension/manifest.json"
+          $manifest = Get-Content $manifestPath -Raw | ConvertFrom-Json
+          $manifest.PSObject.Properties.Remove("icons")
+          $manifest | ConvertTo-Json -Depth 20 | Set-Content -Path $manifestPath -Encoding utf8
+          $destination = Join-Path $PWD "apps/darkcut-desktop/tools/darkminer"
+          New-Item -ItemType Directory -Force -Path $destination | Out-Null
+          Copy-Item (Join-Path $src "extension") (Join-Path $destination "chrome-extension") -Recurse -Force
+          Push-Location $src
+          try {
+            python -m pip install --disable-pip-version-check -r requirements.txt "pyinstaller>=6.10,<7"
+            if ($LASTEXITCODE -ne 0) { throw "DarkMiner dependencies failed" }
+            python -m PyInstaller --noconfirm --clean --onefile --noconsole --name DarkMiner-Service --add-data "static;static" --collect-submodules uvicorn --hidden-import anyio._backends._asyncio desktop_launcher.py
+            if ($LASTEXITCODE -ne 0) { throw "DarkMiner service executable build failed" }
+          } finally {
+            Pop-Location
+          }
+          Copy-Item (Join-Path $src "dist/DarkMiner-Service.exe") (Join-Path $destination "DarkMiner-Service.exe") -Force
+          if (-not (Test-Path (Join-Path $destination "DarkMiner-Service.exe"))) { throw "Bundled DarkMiner missing" }
+
+      - name: Test embedded DarkMiner server and interface
+        shell: pwsh
+        run: |
+          $exe = (Resolve-Path "apps/darkcut-desktop/tools/darkminer/DarkMiner-Service.exe").Path
+          $env:DARKMINER_EMBEDDED = "1"
+          $env:LOCALAPPDATA = Join-Path $env:RUNNER_TEMP "darkminer-test-profile"
+          $miner = Start-Process -FilePath $exe -PassThru -WindowStyle Hidden
+          try {
+            $ready = $false
+            for ($i = 0; $i -lt 120; $i++) {
+              Start-Sleep -Milliseconds 500
+              if ($miner.HasExited) { throw "DarkMiner exited with code $($miner.ExitCode)" }
+              try {
+                $status = Invoke-RestMethod -Uri "http://127.0.0.1:8000/api/status" -TimeoutSec 2
+                if ($status.ok -eq $true -and $status.version -like "3.*") { $ready = $true; break }
+              } catch {}
+            }
+            if (-not $ready) { throw "Bundled DarkMiner failed localhost status check" }
+            $page = Invoke-WebRequest -Uri "http://127.0.0.1:8000/" -UseBasicParsing -TimeoutSec 5
+            if (-not $page.Content.Contains("Dark Miner")) { throw "DarkMiner dashboard did not load" }
+            Write-Host "DarkMiner bundled backend and dashboard are online."
+          } finally {
+            taskkill /PID $miner.Id /T /F 2>$null
+            Start-Sleep -Seconds 2
+          }
+
       - name: Build Windows EXE
         shell: pwsh
         run: |
@@ -142,7 +216,7 @@ jobs:
           if (-not $exe) { throw "DarkCut Studio EXE was not generated." }
 
           $packagedTools = Join-Path $PWD "apps/darkcut-desktop/dist/win-unpacked/resources/tools"
-          $requiredTools = @("yt-dlp.exe", "ffmpeg.exe", "ffprobe.exe", "deno.exe")
+          $requiredTools = @("yt-dlp.exe", "ffmpeg.exe", "ffprobe.exe", "deno.exe", "darkminer/DarkMiner-Service.exe", "darkminer/chrome-extension/manifest.json")
           foreach ($tool in $requiredTools) {
             $toolPath = Join-Path $packagedTools $tool
             if (-not (Test-Path $toolPath)) {
@@ -195,4 +269,11 @@ jobs:
         with:
           name: DarkCut-Media-Bridge-Chrome
           path: extensions/darkcut-media-bridge/
+          if-no-files-found: error
+
+      - name: Upload DarkMiner Chrome extension
+        uses: actions/upload-artifact@v4
+        with:
+          name: DarkMiner-YouTube-Chrome
+          path: apps/darkcut-desktop/tools/darkminer/chrome-extension/
           if-no-files-found: error
