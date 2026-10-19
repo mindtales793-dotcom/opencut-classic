@@ -255,6 +255,126 @@ const TEMPLATES: DarkCutTemplate[] = [
 		badge: "📖",
 		accent: "from-purple-500/20 via-transparent to-pink-500/10",
 	},
+	{
+		id: "shorts-hook",
+		title: "Shorts • Gancho",
+		tagline: "GANCHO • RITMO • RETENÇÃO",
+		description: "Cortes rápidos, zooms e entradas marcadas para Shorts e Reels. Ajuste o projeto para 9:16 quando necessário.",
+		category: "Social",
+		idealFor: "shorts, reels, chamadas, dicas rápidas",
+		durationSeconds: 2.4,
+		motions: ["push-in","zoom-in","pan-right-left"],
+		transitions: ["pop","zoom","fade"],
+		intensity: "strong",
+		effects: ["none"],
+		badge: "📱",
+		accent: "from-rose-500/25 via-fuchsia-500/10 to-orange-500/20",
+	},
+	{
+		id: "tech-neon",
+		title: "Tecnologia Neon",
+		tagline: "CÓDIGO • FUTURO • DESTAQUES",
+		description: "Contraste ciano, movimento lateral e zoom para tecnologia, ferramentas e tutoriais.",
+		category: "Educativo",
+		idealFor: "tecnologia, aplicativos, inteligência artificial e games",
+		durationSeconds: 3.2,
+		motions: ["pan-left-right","push-in","zoom-in"],
+		transitions: ["slide-left","zoom","fade"],
+		intensity: "normal",
+		effects: ["none","blur"],
+		badge: "💻",
+		accent: "from-cyan-500/25 via-sky-500/10 to-indigo-500/20",
+	},
+	{
+		id: "news-brief",
+		title: "Noticiário Express",
+		tagline: "FATOS • CONTEXTO • RESUMO",
+		description: "Ritmo editorial, enquadramentos estáveis e textos de contexto para notícias e entrevistas.",
+		category: "Documentário",
+		idealFor: "notícias, entrevistas, atualidades e reportagens",
+		durationSeconds: 3.8,
+		motions: ["documentary","pan-left-right","zoom-in"],
+		transitions: ["fade","slide-left"],
+		intensity: "soft",
+		effects: ["none"],
+		badge: "📰",
+		accent: "from-blue-500/20 via-slate-500/10 to-red-500/15",
+	},
+	{
+		id: "podcast-cuts",
+		title: "Cortes de Podcast",
+		tagline: "VOZ • FRASE • DESTAQUE",
+		description: "Cortes guiados pela fala, zooms pontuais e títulos curtos para entrevistas e podcasts.",
+		category: "Social",
+		idealFor: "podcasts, entrevistas, depoimentos e cortes narrados",
+		durationSeconds: 3.5,
+		motions: ["zoom-in","pull-out","documentary"],
+		transitions: ["fade","pop"],
+		intensity: "soft",
+		effects: ["none"],
+		badge: "🎙️",
+		accent: "from-violet-500/20 via-purple-500/10 to-indigo-500/20",
+	},
+	{
+		id: "minimal-clean",
+		title: "Minimalista Clean",
+		tagline: "ESPAÇO • CLAREZA • ELEGÂNCIA",
+		description: "Transições suaves e tipografia limpa para tutoriais, apresentações e marcas.",
+		category: "Educativo",
+		idealFor: "aulas, tutoriais, portfólios e apresentações",
+		durationSeconds: 5,
+		motions: ["documentary","zoom-in","pull-out"],
+		transitions: ["fade"],
+		intensity: "soft",
+		effects: ["none"],
+		badge: "◻️",
+		accent: "from-slate-400/20 via-white/5 to-sky-400/10",
+	},
+	{
+		id: "meme-reaction",
+		title: "Meme & Reação",
+		tagline: "HUMOR • CORTE • IMPACTO",
+		description: "Zooms e entradas pop para humor leve, reações e curiosidades rápidas.",
+		category: "Social",
+		idealFor: "memes, reações, curiosidades e humor",
+		durationSeconds: 2.1,
+		motions: ["push-in","zoom-in","pan-up-down"],
+		transitions: ["pop","zoom","slide-right"],
+		intensity: "strong",
+		effects: ["none"],
+		badge: "😂",
+		accent: "from-yellow-400/25 via-orange-400/10 to-pink-500/20",
+	},
+	{
+		id: "travel-vlog",
+		title: "Vlog de Viagem",
+		tagline: "LUGAR • MOVIMENTO • MEMÓRIA",
+		description: "Panorâmicas, Ken Burns e transições leves para mostrar lugares e experiências.",
+		category: "POV",
+		idealFor: "viagens, passeios, cidades, natureza e vlogs",
+		durationSeconds: 3.4,
+		motions: ["pan-left-right","ken-burns","pull-out"],
+		transitions: ["fade","slide-left","ken-burns"],
+		intensity: "normal",
+		effects: ["none"],
+		badge: "✈️",
+		accent: "from-emerald-500/20 via-cyan-500/10 to-amber-400/20",
+	},
+	{
+		id: "real-estate",
+		title: "Imóveis Premium",
+		tagline: "ESPAÇO • DETALHE • VALOR",
+		description: "Passeios visuais suaves e cartelas de informação para imóveis, arquitetura e negócios.",
+		category: "Financeiro",
+		idealFor: "imóveis, arquitetura, apartamentos e apresentação de produtos",
+		durationSeconds: 4.8,
+		motions: ["pan-left-right","zoom-in","ken-burns"],
+		transitions: ["fade","slide-right"],
+		intensity: "soft",
+		effects: ["none","blur"],
+		badge: "🏡",
+		accent: "from-amber-400/20 via-slate-500/10 to-emerald-500/15",
+	},
 ];
 
 const CATEGORIES: TemplateCategory[] = [
@@ -901,6 +1021,63 @@ export function DarkCutTemplatesView({
 		}
 	};
 
+	// Template title layers are regular timeline elements and participate in Undo/Redo.
+	const applyTemplateTitles = (template: DarkCutTemplate) => {
+		if (addTitles) {
+			const updated = editor.scenes.getActiveScene();
+			const visuals = [updated.tracks.main, ...updated.tracks.overlay]
+				.flatMap((t) => t.elements as TimelineElement[])
+				.filter((e) => e.type === "image" || e.type === "video");
+			const start = Math.min(
+				...visuals.map((e) => mediaTimeToSeconds({ time: e.startTime })),
+			);
+			const end = Math.max(
+				...visuals.map(
+					(e) =>
+						mediaTimeToSeconds({ time: e.startTime }) +
+						mediaTimeToSeconds({ time: e.duration }),
+				),
+			);
+			const length = Math.min(template.durationSeconds, (end - start) / 2);
+			const old = updated.tracks.overlay.find((t) => t.name === "T • Template");
+			if (old?.elements.length)
+				editor.timeline.deleteElements({
+					elements: old.elements.map((e) => ({
+						trackId: old.id,
+						elementId: e.id,
+					})),
+				});
+			const trackId =
+				old?.id ??
+				editor.timeline.addTrack({ type: "text", name: "T • Template" });
+			for (const [content, seconds, name] of [
+				[opening.trim(), start, "Abertura"],
+				[ending.trim(), end - length, "Encerramento"],
+			] as const) {
+				if (!content || length <= 0) continue;
+				editor.timeline.insertElement({
+					placement: { mode: "explicit", trackId },
+					element: buildTextElement({
+						startTime: mediaTimeFromSeconds({ seconds }),
+						raw: {
+							name: `${name} • ${template.title}`,
+							duration: mediaTimeFromSeconds({ seconds: length }),
+							params: {
+								...templateTextParams(content, 64),
+								fontWeight: "bold",
+								color: "#ffffff",
+								"background.enabled": true,
+								"background.color": "#101525cc",
+								"background.paddingX": 24,
+								"background.paddingY": 16,
+							},
+						},
+					}),
+				});
+			}
+		}
+	};
+
 	const applyTemplate = async (sourceTemplate: DarkCutTemplate) => {
 		const template: DarkCutTemplate = {
 			...sourceTemplate,
@@ -1011,7 +1188,10 @@ export function DarkCutTemplatesView({
 			if (editor.scenes.getActiveSceneOrNull()?.id !== scene.id)
 				throw new Error("O projeto mudou durante a análise.");
 			setCrisPlan(plan);
-			applyCrisPlan({ plan, refs, template });
+			editor.command.runAsSingleUndoStep(() => {
+				applyCrisPlan({ plan, refs, template });
+				applyTemplateTitles(template);
+			});
 		} catch (error) {
 			console.error(error);
 			if (narrationTrackId) {
@@ -1022,6 +1202,7 @@ export function DarkCutTemplatesView({
 				);
 				return;
 			}
+			editor.command.runAsSingleUndoStep(() => {
 			if (hasNarration) {
 				const result = autoEditWithNarration({
 					editor,
@@ -1044,6 +1225,8 @@ export function DarkCutTemplatesView({
 					presets: template.transitions,
 				});
 			}
+				applyTemplateTitles(template);
+			});
 			toast.error("A Cris falhou; o template básico foi aplicado.");
 		} finally {
 			setIsCrisAnalyzing(false);
@@ -1051,59 +1234,6 @@ export function DarkCutTemplatesView({
 			setAnalysisStep("");
 		}
 
-		if (addTitles) {
-			const updated = editor.scenes.getActiveScene();
-			const visuals = [updated.tracks.main, ...updated.tracks.overlay]
-				.flatMap((t) => t.elements as TimelineElement[])
-				.filter((e) => e.type === "image" || e.type === "video");
-			const start = Math.min(
-				...visuals.map((e) => mediaTimeToSeconds({ time: e.startTime })),
-			);
-			const end = Math.max(
-				...visuals.map(
-					(e) =>
-						mediaTimeToSeconds({ time: e.startTime }) +
-						mediaTimeToSeconds({ time: e.duration }),
-				),
-			);
-			const length = Math.min(template.durationSeconds, (end - start) / 2);
-			const old = updated.tracks.overlay.find((t) => t.name === "T • Template");
-			if (old?.elements.length)
-				editor.timeline.deleteElements({
-					elements: old.elements.map((e) => ({
-						trackId: old.id,
-						elementId: e.id,
-					})),
-				});
-			const trackId =
-				old?.id ??
-				editor.timeline.addTrack({ type: "text", name: "T • Template" });
-			for (const [content, seconds, name] of [
-				[opening.trim(), start, "Abertura"],
-				[ending.trim(), end - length, "Encerramento"],
-			] as const) {
-				if (!content || length <= 0) continue;
-				editor.timeline.insertElement({
-					placement: { mode: "explicit", trackId },
-					element: buildTextElement({
-						startTime: mediaTimeFromSeconds({ seconds }),
-						raw: {
-							name: `${name} • ${template.title}`,
-							duration: mediaTimeFromSeconds({ seconds: length }),
-							params: {
-								...templateTextParams(content, 64),
-								fontWeight: "bold",
-								color: "#ffffff",
-								"background.enabled": true,
-								"background.color": "#101525cc",
-								"background.paddingX": 24,
-								"background.paddingY": 16,
-							},
-						},
-					}),
-				});
-			}
-		}
 		setSelectedTemplate(template.id);
 		toast.success(`${template.title} aplicado pela Cris.`, {
 			description: `${changed} cena(s) montadas. Movimentos, transições, textos e efeitos continuam editáveis.`,

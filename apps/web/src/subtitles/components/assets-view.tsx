@@ -23,6 +23,7 @@ import { decodeAudioToFloat32 } from "@/media/audio";
 import { buildCaptionChunks } from "@/transcription/caption";
 import { insertCaptionChunksAsTextTrack } from "@/subtitles/insert";
 import { parseSubtitleFile } from "@/subtitles/parse";
+import { CAPTION_PRESETS, applyCaptionPreset, type CaptionPresetId } from "@/subtitles/caption-presets";
 import { Spinner } from "@/components/ui/spinner";
 import {
 	Section,
@@ -84,6 +85,9 @@ function processingReducer(
 /* eslint-enable opencut/prefer-object-params */
 
 export function Captions() {
+	const [captionPreset, setCaptionPreset] = useState<CaptionPresetId>("original");
+	const [captionColor, setCaptionColor] = useState<string | null>(null);
+	const [captionFontSize, setCaptionFontSize] = useState<number | null>(null);
 	const [selectedLanguage, setSelectedLanguage] =
 		useState<TranscriptionLanguage>("auto");
 	const [processing, dispatch] = useReducer(processingReducer, IDLE_STATE);
@@ -92,6 +96,9 @@ export function Captions() {
 	const editor = useEditor();
 
 	const isProcessing = processing.status === "processing";
+	const previewPreset = CAPTION_PRESETS.find((preset) => preset.id === captionPreset);
+	const previewColor = captionColor ?? previewPreset?.style.color ?? "#ffffff";
+	const previewSize = captionFontSize ?? previewPreset?.style.fontSize ?? 5;
 
 	const activeDiagnostics = useEditor((e) =>
 		e.diagnostics.getActive({ scope: TRANSCRIPTION_DIAGNOSTICS_SCOPE }),
@@ -113,7 +120,15 @@ export function Captions() {
 	}: {
 		captions: CaptionChunk[];
 	}): boolean => {
-		const trackId = insertCaptionChunksAsTextTrack({ editor, captions });
+		const overrides = captionColor !== null || captionFontSize !== null
+			? {
+				...(captionColor !== null ? { color: captionColor } : {}),
+				...(captionFontSize !== null ? { fontSize: captionFontSize, fontSizeRatioOfPlayHeight: undefined } : {}),
+			} : undefined;
+		const trackId = insertCaptionChunksAsTextTrack({
+			editor,
+			captions: applyCaptionPreset({ captions, presetId: captionPreset, overrides }),
+		});
 		return trackId !== null;
 	};
 
@@ -306,6 +321,45 @@ export function Captions() {
 									))}
 								</SelectContent>
 							</Select>
+						</SectionField>
+						<SectionField label="Template de legenda">
+							<Select value={captionPreset} onValueChange={(value) => setCaptionPreset(value as CaptionPresetId)} disabled={isProcessing}>
+								<SelectTrigger aria-label="Template de legenda">
+									<SelectValue placeholder="Escolha um estilo" />
+								</SelectTrigger>
+								<SelectContent>
+									{CAPTION_PRESETS.map((preset) => (
+										<SelectItem key={preset.id} value={preset.id}>{preset.label}</SelectItem>
+									))}
+								</SelectContent>
+							</Select>
+							<p className="mt-1 text-xs text-muted-foreground">{CAPTION_PRESETS.find((preset) => preset.id === captionPreset)?.description}</p>
+							<p className="mt-1 text-xs text-muted-foreground">O estilo escolhido vira texto editável na timeline e acompanha a exportação do vídeo.</p>
+							<div className="mt-2 flex min-h-20 items-center justify-center rounded-md border bg-slate-900 p-3" aria-label="Prévia aproximada da legenda">
+								<span
+									style={{
+										color: previewColor,
+										fontFamily: previewPreset?.style.fontFamily ?? "Arial",
+										fontWeight: previewPreset?.style.fontWeight ?? "bold",
+										fontSize: `${Math.round(previewSize * 3)}px`,
+										backgroundColor: previewPreset?.style.background?.enabled ? previewPreset.style.background.color : "transparent",
+										padding: previewPreset?.style.background?.enabled ? "6px 10px" : "0",
+										borderRadius: previewPreset?.style.background?.enabled ? "6px" : "0",
+									}}
+								>
+									Sua legenda aparece aqui
+								</span>
+							</div>
+							<div className="mt-2 flex flex-wrap items-end gap-3">
+								<label className="flex flex-col gap-1 text-xs">Cor do texto
+									<input type="color" aria-label="Cor da legenda" value={previewColor} disabled={isProcessing} onChange={(event) => setCaptionColor(event.target.value)} className="h-9 w-14 cursor-pointer rounded border bg-background" />
+								</label>
+								<label className="flex flex-col gap-1 text-xs">Tamanho
+									<input type="number" aria-label="Tamanho da legenda" min={2} max={12} step={0.5} value={previewSize} disabled={isProcessing} onChange={(event) => setCaptionFontSize(Math.min(12, Math.max(2, Number(event.target.value) || 5)))} className="h-9 w-20 rounded border bg-background px-2" />
+								</label>
+								<Button type="button" size="sm" variant="outline" disabled={isProcessing || (captionColor === null && captionFontSize === null)} onClick={() => { setCaptionColor(null); setCaptionFontSize(null); }}>Restaurar estilo</Button>
+							</div>
+							<p className="text-[0.65rem] text-muted-foreground">Prévia aproximada. Fontes e posicionamento também podem ser editados no clipe.</p>
 						</SectionField>
 					</SectionFields>
 

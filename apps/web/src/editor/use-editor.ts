@@ -31,6 +31,7 @@ export function useEditor<T>(
 			const unsubscribers = [
 				editor.playback.subscribe(onChange),
 				editor.timeline.subscribe(onChange),
+				editor.command.subscribe(onChange),
 				editor.scenes.subscribe(onChange),
 				editor.project.subscribe(onChange),
 				editor.media.subscribe(onChange),
