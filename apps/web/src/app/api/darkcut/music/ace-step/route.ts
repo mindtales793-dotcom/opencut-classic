@@ -126,7 +126,7 @@ export async function GET(request: Request) {
 			return new Response(stream, {
 				headers: {
 					"Content-Type": type,
-					"Content-Disposition": `attachment; filename="trilha-ace-step-${taskId}.mp3"`,
+					"Content-Disposition": `inline; filename="trilha-ace-step-${taskId}.mp3"`,
 					"Cache-Control": "private, no-store",
 					"X-Content-Type-Options": "nosniff",
 				},
@@ -143,8 +143,8 @@ export async function POST(request: Request) {
 	if (blocked) return blocked;
 	let input: { prompt?: unknown; duration?: unknown };
 	try { input = await request.json(); } catch { return NextResponse.json({ error: "JSON inválido." }, { status: 400 }); }
-	const prompt = typeof input.prompt === "string" ? input.prompt.trim() : "";
-	const duration = typeof input.duration === "number" ? input.duration : NaN;
+	const prompt = input && typeof input.prompt === "string" ? input.prompt.trim() : "";
+	const duration = input && typeof input.duration === "number" ? input.duration : NaN;
 	if (!prompt || prompt.length > 1500 || !Number.isFinite(duration) || duration < 10 || duration > 600) {
 		return NextResponse.json({ error: "Descreva a trilha e use duração entre 10 e 600 segundos." }, { status: 400 });
 	}
