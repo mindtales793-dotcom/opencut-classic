@@ -1,6 +1,7 @@
 "use client";
 
 import { useSoundPreview, stopSoundPreview } from "@/sounds/use-sound-preview";
+import { SunoLocalMusicView } from "./suno-view";
 import { useEffect, useState } from "react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
@@ -45,6 +46,7 @@ export function SoundsView() {
 				<div className="px-3 pt-4 pb-0">
 					<TabsList className="w-full">
 						<TabsTrigger value="music">Músicas</TabsTrigger>
+						<TabsTrigger value="suno">Suno IA</TabsTrigger>
 						<TabsTrigger value="sound-effects">Efeitos</TabsTrigger>
 						<TabsTrigger value="saved">Favoritos</TabsTrigger>
 					</TabsList>
@@ -55,6 +57,9 @@ export function SoundsView() {
 					className="mt-0 flex min-h-0 flex-1 flex-col p-5 pt-0"
 				>
 					<MusicLibraryView />
+				</TabsContent>
+				<TabsContent value="suno" className="mt-0 flex min-h-0 flex-1 flex-col p-3 pt-0">
+					<SunoLocalMusicView />
 				</TabsContent>
 				<TabsContent
 					value="sound-effects"
