@@ -2,6 +2,7 @@ import { spawn, type ChildProcess } from "node:child_process";
 import { randomUUID } from "node:crypto";
 import { mkdir, readdir, rm, stat, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
+import { verifyExportFile, type VerifiedExport } from "./verify.server";
 import { join } from "node:path";
 import {
 	EXPORT_FORMAT_VALUES,
@@ -440,7 +441,7 @@ export function finishJob({
 	job,
 }: {
 	job: ExportJob;
-}): Promise<{ size: number }> {
+}): Promise<{ size: number; verified: VerifiedExport }> {
 	return enqueue({
 		job,
 		task: async () => {
@@ -457,8 +458,30 @@ export function finishJob({
 			}
 
 			const info = await stat(job.outputPath);
+			if (info.size < 1024) {
+				job.status = "failed";
+				throw new ExportRequestError(500, "O FFmpeg gerou um arquivo vazio ou corrompido.");
+			}
+			let verified: VerifiedExport;
+			try {
+				verified = await verifyExportFile({
+					filePath: job.outputPath,
+					expected: {
+						format: job.format,
+						width: job.width,
+						height: job.height,
+						fpsNumerator: job.fpsNumerator,
+						fpsDenominator: job.fpsDenominator,
+						quality: job.quality,
+						withAudio: Boolean(job.audioPath),
+					},
+				});
+			} catch (error) {
+				job.status = "failed";
+				throw error;
+			}
 			job.status = "finished";
-			return { size: info.size };
+			return { size: info.size, verified };
 		},
 	});
 }
