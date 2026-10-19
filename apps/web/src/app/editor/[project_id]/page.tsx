@@ -18,6 +18,7 @@ import { EditorProvider } from "@/components/providers/editor-provider";
 import { Onboarding } from "@/components/editor/onboarding";
 import { MigrationDialog } from "@/project/components/migration-dialog";
 import { usePanelStore } from "@/editor/panel-store";
+import { useAssetsPanelStore } from "@/components/editor/panels/assets/assets-panel-store";
 import { usePasteMedia } from "@/media/use-paste-media";
 import { MobileGate } from "@/components/editor/mobile-gate";
 import { useMemo, useState } from "react";
@@ -90,87 +91,68 @@ function DegradedRendererBanner() {
 function EditorLayout() {
 	usePasteMedia();
 	const { panels, setPanel, showProperties } = usePanelStore();
-	const [toolsHidden, setToolsHidden] = useState(false);
+	const activeTab = useAssetsPanelStore((state) => state.activeTab);
+	const isTimelineWorkspace = activeTab === "timeline";
+	const isMinerWorkspace = activeTab === "darkminer";
+
+	// Remain mounted while switching workspaces: the preview renderer is also
+	// used by the export pipeline. Hiding it must not destroy rendering state.
+	const hiddenPreview = (
+		<div
+			aria-hidden={!isTimelineWorkspace}
+			className={
+				isTimelineWorkspace
+					? "relative h-full w-full"
+					: "pointer-events-none invisible absolute left-0 top-0 z-[-1] h-[540px] w-[960px] overflow-hidden"
+			}
+		>
+			<EditorPreview />
+		</div>
+	);
+
+	// The Dark Miner is its own full-size workspace, not a tiny side panel.
+	// It shares the original FastAPI/SQLite data source with the Chrome extension.
+	if (isMinerWorkspace) {
+		return (
+			<section className="relative size-full min-h-0 overflow-hidden" data-darkcut-workspace="darkminer">
+				{hiddenPreview}
+				<AssetsPanel />
+			</section>
+		);
+	}
 
 	return (
 		<ResizablePanelGroup
+			key={isTimelineWorkspace ? "timeline-workspace" : "tool-workspace"}
 			direction="vertical"
 			className="size-full gap-[0.18rem]"
 			onLayout={(sizes) => {
-				setPanel({
-					panel: "mainContent",
-					size: sizes[0] ?? panels.mainContent,
-				});
-				setPanel({
-					panel: "timeline",
-					size: sizes[1] ?? panels.timeline,
-				});
+				setPanel({ panel: "mainContent", size: sizes[0] ?? panels.mainContent });
+				setPanel({ panel: "timeline", size: sizes[1] ?? panels.timeline });
 			}}
+			data-darkcut-workspace={isTimelineWorkspace ? "timeline" : "tools"}
 		>
 			<ResizablePanel
-				defaultSize={panels.mainContent}
+				defaultSize={isTimelineWorkspace ? 54 : 67}
 				minSize={30}
 				maxSize={85}
-				className="min-h-0"
+				className="relative min-h-0 min-w-0 overflow-hidden rounded-md"
 			>
-				<ResizablePanelGroup
-					direction="horizontal"
-					className="studio-workspace"
-					onLayout={(sizes) => {
-						setPanel({ panel: "preview", size: sizes[0] ?? panels.preview });
-						if (sizes[1] !== undefined) {
-							setPanel({ panel: "tools", size: sizes[1] });
-						}
-					}}
-				>
-					<ResizablePanel
-						id="preview"
-						order={1}
-						defaultSize={toolsHidden ? 100 : panels.preview}
-						minSize={toolsHidden ? 100 : 30}
-						className="min-w-0 min-h-0"
-					>
-						<div className="relative size-full">
-							<EditorPreview />
-							<Button
-								type="button"
-								variant="secondary"
-								size="sm"
-								className="absolute right-3 top-3 z-40 h-8 border border-border/80 bg-background/90 px-3 text-xs shadow-md backdrop-blur"
-								onClick={() => setToolsHidden((hidden) => !hidden)}
-								title={toolsHidden ? "Mostrar painel de ferramentas" : "Ocultar painel e ampliar monitor"}
-								aria-pressed={toolsHidden}
-							>
-								{toolsHidden ? "▤ Mostrar painel" : "▥ Ampliar monitor"}
-							</Button>
-						</div>
-					</ResizablePanel>
-					{!toolsHidden && (
-						<>
-							<ResizableHandle withHandle />
-							<ResizablePanel
-								id="assets"
-								order={2}
-								defaultSize={panels.tools}
-								minSize={30}
-								className="min-w-0 min-h-0 relative"
-							>
-								<AssetsPanel />
-								{showProperties && (
-									<div className="studio-properties-overlay">
-										<PropertiesPanel />
-									</div>
-								)}
-							</ResizablePanel>
-						</>
-					)}
-				</ResizablePanelGroup>
+				{hiddenPreview}
+				{!isTimelineWorkspace && (
+					<div className="relative size-full min-w-0 overflow-hidden">
+						<AssetsPanel />
+						{showProperties && activeTab !== "adjustment" && (
+							<div className="studio-properties-overlay">
+								<PropertiesPanel />
+							</div>
+						)}
+					</div>
+				)}
 			</ResizablePanel>
-
 			<ResizableHandle withHandle />
-
 			<ResizablePanel
-				defaultSize={panels.timeline}
+				defaultSize={isTimelineWorkspace ? 46 : 33}
 				minSize={15}
 				maxSize={70}
 				className="studio-timeline min-h-0"
