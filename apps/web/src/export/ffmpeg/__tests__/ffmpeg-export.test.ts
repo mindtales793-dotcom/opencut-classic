@@ -11,6 +11,8 @@ import {
 	toRawPixelFormat,
 } from "../profiles";
 import { audioBufferToWav } from "../wav";
+import { checkExportStreams } from "../verify.server";
+import { getExportDimensions, getExportFps } from "../../presets";
 
 const hasFfmpeg = (() => {
 	try {
@@ -58,7 +60,7 @@ describe("ffmpeg profiles", () => {
 		expect(args.at(-1)).toBe("out.mp4");
 	});
 
-	test("crops odd sizes before any hardware filter", () => {
+	test("pads odd sizes before hardware filters without cropping the image", () => {
 		const profile = getProfileById({ id: "h264_qsv_gpu" });
 		if (!profile) throw new Error("missing profile");
 		const args = buildFfmpegArgs({
@@ -72,7 +74,7 @@ describe("ffmpeg profiles", () => {
 			inputPixelFormat: "rgba",
 		});
 		const filter = args[args.indexOf("-vf") + 1];
-		expect(filter.startsWith("crop=trunc(iw/2)*2:trunc(ih/2)*2,")).toBe(true);
+		expect(filter.startsWith("pad=ceil(iw/2)*2:ceil(ih/2)*2:0:0:color=black,")).toBe(true);
 	});
 
 	test("maps VideoFrame formats and scales bitrate with quality", () => {
@@ -89,6 +91,46 @@ describe("ffmpeg profiles", () => {
 		const veryHigh = targetBitrate({ ...base, quality: "very_high" });
 		expect(veryHigh).toBeGreaterThan(low * 3);
 	});
+	test("keeps exact 16:9 and 9:16 resolutions and requested frame rate", () => {
+		expect(getExportDimensions({ source: { width: 1920, height: 1080 }, resolution: "720p" }))
+			.toEqual({ width: 1280, height: 720 });
+		expect(getExportDimensions({ source: { width: 1080, height: 1920 }, resolution: "2160p" }))
+			.toEqual({ width: 2160, height: 3840 });
+		expect(getExportDimensions({ source: { width: 1920, height: 1080 }, resolution: "original" }))
+			.toEqual({ width: 1920, height: 1080 });
+		expect(getExportFps({ fps: { numerator: 24, denominator: 1 }, preset: "29.97" }))
+			.toEqual({ numerator: 30000, denominator: 1001 });
+	});
+
+	test("quality selection changes CRF and bitrate in the chosen codec", () => {
+		const sw = getProfileById({ id: "libx264" });
+		const vp9 = getProfileById({ id: "libvpx_vp9" });
+		expect(sw).toBeDefined();
+		expect(vp9).toBeDefined();
+		const base = { width: 1280, height: 720, fpsNumerator: 30, fpsDenominator: 1 };
+		const preset = (quality: "low" | "medium" | "high" | "very_high") => ({ ...base, quality });
+		const crfs = ["low", "medium", "high", "very_high"].map(q => {
+			const args = sw!.codecArgs(preset(q as "low" | "medium" | "high" | "very_high"));
+			return Number(args[args.indexOf("-crf") + 1]);
+		});
+		expect(crfs).toEqual([28, 24, 20, 17]);
+		expect(targetBitrate(preset("very_high"))).toBeGreaterThan(targetBitrate(preset("low")));
+		expect(vp9!.codecArgs(preset("very_high")).join(" ")).toContain("-b:v");
+	});
+
+	test("rejects a video when FFprobe detects unexpected codec, size, FPS or audio", () => {
+		const expected = { format: "mp4" as const, width: 1920, height: 1080, fpsNumerator: 30000, fpsDenominator: 1001, quality: "very_high" as const, withAudio: true };
+		const streams = [
+			{ codec_type: "video", codec_name: "h264", width: 1920, height: 1080, r_frame_rate: "30000/1001" },
+			{ codec_type: "audio", codec_name: "aac" },
+		];
+		expect(checkExportStreams({ streams, expected })).toMatchObject({ codec: "h264", width: 1920, height: 1080, quality: "very_high", audioCodec: "aac" });
+		expect(() => checkExportStreams({ streams: [{ ...streams[0], codec_name: "vp9" }, streams[1]], expected })).toThrow("Codec incorreto");
+		expect(() => checkExportStreams({ streams: [{ ...streams[0], width: 1280 }, streams[1]], expected })).toThrow("Resolução incorreta");
+		expect(() => checkExportStreams({ streams: [{ ...streams[0], r_frame_rate: "24/1" }, streams[1]], expected })).toThrow("FPS incorreto");
+		expect(() => checkExportStreams({ streams: [streams[0]], expected })).toThrow("Áudio incorreto");
+	});
+
 });
 
 describe("wav encoder", () => {
@@ -240,8 +282,9 @@ describe.skipIf(!hasFfmpeg)("ffmpeg job pipeline (real ffmpeg)", () => {
 		// Two batches, like the browser sends them.
 		await jobs.pushFrames({ job, data: frames({ width, height, count: 15 }) });
 		await jobs.pushFrames({ job, data: frames({ width, height, count: 15 }) });
-		const { size } = await jobs.finishJob({ job });
+		const { size, verified } = await jobs.finishJob({ job });
 		expect(size).toBeGreaterThan(1000);
+		expect(verified).toMatchObject({ format: "mp4", codec: "h264", width: 320, height: 192, fps: 30, audioCodec: "aac", quality: "medium" });
 
 		const file = jobs.getFinishedFile(job);
 		expect(file.filename).toBe("teste.mp4");
@@ -276,8 +319,8 @@ describe.skipIf(!hasFfmpeg)("ffmpeg job pipeline (real ffmpeg)", () => {
 		await jobs.finishJob({ job });
 
 		const video = probe(jobs.getFinishedFile(job).path).streams[0];
-		expect(video.width).toBe(320);
-		expect(video.height).toBe(192);
+		expect(video.width).toBe(322);
+		expect(video.height).toBe(194);
 		await jobs.cancelJob(id);
 	}, 60_000);
 
