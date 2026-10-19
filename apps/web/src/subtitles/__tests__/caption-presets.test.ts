@@ -25,6 +25,18 @@ describe("caption presets", () => {
 		expect(captions[0].style?.color).toBe("#123456");
 	});
 
+	test("allows color and size overrides without losing imported timing", () => {
+		const result = applyCaptionPreset({
+			captions,
+			presetId: "original",
+			overrides: { color: "#ff0000", fontSize: 7, fontSizeRatioOfPlayHeight: undefined },
+		});
+		expect(result[0].style?.color).toBe("#ff0000");
+		expect(result[0].style?.fontSize).toBe(7);
+		expect(result[0].style?.background?.color).toBe("#ffffff");
+		expect(result[1].duration).toBe(2);
+	});
+
 	test("all styles have unique IDs and a label", () => {
 		expect(new Set(CAPTION_PRESETS.map((item) => item.id)).size).toBe(CAPTION_PRESETS.length);
 		expect(CAPTION_PRESETS.every((item) => item.label.length > 0)).toBe(true);
