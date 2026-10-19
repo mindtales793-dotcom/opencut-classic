@@ -25,6 +25,8 @@ export interface ExportOptions {
 	format: ExportFormat;
 	quality: ExportQuality;
 	fps?: FrameRate;
+	/** Dimensions of the encoded file. Keeps the original project layout. */
+	canvasSize?: { width: number; height: number };
 	includeAudio?: boolean;
 	engine?: ExportEngine;
 	/** Used as the downloaded file name by the FFmpeg engine (no extension). */
@@ -39,6 +41,7 @@ export interface ExportResult {
 	downloadUrl?: string;
 	/** Human readable encoder that produced the file. */
 	encoderLabel?: string;
+	verified?: { format: ExportFormat; codec: string; width: number; height: number; fps: number; audioCodec: string | null; quality: ExportQuality };
 	error?: string;
 	cancelled?: boolean;
 }
