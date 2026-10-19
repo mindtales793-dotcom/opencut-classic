@@ -305,18 +305,22 @@ export class FfmpegSceneExporter extends EventEmitter<FfmpegExporterEvents> {
 		const firstFrame = new VideoFrame(this.getFrameCanvas(), { timestamp: 0 });
 		const width = firstFrame.codedWidth;
 		const height = firstFrame.codedHeight;
-		const inputPixelFormat = toRawPixelFormat({
+		// Some Chromium/GPU combinations expose I420, NV12 or null VideoFrame
+		// formats for canvases. Always allow a dependable RGBA canvas readback.
+		const nativePixelFormat = toRawPixelFormat({
 			videoFrameFormat: firstFrame.format,
 		});
-		if (!inputPixelFormat) {
-			firstFrame.close();
-			throw new Error("Formato de quadro não suportado pelo FFmpeg.");
-		}
-
+		const inputPixelFormat = nativePixelFormat ?? "rgba";
 		const frameBytes = width * height * 4;
 		const firstBytes = new Uint8Array(frameBytes);
 		try {
-			await copyFrameTight({ frame: firstFrame, dest: firstBytes });
+			if (nativePixelFormat) {
+				await copyFrameTight({ frame: firstFrame, dest: firstBytes });
+			} else {
+				const context = this.getFrameCanvas().getContext("2d", { willReadFrequently: true });
+				if (!context) throw new Error("O renderizador não conseguiu ler os quadros de vídeo.");
+				firstBytes.set(context.getImageData(0, 0, width, height).data);
+			}
 		} finally {
 			firstFrame.close();
 		}
@@ -388,16 +392,23 @@ export class FfmpegSceneExporter extends EventEmitter<FfmpegExporterEvents> {
 			const time = index * ticksPerFrame;
 			await this.renderer.render({ node: rootNode, time });
 
-			const frame = new VideoFrame(this.getFrameCanvas(), {
-				timestamp: Math.round((index * 1_000_000) / fpsFloat),
-			});
-			try {
-				await copyFrameTight({
-					frame,
-					dest: batch.subarray(batchCount * frameBytes),
+			const canvas = this.getFrameCanvas();
+			if (nativePixelFormat) {
+				const frame = new VideoFrame(canvas, {
+					timestamp: Math.round((index * 1_000_000) / fpsFloat),
 				});
-			} finally {
-				frame.close();
+				try {
+					await copyFrameTight({
+						frame,
+						dest: batch.subarray(batchCount * frameBytes),
+					});
+				} finally {
+					frame.close();
+				}
+			} else {
+				const context = canvas.getContext("2d", { willReadFrequently: true });
+				if (!context) throw new Error("Falha ao ler o quadro da timeline.");
+				batch.set(context.getImageData(0, 0, width, height).data, batchCount * frameBytes);
 			}
 			batchCount++;
 
