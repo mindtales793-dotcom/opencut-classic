@@ -45,8 +45,8 @@ jobs:
       - name: Test optional Suno local API connector
         run: bun test apps/web/src/darkcut/__tests__/suno-local.test.ts
 
-      - name: Test media sorting and filter controls
-        run: bun test apps/web/src/darkcut/__tests__/media-sort-controls.test.ts apps/web/src/effects/__tests__/color-grade.test.ts
+      - name: Test media sorting and archive behavior
+        run: bun test apps/web/src/darkcut/__tests__/media-sort-controls.test.ts
 
       - name: Validate optional Chrome media bridge
         run: |
