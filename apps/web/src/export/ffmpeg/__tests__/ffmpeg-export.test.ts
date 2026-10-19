@@ -351,6 +351,26 @@ describe.skipIf(!hasFfmpeg)("ffmpeg job pipeline (real ffmpeg)", () => {
 		await jobs.cancelJob(id);
 	}, 60_000);
 
+	test("CPU fallback keeps requested MP4, 60 FPS and very high quality", async () => {
+		const width = 320, height = 192;
+		const request = jobs.parseStartRequest({
+			format: "mp4", quality: "very_high", preferSoftware: true,
+			width, height, fpsNumerator: 60, fpsDenominator: 1,
+			inputPixelFormat: "bgra", filename: "cpu-60fps",
+		});
+		const { id, encoder } = await jobs.createJob(request);
+		expect(encoder.id).toBe("libx264");
+		expect(encoder.hardware).toBe(false);
+		const job = jobs.getJob(id);
+		await jobs.pushFrames({ job, data: frames({ width, height, count: 12 }) });
+		const result = await jobs.finishJob({ job });
+		expect(result.verified).toMatchObject({
+			format: "mp4", codec: "h264", fps: 60,
+			width, height, quality: "very_high", audioCodec: null,
+		});
+		await jobs.cancelJob(id);
+	}, 60_000);
+
 	test("cancelling mid-export stops ffmpeg and removes the files", async () => {
 		const width = 320;
 		const height = 192;
