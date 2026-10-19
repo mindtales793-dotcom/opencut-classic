@@ -40,7 +40,7 @@ jobs:
         run: bun test apps/web/src/core/managers/__tests__/commands.test.ts apps/web/src/subtitles/__tests__/caption-presets.test.ts
 
       - name: Test karaoke captions, animated stickers and color grades
-        run: bun test apps/web/src/subtitles/__tests__/karaoke.test.ts apps/web/src/stickers/__tests__/animated.test.ts apps/web/src/effects/__tests__/color-grade.test.ts
+        run: bun test --preload ./apps/web/scripts/test-wasm-preload.ts apps/web/src/subtitles/__tests__/karaoke.test.ts apps/web/src/stickers/__tests__/animated.test.ts apps/web/src/effects/__tests__/color-grade.test.ts
 
       - name: Validate optional Chrome media bridge
         run: |
