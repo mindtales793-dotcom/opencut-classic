@@ -23,6 +23,7 @@ import { decodeAudioToFloat32 } from "@/media/audio";
 import { buildCaptionChunks } from "@/transcription/caption";
 import { insertCaptionChunksAsTextTrack } from "@/subtitles/insert";
 import { parseSubtitleFile } from "@/subtitles/parse";
+import { CAPTION_PRESETS, applyCaptionPreset, type CaptionPresetId } from "@/subtitles/caption-presets";
 import { Spinner } from "@/components/ui/spinner";
 import {
 	Section,
@@ -84,6 +85,7 @@ function processingReducer(
 /* eslint-enable opencut/prefer-object-params */
 
 export function Captions() {
+	const [captionPreset, setCaptionPreset] = useState<CaptionPresetId>("original");
 	const [selectedLanguage, setSelectedLanguage] =
 		useState<TranscriptionLanguage>("auto");
 	const [processing, dispatch] = useReducer(processingReducer, IDLE_STATE);
@@ -113,7 +115,7 @@ export function Captions() {
 	}: {
 		captions: CaptionChunk[];
 	}): boolean => {
-		const trackId = insertCaptionChunksAsTextTrack({ editor, captions });
+		const trackId = insertCaptionChunksAsTextTrack({ editor, captions: applyCaptionPreset({ captions, presetId: captionPreset }) });
 		return trackId !== null;
 	};
 
@@ -306,6 +308,20 @@ export function Captions() {
 									))}
 								</SelectContent>
 							</Select>
+						</SectionField>
+						<SectionField label="Template de legenda">
+							<Select value={captionPreset} onValueChange={(value) => setCaptionPreset(value as CaptionPresetId)} disabled={isProcessing}>
+								<SelectTrigger aria-label="Template de legenda">
+									<SelectValue placeholder="Escolha um estilo" />
+								</SelectTrigger>
+								<SelectContent>
+									{CAPTION_PRESETS.map((preset) => (
+										<SelectItem key={preset.id} value={preset.id}>{preset.label}</SelectItem>
+									))}
+								</SelectContent>
+							</Select>
+							<p className="mt-1 text-xs text-muted-foreground">{CAPTION_PRESETS.find((preset) => preset.id === captionPreset)?.description}</p>
+							<p className="mt-1 text-xs text-muted-foreground">O estilo escolhido vira texto editável na timeline e acompanha a exportação do vídeo.</p>
 						</SectionField>
 					</SectionFields>
 
