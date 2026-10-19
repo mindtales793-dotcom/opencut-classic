@@ -208,7 +208,7 @@ describe("Remotion full-frame timeline composition", () => {
     const result = buildRemotionCompositionClip(input);
     expect(result.params["transform.scaleX"]).toBe(1);
     expect(result.params["transform.scaleY"]).toBeCloseTo(1920 / 1080, 5);
-    expect(() => buildRemotionCompositionClip({ ...input, duration: 0 })).toThrow();
+    expect(() => buildRemotionCompositionClip({ ...input, duration: mediaTimeFromSeconds({ seconds: 0 }) })).toThrow();
   });
   test("clamps invalid frame values for deterministic export", () => {
     const p = parseComposerFrameInput({ templateId: "documentary", frame: 140 });
