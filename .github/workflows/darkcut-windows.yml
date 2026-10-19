@@ -4,6 +4,9 @@ name: DarkCut Windows App
 
 on:
   workflow_dispatch:
+  pull_request:
+    branches:
+      - darkcut-studio
   push:
     branches:
       - darkcut-studio
@@ -49,6 +52,15 @@ jobs:
         uses: dtolnay/rust-toolchain@stable
         with:
           targets: wasm32-unknown-unknown
+
+      - name: Setup bundled DarkMiner Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Build bundled DarkMiner service
+        shell: pwsh
+        run: ./apps/darkcut-desktop/scripts/build-darkminer-service.ps1 -Python python
 
       - name: Test and build local audio core
         run: |
