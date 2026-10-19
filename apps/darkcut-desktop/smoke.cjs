@@ -343,16 +343,30 @@ async function run(win) {
 		10000,
 		"design:dashboard",
 	);
+	// New workspace contract: content tools fill the upper area without a
+	// visible video monitor. Timeline keeps the tracks below.
 	const geometry = await execute(
 		win,
-		`(()=>{const preview=document.querySelector('[data-panel-id="preview"]')?.getBoundingClientRect();const assets=document.querySelector('[data-panel-id="assets"]')?.getBoundingClientRect();const sidebar=document.querySelector('.studio-sidebar')?.getBoundingClientRect();return {preview:preview?.x,assets:assets?.x,sidebar:sidebar?.width};})()`,
-		"design:geometry",
+		`(()=>{
+		 const workspace=document.querySelector('[data-darkcut-workspace="tools"]')?.getBoundingClientRect();
+		 const assets=document.querySelector('.studio-assets')?.getBoundingClientRect();
+		 const sidebar=document.querySelector('.studio-sidebar')?.getBoundingClientRect();
+		 const preview=document.querySelector('[aria-hidden="true"]')?.getAttribute("class") || "";
+		 return {workspaceWidth:workspace?.width, assetsWidth:assets?.width, sidebarWidth:sidebar?.width, previewHidden:preview.includes("invisible")};
+		})()`,
+		"design:workspace-geometry",
 	);
-	if (!(geometry.preview < geometry.assets && geometry.sidebar >= 140))
-		throw new Error(
-			"Studio layout order or sidebar width is invalid: " +
-				JSON.stringify(geometry),
-		);
+	if (!(geometry.assetsWidth > geometry.workspaceWidth * 0.85 && geometry.sidebarWidth >= 140 && geometry.previewHidden))
+		throw new Error("Full width tools or hidden monitor check failed: " + JSON.stringify(geometry));
+
+	await clickByAria(win, "Linha do Tempo", "layout:timeline-tab");
+	await until(win, `!!document.querySelector('[data-darkcut-workspace="timeline"]') &&
+		!!document.querySelector('[aria-hidden="false"]')`, 10000, "layout:monitor-only-timeline");
+	await clickByAria(win, "DarkMiner", "layout:miner-tab");
+	await until(win, `!!document.querySelector('[data-darkcut-workspace="darkminer"]') &&
+		!!document.querySelector('[data-darkcut-miner-workspace="true"]')`, 15000, "layout:miner-full-workspace");
+	await clickByAria(win, "Produção", "layout:return-production");
+	await until(win, `!!document.querySelector('[data-darkcut-workspace="tools"]')`, 10000, "layout:return-production-check");
 
 	const screenshot = await win.webContents.capturePage();
 	if (process.env.DARKCUT_SMOKE_REPORT) {
@@ -383,7 +397,7 @@ async function run(win) {
 			"indeterminate import progress visible",
 			"media sort buttons: scene and date ascending/descending",
 			"effects category buttons filter and reset 22 real filters",
-			"reference layout: labeled sidebar, preview left and production right",
+			"workspace layout: full-width tools, timeline-only monitor and inline DarkMiner",
 		],
 	});
 }
