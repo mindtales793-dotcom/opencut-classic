@@ -7,3 +7,10 @@ contextBridge.exposeInMainWorld("darkCutMinerDesktop", Object.freeze({
   startSaved: () => ipcRenderer.invoke("darkcut:darkminer:start-saved"),
   connection: () => ipcRenderer.invoke("darkcut:darkminer:connection"),
 }));
+
+contextBridge.exposeInMainWorld("darkCutGroqKeys", Object.freeze({
+  status: () => ipcRenderer.invoke("darkcut:srt:key-status"),
+  save: (secret) => ipcRenderer.invoke("darkcut:srt:key-save", secret),
+  load: () => ipcRenderer.invoke("darkcut:srt:key-load"),
+  remove: () => ipcRenderer.invoke("darkcut:srt:key-delete"),
+}));
