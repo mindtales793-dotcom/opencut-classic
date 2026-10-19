@@ -34,7 +34,12 @@ import { mediaTimeFromSeconds, mediaTimeToSeconds } from "@/wasm";
 import { resolveAnimationPathValueAtTime } from "@/animation/resolve";
 import { useAssetsPanelStore } from "../assets-panel-store";
 import type { ImageElement, TimelineElement } from "@/timeline/types";
-import type { ElementRef, TScene } from "@/timeline/types";
+import type {
+	CreateTimelineElement,
+	ElementRef,
+	TScene,
+} from "@/timeline/types";
+import { composerTextAnimations } from "@/darkcut/composer-motion";
 import { cn } from "@/utils/ui";
 import { toast } from "sonner";
 import { useProjectDraft } from "@/darkcut/project-draft";
@@ -692,6 +697,10 @@ export function DarkCutTemplatesView({
 	const [intensityChoice, setIntensityChoice] = useProjectDraft<
 		DarkCutEffectIntensity | "template"
 	>("template-intensity-choice", "template");
+	const [composerMotion, setComposerMotion] = useProjectDraft<boolean>(
+		"composer-motion",
+		true,
+	);
 	const [addTitles, setAddTitles] = useState(true);
 	const [opening, setOpening] = useState("Uma decisão muda tudo");
 	const [ending, setEnding] = useState("E você, o que faria?");
@@ -830,6 +839,27 @@ export function DarkCutTemplatesView({
 		}
 	};
 
+	// Gives the text card the Remotion Composer's movement (spring slide-in,
+	// fade in/out, slow push-in) as real keyframes, so it is part of the MP4.
+	const withComposerMotion = ({
+		element,
+		intensity,
+	}: {
+		element: CreateTimelineElement;
+		intensity: DarkCutEffectIntensity;
+	}): CreateTimelineElement => {
+		if (!composerMotion || element.type !== "text") return element;
+		return {
+			...element,
+			animations: composerTextAnimations({
+				durationSeconds: mediaTimeToSeconds({ time: element.duration }),
+				baseX: Number(element.params["transform.positionX"] ?? 0),
+				canvasWidth: editor.project.getActive().settings.canvasSize.width,
+				intensity,
+			}),
+		};
+	};
+
 	const templateTextParams = (content: string, pixelsAt1080: number) => {
 		const canvasSize = editor.project.getActive().settings.canvasSize;
 		return buildSubtitleTextElement({
@@ -948,7 +978,9 @@ export function DarkCutTemplatesView({
 				});
 			editor.timeline.insertElement({
 				placement: { mode: "explicit", trackId: textTrackId },
-				element: buildTextElement({
+				element: withComposerMotion({
+					intensity: template.intensity,
+					element: buildTextElement({
 					startTime: visual.startTime,
 					raw: {
 						name: `Cris • ${visualStyle.label} • ${template.title}`,
@@ -966,6 +998,7 @@ export function DarkCutTemplatesView({
 							"background.paddingY": visualStyle.paddingY,
 						},
 					},
+					}),
 				}),
 			});
 		}
@@ -1057,7 +1090,9 @@ export function DarkCutTemplatesView({
 				if (!content || length <= 0) continue;
 				editor.timeline.insertElement({
 					placement: { mode: "explicit", trackId },
-					element: buildTextElement({
+					element: withComposerMotion({
+						intensity: template.intensity,
+						element: buildTextElement({
 						startTime: mediaTimeFromSeconds({ seconds }),
 						raw: {
 							name: `${name} • ${template.title}`,
@@ -1072,6 +1107,7 @@ export function DarkCutTemplatesView({
 								"background.paddingY": 16,
 							},
 						},
+						}),
 					}),
 				});
 			}
@@ -1544,6 +1580,21 @@ export function DarkCutTemplatesView({
 						PRO
 					</span>
 				</div>
+				<label className="mb-2 flex cursor-pointer items-start gap-2 text-[0.7rem]">
+					<input
+						type="checkbox"
+						className="mt-0.5"
+						checked={composerMotion}
+						onChange={(event) => setComposerMotion(event.target.checked)}
+					/>
+					<span>
+						<span className="font-medium">Levar o movimento para o vídeo</span>
+						<span className="block text-muted-foreground">
+							Os cartões de texto entram com deslize em mola, fade e zoom lento
+							como na prévia. Sai no MP4 exportado, sem custo extra de render.
+						</span>
+					</span>
+				</label>
 				{composerTemplate.id === "retro-automotive" && (
 					<div className="mb-2 flex items-center gap-2">
 						<label htmlFor="retro-preview-type" className="shrink-0 text-[0.7rem] text-muted-foreground">
