@@ -6,6 +6,7 @@ import { Button } from "@/components/ui/button";
 import { useAssetsPanelStore } from "../assets-panel-store";
 import { useDarkCutProductionStore } from "../darkcut-production-store";
 import { useProjectDraft } from "@/darkcut/project-draft";
+import { useEditor } from "@/editor/use-editor";
 import { generateScriptSrt } from "@/darkcut/script-srt-generator";
 import { alignSrtToWordTimings, type GroqTimedWord } from "@/darkcut/srt-word-alignment";
 import { analyzeSceneSrt, type SrtSceneCue } from "@/darkcut/srt-scene-sync";
@@ -44,6 +45,8 @@ export function DarkCutSrtStudio(){
   const [srt,setSrt] = useProjectDraft("sync-srt-text","");
   const [,setSrtName] = useProjectDraft("sync-srt-filename","");
   const [scenes,setScenes] = useProjectDraft<DarkCutScene[]>("scenes",[]);
+  const [narrationAssetId] = useProjectDraft<string|null>("narration-asset",null);
+  const assets = useEditor(e=>e.media.getAssets());
   const [jobId,setJobId] = useProjectDraft<string>("srt-v24-job-id","");
   const [mode,setMode] = useProjectDraft<SrtMode>("srt-v24-mode","duration");
   const [maxWords,setMaxWords] = useState(20);
@@ -192,6 +195,19 @@ export function DarkCutSrtStudio(){
       setStatus("Transcrição recebida. Os blocos serão gerados em segundo plano.");
     }catch(e){setStatus(e instanceof Error?e.message:"Falha ao iniciar transcrição.");setWorking(false);}
   };
+  const useProjectNarration=async()=>{
+    const asset=assets.find(item=>item.id===narrationAssetId);
+    if(!asset?.url)return toast.error("Gere uma narração Fish Audio na Produção antes de importar.");
+    setWorking(true);
+    try{
+      const response=await fetch(asset.url);
+      if(!response.ok)throw new Error("Não foi possível ler o áudio do projeto.");
+      const blob=await response.blob();
+      await selectAudio(new File([blob],asset.name.endsWith(".mp3")?asset.name:asset.name+".mp3",{type:blob.type||"audio/mpeg"}));
+      toast.success("Narração Fish conectada ao separador SRT.");
+    }catch(e){toast.error(e instanceof Error?e.message:"Falha ao recuperar narração do projeto.");}
+    finally{setWorking(false);}
+  };
   const analyzePauses=async()=>{
     if(!audio)return toast.error("Importe uma narração para analisar pausas.");
     setWorking(true);setStatus("FFmpeg analisando intervalos de silêncio do áudio…");
@@ -222,7 +238,7 @@ export function DarkCutSrtStudio(){
       setSrt(aligned.srt);
     }else if(mode==="pauses"){
       if(!silences.length||!duration)return toast.error("Clique em Detectar pausas primeiro.");
-      const adjusted=snapSrtToPauses(result.cues,silences);
+      const adjusted=snapSrtToPauses(result.cues,silences.map(p=>({start:p.start+startSeconds,end:p.end+startSeconds})));
       setSrt(serializeSrt(adjusted));
       setCoverage(null);
     }else{setSrt(result.srt);setCoverage(null);}
@@ -302,6 +318,9 @@ export function DarkCutSrtStudio(){
         <span>🎙️ {audio?`${audio.name} · ${(audio.size/1048576).toFixed(1)} MB`:"Selecionar narração MP3, WAV, M4A ou outro áudio (até 300 MB)"}</span>
         <input type="file" accept=".mp3,.wav,.m4a,.flac,.ogg,.webm,.mp4,audio/*" className="hidden" onChange={e=>{void selectAudio(e.target.files?.[0]||null);}}/>
       </label>
+      <Button size="sm" variant="secondary" disabled={working||!narrationAssetId} onClick={()=>{void useProjectNarration();}}>
+        🎧 Usar narração Fish do projeto {narrationAssetId?"":"(ainda não gerada)"}
+      </Button>
       {audioUrl&&<audio ref={audioRef} src={audioUrl} preload="metadata" controls className="w-full" onTimeUpdate={e=>{
         if(pauseAt!==null && e.currentTarget.currentTime>=pauseAt){e.currentTarget.pause();setPauseAt(null);}
       }}/>}
