@@ -59,16 +59,21 @@ export function getFfmpegCapabilities({
 		cache: "no-store",
 	})
 		.then(async (response): Promise<FfmpegCapabilities> => {
-			if (!response.ok) return UNAVAILABLE;
+			if (!response.ok) {
+				capabilitiesCache.delete(format);
+				return UNAVAILABLE;
+			}
 			const data = await readJson(response);
 			if (!isRecord(data)) return UNAVAILABLE;
 			const selected = parseSelected(data.selected);
-			return {
+			const capabilities = {
 				available: data.available === true && !!selected,
 				selected,
 				tested: parseTested(data.tested),
 				reason: typeof data.reason === "string" ? data.reason : undefined,
 			};
+			if (!capabilities.available) capabilitiesCache.delete(format);
+			return capabilities;
 		})
 		.catch(() => {
 			capabilitiesCache.delete(format);
