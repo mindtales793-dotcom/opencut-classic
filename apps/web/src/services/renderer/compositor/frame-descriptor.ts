@@ -26,6 +26,8 @@ import type {
 	TextureUploadDescriptor,
 } from "./types";
 import { DEFAULT_GRAPHIC_SOURCE_SIZE } from "@/graphics";
+import { prepareColorAdjustedFrame } from "./color-pass-processing";
+import type { EffectPass } from "@/effects/types";
 
 export async function buildFrameDescriptor({
 	node,
@@ -36,6 +38,7 @@ export async function buildFrameDescriptor({
 }): Promise<{
 	frame: FrameDescriptor;
 	textures: TextureUploadDescriptor[];
+	postColorPasses: EffectPass[];
 }> {
 	const items: FrameItemDescriptor[] = [];
 	const textures = new Map<string, TextureUploadDescriptor>();
@@ -48,6 +51,7 @@ export async function buildFrameDescriptor({
 		textures,
 	});
 
+	const postColorPasses = prepareColorAdjustedFrame({ items, textures });
 	incrementCounter({ name: "frameItems", by: items.length });
 	incrementCounter({ name: "frameTextures", by: textures.size });
 
@@ -61,6 +65,7 @@ export async function buildFrameDescriptor({
 			items,
 		},
 		textures: [...textures.values()],
+		postColorPasses,
 	};
 }
 
