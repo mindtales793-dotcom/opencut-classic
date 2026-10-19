@@ -348,7 +348,11 @@ function ExportPopover({
 													</Label>
 												</div>
 												<div className="flex items-center space-x-2">
-													<RadioGroupItem value="software" id="engine-software" />\n\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t<Label htmlFor="engine-software">Estável - FFmpeg no processador (mantém formato e qualidade)</Label>\n\t\t\t\t\t\t\t\t\t\t\t\t\t\t</div>\n\t\t\t\t\t\t\t\t\t\t\t\t\t\t<div className="flex items-center space-x-2">\n\t\t\t\t\t\t\t\t\t\t\t\t\t\t<RadioGroupItem value="browser" id="engine-browser" />
+													<RadioGroupItem value="software" id="engine-software" />
+																<Label htmlFor="engine-software">Estável - FFmpeg no processador (mantém formato e qualidade)</Label>
+														</div>
+														<div className="flex items-center space-x-2">
+														<RadioGroupItem value="browser" id="engine-browser" />
 													<Label htmlFor="engine-browser">
 														Compatível - encoder do navegador
 													</Label>
