@@ -40,6 +40,7 @@ import type {
 	TScene,
 } from "@/timeline/types";
 import { composerTextAnimations } from "@/darkcut/composer-motion";
+import { buildRemotionCompositionClip } from "@/darkcut/remotion-timeline";
 import { cn } from "@/utils/ui";
 import { toast } from "sonner";
 import { useProjectDraft } from "@/darkcut/project-draft";
@@ -701,6 +702,10 @@ export function DarkCutTemplatesView({
 		"composer-motion",
 		true,
 	);
+	const [fullRemotionScenes, setFullRemotionScenes] = useProjectDraft<boolean>(
+		"composer-full-scenes",
+		false,
+	);
 	const [addTitles, setAddTitles] = useState(true);
 	const [opening, setOpening] = useState("Uma decisão muda tudo");
 	const [ending, setEnding] = useState("E você, o que faria?");
@@ -946,9 +951,60 @@ export function DarkCutTemplatesView({
 				.map((item) => [item.ref, item.element] as const),
 		);
 
+		// Regenerate compositor overlays on every apply (also when disabled).
+		// Place full-screen compositions only on meaningful beats, not across
+		// every B-roll shot of a long documentary/narration project.
+		const oldComposerTrack = afterMotion.tracks.overlay.find(
+			(track) => track.type === "graphic" && track.name === "R • Remotion Composer",
+		);
+		if (oldComposerTrack?.elements.length) {
+			editor.timeline.deleteElements({
+				elements: oldComposerTrack.elements.map((element) => ({
+					trackId: oldComposerTrack.id, elementId: element.id,
+				})),
+			});
+		}
+		const isComposerBeat = (index: number) => {
+			const item = plan.scenes[index];
+			return Boolean(item && (
+				item.visualSlot !== "default" ||
+				item.sceneType === "hook" ||
+				item.sceneType === "number" ||
+				item.sceneType === "turn" ||
+				index % 5 === 0
+			));
+		};
+		if (fullRemotionScenes) {
+			const canvasSize = editor.project.getActive().settings.canvasSize;
+			const composerTrackId = oldComposerTrack?.id ??
+				editor.timeline.addTrack({ type: "graphic", name: "R • Remotion Composer" });
+			for (const [index, ref] of refs.entries()) {
+				const item = plan.scenes[index];
+				const visual = visualByRef.get(`${ref.trackId}:${ref.elementId}`);
+				if (!item || !visual || !isComposerBeat(index)) continue;
+				editor.timeline.insertElement({
+					placement: { mode: "explicit", trackId: composerTrackId },
+					element: buildRemotionCompositionClip({
+						startTime: visual.startTime,
+						duration: visual.duration,
+						canvasWidth: canvasSize.width,
+						canvasHeight: canvasSize.height,
+						templateId: template.id,
+						templateTitle: template.title,
+						heading: item.overlayText.trim() || item.summary || template.title,
+						subtitle: item.summary,
+						sceneType: item.sceneType,
+						visualSlot: item.visualSlot,
+						intensity: template.intensity,
+						retroMode: retroPreviewMode,
+					}),
+				});
+			}
+		}
+
 		for (const [index, ref] of refs.entries()) {
 			const item = plan.scenes[index];
-			if (!item) continue;
+			if (!item || (fullRemotionScenes && isComposerBeat(index))) continue;
 			const isRetro = template.id === "retro-automotive";
 			const retroHighlight = item.visualSlot !== "default" ||
 				item.sceneType === "hook" ||
@@ -1592,6 +1648,21 @@ export function DarkCutTemplatesView({
 						<span className="block text-muted-foreground">
 							Os cartões de texto entram com deslize em mola, fade e zoom lento
 							como na prévia. Sai no MP4 exportado, sem custo extra de render.
+						</span>
+					</span>
+				</label>
+
+				<label className="mb-3 flex cursor-pointer items-start gap-2 rounded-md border border-primary/25 p-2 text-[0.7rem]">
+					<input type="checkbox" className="mt-0.5"
+						checked={fullRemotionScenes}
+						onChange={(event) => setFullRemotionScenes(event.target.checked)}
+					/>
+					<span>
+						<span className="font-medium">Exportar cenas completas do Remotion</span>
+						<span className="block text-muted-foreground">
+							Ativa mapas, comparações, dossiês, números, títulos e fundos em cenas-chave.
+							Esses trechos cobrem a imagem original; as outras cenas mantêm o B-roll.
+							O mesmo compositor é exibido na prévia e renderizado no MP4.
 						</span>
 					</span>
 				</label>
