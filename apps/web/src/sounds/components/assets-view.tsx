@@ -31,6 +31,7 @@ import { useDarkCutProductionStore } from "@/components/editor/panels/assets/dar
 import type { SavedSound, SoundEffect } from "@/sounds/types";
 import { cn } from "@/utils/ui";
 import { AceStepPanel } from "@/darkcut/ace-step-panel";
+import { LightMusicPanel } from "@/darkcut/light-music-panel";
 import {
 	FavouriteIcon,
 	FilterMailIcon,
@@ -45,9 +46,10 @@ export function SoundsView() {
 		<div className="flex h-full flex-col">
 			<Tabs defaultValue="music" className="flex h-full flex-col">
 				<div className="px-3 pt-4 pb-0">
-					<TabsList className="w-full">
+					<TabsList className="w-full justify-start overflow-x-auto">
 						<TabsTrigger value="music">Músicas</TabsTrigger>
 						<TabsTrigger value="suno">Suno IA</TabsTrigger>
+						<TabsTrigger value="light">Trilha Leve</TabsTrigger>
 						<TabsTrigger value="ace-step">ACE-Step IA</TabsTrigger>
 						<TabsTrigger value="sound-effects">Efeitos</TabsTrigger>
 						<TabsTrigger value="saved">Favoritos</TabsTrigger>
@@ -62,6 +64,9 @@ export function SoundsView() {
 				</TabsContent>
 				<TabsContent value="suno" className="mt-0 flex min-h-0 flex-1 flex-col p-3 pt-0">
 					<SunoLocalMusicView />
+				</TabsContent>
+				<TabsContent value="light" className="mt-0 flex min-h-0 flex-1 flex-col">
+					<LightMusicPanel />
 				</TabsContent>
 				<TabsContent value="ace-step" className="mt-0 flex min-h-0 flex-1 flex-col">
 					<AceStepPanel />
