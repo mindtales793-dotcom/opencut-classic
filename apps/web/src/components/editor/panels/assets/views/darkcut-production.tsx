@@ -300,11 +300,11 @@ export function DarkCutProductionView() {
 					<div className="mb-3 flex items-center justify-between">
 						<div>
 							<div className="text-sm font-semibold">Modo de produção</div>
-							<div className="text-[0.68rem] text-muted-foreground">
+							<div className="text-xs text-muted-foreground">
 								Escolha como o DarkCut vai preencher as cenas.
 							</div>
 						</div>
-						<span className="rounded-full border bg-background px-2 py-1 text-[0.62rem] text-muted-foreground">
+						<span className="rounded-full border bg-background px-2 py-1 text-xs text-muted-foreground">
 							{visualMediaCount} mídias importadas
 						</span>
 					</div>
@@ -334,7 +334,7 @@ export function DarkCutProductionView() {
 					<div className="flex items-center justify-between">
 						<div>
 							<div className="text-sm font-semibold">Fontes de mídia</div>
-							<div className="text-[0.68rem] text-muted-foreground">
+							<div className="text-xs text-muted-foreground">
 								Ative quantas fontes quiser. O Híbrido combina automaticamente.
 							</div>
 						</div>
@@ -389,12 +389,12 @@ export function DarkCutProductionView() {
 						<div className="mb-3 flex items-center justify-between">
 							<div>
 								<div className="text-sm font-semibold">Fila de cenas</div>
-								<div className="text-[0.68rem] text-muted-foreground">
+								<div className="text-xs text-muted-foreground">
 									Confira rapidamente o que está pronto e o que ainda precisa de
 									mídia.
 								</div>
 							</div>
-							<div className="flex gap-2 text-[0.65rem]">
+							<div className="flex gap-2 text-xs">
 								<span className="rounded border bg-background px-2 py-1">
 									{stats.withMedia} com mídia
 								</span>
@@ -418,14 +418,14 @@ export function DarkCutProductionView() {
 								>
 									<div className="flex items-center justify-between gap-2">
 										<div className="flex items-center gap-2">
-											<span className="flex size-6 items-center justify-center rounded-md border bg-card text-[0.65rem] font-semibold">
+											<span className="flex size-6 items-center justify-center rounded-md border bg-card text-xs font-semibold">
 												{scene.index}
 											</span>
 											<span className="font-medium">Cena {scene.index}</span>
 										</div>
 										<span
 											className={cn(
-												"rounded-full px-2 py-0.5 text-[0.62rem]",
+												"rounded-full px-2 py-0.5 text-xs",
 												scene.status === "ready" &&
 													"bg-constructive/15 text-constructive",
 												scene.status === "review" &&
@@ -445,11 +445,11 @@ export function DarkCutProductionView() {
 										{scene.text}
 									</p>
 									{scene.mediaName ? (
-										<p className="mt-2 truncate rounded border bg-card px-2 py-1 text-[0.65rem] text-foreground">
+										<p className="mt-2 truncate rounded border bg-card px-2 py-1 text-xs text-foreground">
 											🎞 {scene.mediaName}
 										</p>
 									) : (
-										<p className="mt-2 rounded border border-dashed border-destructive/30 bg-destructive/5 px-2 py-1 text-[0.65rem] text-destructive">
+										<p className="mt-2 rounded border border-dashed border-destructive/30 bg-destructive/5 px-2 py-1 text-xs text-destructive">
 											Mídia ainda não encontrada
 										</p>
 									)}
@@ -478,7 +478,7 @@ export function DarkCutProductionView() {
 							/>
 						</label>
 						<div className="h-10 w-px bg-border" />
-						<div className="text-right text-[0.65rem] text-muted-foreground">
+						<div className="text-right text-xs text-muted-foreground">
 							<div>
 								{stats.withMedia}/{scenes.length || 0} cenas com mídia
 							</div>
@@ -527,7 +527,7 @@ function WorkflowButton({
 			{badge && (
 				<span
 					className={cn(
-						"rounded-full border px-1.5 py-0.5 text-[0.6rem]",
+						"rounded-full border px-1.5 py-0.5 text-xs",
 						warning
 							? "border-destructive/40 bg-destructive/10 text-destructive"
 							: "bg-background text-muted-foreground",

@@ -230,10 +230,11 @@
 	min-width: 90px;
 }
 .studio-steps {
-	display: flex;
+	display: grid;
+	grid-template-columns: repeat(auto-fit, minmax(100px, 1fr));
 	flex: 1;
 	min-width: 0;
-	gap: 7px;
+	gap: 10px;
 }
 .studio-steps button {
 	flex: 1;
@@ -242,7 +243,9 @@
 	display: flex;
 	flex-direction: column;
 	align-items: flex-start;
-	gap: 4px;
+	gap: 5px;
+	padding: 8px;
+	border-radius: 8px;
 	text-align: left;
 }
 .studio-steps button:after {
@@ -275,17 +278,17 @@
 }
 .studio-steps strong {
 	font-weight: 400;
-	font-size: 11px;
-	white-space: nowrap;
+	font-size: 13px;
+	overflow-wrap: anywhere;
 }
 .studio-steps small {
-	font-size: 10px;
-	line-height: 1.2;
+	font-size: 12px;
+	line-height: 1.4;
 	color: #9a9ca0;
 }
 .studio-workflow-tabs {
 	display: grid;
-	grid-template-columns: repeat(5, minmax(0, 1fr));
+	grid-template-columns: repeat(auto-fit, minmax(125px, 1fr));
 	gap: 7px;
 	padding: 10px;
 }
@@ -297,8 +300,9 @@
 	justify-content: center;
 	gap: 7px;
 	background: linear-gradient(#18191c, #111214);
-	padding: 11px 5px;
-	font-size: 12px;
+	padding: 12px 10px;
+	min-height: 44px;
+	font-size: 13px;
 	color: #b7b9bc;
 	white-space: nowrap;
 }
@@ -314,8 +318,8 @@
 }
 .studio-script-grid {
 	display: grid;
-	grid-template-columns: minmax(0, 0.85fr) minmax(0, 1.25fr);
-	gap: 12px;
+	grid-template-columns: repeat(auto-fit, minmax(min(100%, 340px), 1fr));
+	gap: 16px;
 	padding: 0 10px 12px;
 	min-height: 100%;
 }
@@ -324,7 +328,7 @@
 	flex-direction: column;
 	min-width: 0;
 	border: 1px solid #2c2e31;
-	border-radius: 8px;
+	border-radius: 12px;
 	background: linear-gradient(120deg, #161719, #101113);
 	overflow: hidden;
 }
@@ -333,25 +337,27 @@
 	align-items: center;
 	justify-content: space-between;
 	gap: 6px;
-	padding: 11px;
+	padding: 16px;
+	flex-wrap: wrap;
 	border-bottom: 1px solid #252629;
-	font-size: 12px;
+	font-size: 15px;
 }
 .studio-script-card header button,
 .studio-script-card footer button {
-	font-size: 10px;
+	font-size: 12px;
 	border: 1px solid #414348;
 	border-radius: 5px;
 	white-space: nowrap;
-	padding: 7px;
+	padding: 9px 12px;
+	min-height: 36px;
 	background: linear-gradient(#232528, #141517);
 }
 .studio-script-card textarea {
 	flex: 1;
 	min-height: 210px;
 	resize: vertical;
-	padding: 15px 12px;
-	font-size: 12px;
+	padding: 18px 16px;
+	font-size: 15px;
 	line-height: 1.8;
 	border: none;
 	outline: none;
@@ -370,13 +376,13 @@
 	gap: 7px;
 }
 .studio-script-card footer small {
-	font-size: 9px;
+	font-size: 12px;
 	color: #898c90;
 }
 .studio-script-options {
 	border-top: 1px solid #27292c;
-	padding: 8px 10px;
-	font-size: 11px;
+	padding: 12px 16px;
+	font-size: 13px;
 	color: #9a9da2;
 }
 .studio-script-options summary {
@@ -550,7 +556,7 @@
 		gap: 4px;
 	}
 	.studio-workflow-tabs button {
-		font-size: 11px;
+		font-size: 13px;
 	}
 	.studio-header nav {
 		gap: 4px;
@@ -643,4 +649,25 @@
 .studio-extra-tools[open] > summary {
 	border-color: #db2a43;
 	color: #fff;
+}
+
+/* Layout refinements reuse the existing DARKCUT palette and brand assets. */
+.darkcut-studio-shell :is(.studio-navigation, .studio-workflow, .studio-workflow-tabs, .studio-production, .studio-templates) :is(button, input, select, summary):focus-visible {
+	outline: 2px solid var(--primary);
+	outline-offset: 3px;
+}
+.studio-steps button:hover { background: var(--accent); }
+.studio-script-card footer { flex-wrap: wrap; }
+.studio-templates { scrollbar-gutter: stable; }
+.studio-template-library-grid {
+	display: grid;
+	grid-template-columns: repeat(auto-fit, minmax(min(100%, 300px), 1fr));
+	gap: 16px;
+}
+.studio-template-library-card { display: flex; flex-direction: column; min-width: 0; }
+.studio-template-library-card > .p-4 { display: flex; flex-direction: column; flex: 1; }
+.studio-template-library-card > .p-4 > button:last-child { margin-top: auto; }
+.studio-template-library-card > .p-4 > div:last-of-type { margin-bottom: 16px; }
+@media (prefers-reduced-motion: reduce) {
+	.studio-template-library-card { transition: none; transform: none; }
 }

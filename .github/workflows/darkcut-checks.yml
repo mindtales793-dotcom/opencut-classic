@@ -2,7 +2,7 @@ name: DarkCut Checks
 
 on:
   pull_request:
-    branches: [main, darkcut-studio]
+    branches: [main, darkcut-studio, feat/darkminer-bundled-intelligence-20261019]
   push:
     branches: [darkcut-studio]
 
@@ -24,6 +24,9 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@v4
+
+      - name: Test desktop process lifecycle
+        run: node --test apps/darkcut-desktop/tests/lifecycle.test.cjs
 
       - name: Setup Bun
         uses: oven-sh/setup-bun@v2
