@@ -311,10 +311,14 @@ export const useSoundsStore = create<SoundsStore>((set, get) => ({
 			if (type.includes("json") || type.includes("text/"))
 				throw new Error("O provedor não retornou um arquivo de áudio.");
 			const blob = await response.blob();
+			// Preserve real container extensions: locally composed tracks are WAV.
+			const audioType = blob.type.toLowerCase();
+			const extension = audioType.includes("wav") || audioType.includes("wave")
+				? "wav" : audioType.includes("ogg") ? "ogg" : audioType.includes("flac") ? "flac" : "mp3";
 			const file = new File(
 				[blob],
-				`${sound.name.replace(/[<>:"/\\|?*]/g, "-")}.mp3`,
-				{ type: blob.type.startsWith("audio/") ? blob.type : "audio/mpeg" },
+				`${sound.name.replace(/[<>:"/\\|?*]/g, "-")}.${extension}`,
+				{ type: audioType.startsWith("audio/") ? audioType : "audio/mpeg" },
 			);
 			task("running", "Preparando áudio…");
 			const [processed] = await processMediaAssets({ files: [file] });
