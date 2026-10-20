@@ -3,7 +3,7 @@ const path = require("node:path");
 const fs = require("node:fs");
 const http = require("node:http");
 const { randomBytes } = require("node:crypto");
-const { spawn } = require("node:child_process");
+const { spawn, spawnSync } = require("node:child_process");
 
 // Prefer the discrete GPU on notebooks/dual-GPU systems. Electron documents this
 // switch and it must be set before the ready event.
@@ -13,6 +13,7 @@ let serverProcess = null;
 let mainWindow = null;
 let serverFailure = null;
 let darkMinerProcess = null;
+let darkMinerStarting = null;
 let quitting = false;
 let taskTray = null;
 // Exports keep rendering frames in this window while it is minimized or hidden
@@ -27,7 +28,7 @@ if (smokeTest && process.env.DARKCUT_SMOKE_PROFILE) {
 }
 const logFile = path.join(app.getPath("userData"), "startup.log");
 fs.mkdirSync(path.dirname(logFile), { recursive: true });
-fs.writeFileSync(logFile, `DarkCut ${app.getVersion()} - ${new Date().toISOString()}\n`);
+
 function log(message) {
   fs.appendFileSync(logFile, `${new Date().toISOString()} ${message}\n`);
 }
@@ -44,6 +45,7 @@ function fail(error) {
 }
 const hasLock = app.requestSingleInstanceLock();
 if (!hasLock) app.quit();
+else fs.writeFileSync(logFile, `DarkCut ${app.getVersion()} - ${new Date().toISOString()}\n`);
 app.on("second-instance", () => {
   if (mainWindow) {
     if (mainWindow.isMinimized()) mainWindow.restore();
@@ -210,7 +212,9 @@ function canControlMiner(event) {
       origin === `http://${HOST}:${PORT}`;
   } catch { return false; }
 }
-function startMinerExe(executable) {
+async function startMinerExe(executable) {
+  if (quitting) return { ok: false, error: "O DarkCut está encerrando." };
+  if (darkMinerStarting) return darkMinerStarting;
   if (darkMinerProcess && darkMinerProcess.exitCode === null && !darkMinerProcess.killed) {
     return { ok: true, alreadyRunning: true };
   }
@@ -218,30 +222,43 @@ function startMinerExe(executable) {
       path.extname(executable).toLowerCase() !== ".exe") {
     return { ok: false, error: "Selecione um Dark Miner.exe válido no Windows." };
   }
-  try {
-    darkMinerProcess = spawn(executable, [], {
-      cwd: path.dirname(executable), windowsHide: true,
-      stdio: ["ignore", "pipe", "pipe"],
-      env: { ...process.env, DARKMINER_EMBEDDED: "1" },
+  darkMinerStarting = new Promise(resolve => {
+    let child;
+    try {
+      child = spawn(executable, [], {
+        cwd: path.dirname(executable), windowsHide: true,
+        stdio: ["ignore", "pipe", "pipe"],
+        env: { ...process.env, DARKMINER_EMBEDDED: "1" },
+      });
+    } catch (error) {
+      resolve({ ok: false, error: error instanceof Error ? error.message : "Falha ao abrir o Dark Miner." });
+      return;
+    }
+    darkMinerProcess = child;
+    child.stdout?.on("data", data => log("DarkMiner stdout: " + data.toString().trim().slice(0, 2000)));
+    child.stderr?.on("data", data => log("DarkMiner stderr: " + data.toString().trim().slice(0, 2000)));
+    child.once("spawn", () => {
+      log(executable === bundledMinerPath()
+        ? "Bundled DarkMiner service started."
+        : "DarkMiner started from user-approved local executable.");
+      // A spawned process is not an API readiness claim; the UI probes the API.
+      resolve({ ok: true, alreadyRunning: false });
     });
-    darkMinerProcess.stdout?.on("data", data => log("DarkMiner stdout: " + data.toString().trim().slice(0, 2000)));
-    darkMinerProcess.stderr?.on("data", data => log("DarkMiner stderr: " + data.toString().trim().slice(0, 2000)));
-    darkMinerProcess.once("error", e => {
-      log("DarkMiner launch failed: " + e.message);
-      darkMinerProcess = null;
+    child.once("error", error => {
+      log("DarkMiner launch failed: " + error.message);
+      if (darkMinerProcess === child) darkMinerProcess = null;
+      resolve({ ok: false, error: "Falha ao abrir o Dark Miner: " + error.message });
     });
-    darkMinerProcess.once("exit", code => {
+    child.once("exit", code => {
       log("DarkMiner stopped: " + code);
-      darkMinerProcess = null;
+      if (darkMinerProcess === child) darkMinerProcess = null;
+      resolve({ ok: false, error: "O Dark Miner encerrou antes de iniciar." });
     });
-    log(executable === bundledMinerPath()
-      ? "Bundled DarkMiner service started."
-      : "DarkMiner started from user-approved local executable.");
-    return { ok: true, alreadyRunning: false };
-  } catch (error) {
-    return { ok: false, error: error instanceof Error ? error.message : "Falha ao abrir o Dark Miner." };
-  }
+  });
+  try { return await darkMinerStarting; }
+  finally { darkMinerStarting = null; }
 }
+
 ipcMain.handle("darkcut:darkminer:choose-and-start", async event => {
   if (!canControlMiner(event)) return { ok: false, error: "Origem não autorizada." };
   const selection = await dialog.showOpenDialog(mainWindow, {
@@ -251,7 +268,7 @@ ipcMain.handle("darkcut:darkminer:choose-and-start", async event => {
   });
   if (selection.canceled || !selection.filePaths?.[0]) return { ok: false, cancelled: true };
   const executable = selection.filePaths[0];
-  const result = startMinerExe(executable);
+  const result = await startMinerExe(executable);
   if (result.ok) {
     fs.writeFileSync(minerPreferencesFile, JSON.stringify({ executable }), { mode: 0o600 });
   }
@@ -264,7 +281,7 @@ ipcMain.handle("darkcut:darkminer:start-saved", event => {
 ipcMain.handle("darkcut:darkminer:connection", event => {
   if (!canControlMiner(event)) return { ok: false, error: "Origem não autorizada." };
   return { ok: true, remembered: !!preferredMinerPath(), bundled: !!bundledMinerPath(),
-    startedByDarkCut: !!darkMinerProcess && darkMinerProcess.exitCode === null };
+    startedByDarkCut: !!darkMinerProcess && !darkMinerStarting && !darkMinerProcess.killed && darkMinerProcess.exitCode === null };
 });
 
 
@@ -403,7 +420,7 @@ if (hasLock) app.whenReady().then(async () => {
     // The bundled FastAPI backend starts with DarkCut. Its data remains in
     // %LOCALAPPDATA%/DarkMiner, separate from installed program files.
     if (bundledMinerPath()) {
-      const miner = startMinerExe(bundledMinerPath());
+      const miner = await startMinerExe(bundledMinerPath());
       if (!miner.ok) log("Bundled DarkMiner startup: " + miner.error);
     }
     await win.loadURL(`http://${HOST}:${PORT}/projects`);
@@ -418,11 +435,29 @@ if (hasLock) app.whenReady().then(async () => {
   }
 });
 
+function stopChildTree(child) {
+  if (!child || child.exitCode !== null || child.killed) return;
+  if (process.platform === "win32" && Number.isInteger(child.pid) && child.pid > 0) {
+    // PyInstaller and the Next server own children (including FFmpeg). Wait for
+    // taskkill before app.exit(), otherwise those children can retain ports.
+    const result = spawnSync("taskkill", ["/PID", String(child.pid), "/T", "/F"], {
+      windowsHide: true, stdio: "ignore", timeout: 10000,
+    });
+    if (!result.error && result.status === 0) return;
+    log("Process tree cleanup failed; stopping parent process.");
+  }
+  try { child.kill(); } catch (error) { log("Process cleanup: " + error.message); }
+}
 function stopServer() {
   quitting = true;
-  if (serverProcess && !serverProcess.killed) serverProcess.kill();
-  if (darkMinerProcess && !darkMinerProcess.killed) darkMinerProcess.kill();
+  const server = serverProcess;
+  const miner = darkMinerProcess;
+  serverProcess = null;
+  darkMinerProcess = null;
+  stopChildTree(server);
+  stopChildTree(miner);
 }
+
 app.on("window-all-closed", () => app.quit());
 app.on("before-quit", stopServer);
 app.on("will-quit", stopServer);
