@@ -1,7 +1,6 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { toast } from "sonner";
 import { PanelView } from "@/components/editor/panels/assets/views/base-panel";
 import {
 	Select,
@@ -22,7 +21,6 @@ import {
 import { BackgroundContent } from "./background";
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
 import { NumberField } from "@/components/ui/number-field";
 import { useEditorStore } from "@/editor/editor-store";
 import { usePropertyDraft } from "@/components/editor/panels/properties/hooks/use-property-draft";
