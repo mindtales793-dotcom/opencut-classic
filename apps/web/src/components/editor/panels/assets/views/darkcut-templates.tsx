@@ -485,7 +485,26 @@ function TemplatePreview({
 	posterUrl?: string;
 }) {
 	const canvas = useRef<HTMLCanvasElement>(null);
+	// Do not load posters or run canvas animations for templates off-screen.
+	// On a large template catalog this avoids dozens of concurrent decoders.
+	const [isVisible, setIsVisible] = useState(false);
 	useEffect(() => {
+		const node = canvas.current;
+		if (!node) return;
+		if (typeof IntersectionObserver === "undefined") {
+			setIsVisible(true);
+			return;
+		}
+		const observer = new IntersectionObserver(
+			(entries) => setIsVisible(Boolean(entries[0]?.isIntersecting)),
+			{ rootMargin: "160px", threshold: 0.01 },
+		);
+		observer.observe(node);
+		return () => observer.disconnect();
+	}, []);
+
+	useEffect(() => {
+		if (!isVisible) return;
 		const ctx = canvas.current?.getContext("2d");
 		if (!ctx) return;
 		const duration = template.durationSeconds;
@@ -632,7 +651,7 @@ function TemplatePreview({
 			if (timer) window.clearInterval(timer);
 			if (poster) poster.onload = null;
 		};
-	}, [template, active, title, ending, posterUrl]);
+	}, [template, active, title, ending, posterUrl, isVisible]);
 	return (
 		<canvas
 			ref={canvas}
