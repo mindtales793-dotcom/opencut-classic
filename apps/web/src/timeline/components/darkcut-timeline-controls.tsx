@@ -11,7 +11,6 @@ import {
 	applyFixedDuration,
 	applyMotionPreset,
 	applyRandomMotions,
-	autoEditWithNarration,
 	applyRandomTransitions,
 	applyTransitionPreset,
 	clearDarkCutTransitions,
@@ -197,32 +196,6 @@ export function DarkCutTimelineControls() {
 		});
 	};
 
-	const autoEdit = () => {
-		const result = autoEditWithNarration({
-			editor,
-			refs: selectedElements,
-			motionPresets: motionFavorites,
-			transitionPresets: favorites,
-			intensity: effectIntensity,
-		});
-		if (!result.narrationSeconds) {
-			toast.error("Adicione a narração à timeline antes de usar o Auto Edit.");
-			return;
-		}
-		if (!result.changed) {
-			toast.error("Não encontrei imagens ou vídeos para editar.");
-			return;
-		}
-		toast.success(
-			`DarkCut Auto Edit concluído em ${result.changed} item(ns).`,
-			{
-				description: `Sincronizado com ${Math.round(
-					result.narrationSeconds,
-				)}s de narração + ${result.motions} movimentos + ${result.transitions} transições.`,
-			},
-		);
-	};
-
 	const clearTransitions = () => {
 		if (selectedElements.length === 0) {
 			toast.error("Selecione os itens que devem ficar sem transição.");
@@ -241,14 +214,6 @@ export function DarkCutTimelineControls() {
 
 	return (
 		<div className="studio-quick-tools flex items-center gap-1">
-			<Button
-				size="sm"
-				className="h-8 px-3 text-xs font-semibold"
-				onClick={autoEdit}
-				title="Sincronizar com narração e aplicar movimentos e transições"
-			>
-				✨ Auto Edit
-			</Button>
 			<Button
 				variant="outline"
 				size="sm"
