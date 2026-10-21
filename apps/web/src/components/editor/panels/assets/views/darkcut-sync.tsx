@@ -17,6 +17,8 @@ import { useAssetsPanelStore } from "../assets-panel-store";
 import { syncVisualsToSrt, type DarkCutSrtScope, type DarkCutSrtOrder } from "@/timeline/darkcut-tools";
 import { analyzeSceneSrt, makeSrtTimingGroups, resolveSrtSyncStrategy, sceneNumberFromName, type SrtSyncStrategy } from "@/darkcut/srt-scene-sync";
 import type { TimelineElement } from "@/timeline/types";
+import { downloadBlob } from "@/export";
+import { safeDownloadName } from "@/darkcut/download-name";
 
 
 function formatSrtTime(totalSeconds: number) {
@@ -468,20 +470,38 @@ export function DarkCutSyncView() {
 		}
 	};
 
-	const downloadNarration = () => {
-		if (!narrationUrl) {
-			toast.error("O MP3 ainda não ficou pronto. Conclua ou retome a narração.");
-			return;
+	const downloadNarration = async () => {
+		// Prefer the file stored in the project (always valid) over a URL kept in
+		// state, which can already have been revoked after the library reloaded.
+		const asset = mediaAssets.find((item) => item.id === narrationAssetId);
+		const filename = safeDownloadName({
+			name: narrationFileName,
+			extension: "mp3",
+		});
+		try {
+			let blob: Blob | null = asset?.file ?? null;
+			if (!blob && narrationUrl) {
+				const response = await fetch(narrationUrl);
+				if (!response.ok) throw new Error(`HTTP ${response.status}`);
+				blob = await response.blob();
+			}
+			if (!blob || blob.size === 0) {
+				toast.error("O MP3 ainda não ficou pronto. Conclua ou retome a narração.");
+				return;
+			}
+			downloadBlob({ blob, filename });
+			toast.success("Download da narração iniciado.", {
+				description: `${filename} · ${(blob.size / 1048576).toFixed(1)} MB. Se o Windows pedir, escolha a pasta para salvar.`,
+			});
+		} catch (error) {
+			console.error("Narration download failed:", error);
+			toast.error("Não foi possível salvar o MP3.", {
+				description:
+					error instanceof Error
+						? error.message
+						: "Tente gerar/retomar a narração novamente.",
+			});
 		}
-		const link = document.createElement("a");
-		link.href = narrationUrl;
-		link.download = narrationFileName.endsWith(".mp3")
-			? narrationFileName
-			: `${narrationFileName}.mp3`;
-		document.body.appendChild(link);
-		link.click();
-		link.remove();
-		toast.success("Download da narração iniciado.");
 	};
 
 	const downloadNarrationSrt = () => {
@@ -741,8 +761,8 @@ export function DarkCutSyncView() {
 					<Button
 						className="w-full"
 						variant="secondary"
-						disabled={!narrationUrl}
-						onClick={downloadNarration}
+						disabled={!narrationUrl && !narrationAssetId}
+						onClick={() => void downloadNarration()}
 						title={narrationUrl ? "Salvar o MP3 completo da narração no computador" : "O download será liberado após todos os blocos serem unidos"}
 					>
 						↓ Baixar narração em MP3

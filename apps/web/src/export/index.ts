@@ -91,6 +91,24 @@ export function downloadBuffer({
 	window.setTimeout(() => URL.revokeObjectURL(url), 60_000);
 }
 
+/** Saves a Blob/File. Builds a fresh object URL, so it cannot hit one that was already revoked. */
+export function downloadBlob({
+	blob,
+	filename,
+}: {
+	blob: Blob;
+	filename: string;
+}): void {
+	const url = URL.createObjectURL(blob);
+	const downloadLink = document.createElement("a");
+	downloadLink.href = url;
+	downloadLink.download = filename;
+	document.body.appendChild(downloadLink);
+	downloadLink.click();
+	document.body.removeChild(downloadLink);
+	window.setTimeout(() => URL.revokeObjectURL(url), 60_000);
+}
+
 /** Downloads a file that already lives on the local server, without loading it into memory. */
 export function downloadFromUrl({
 	url,
