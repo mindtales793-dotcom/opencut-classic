@@ -2,6 +2,7 @@ import type { TProject, TProjectMetadata } from "@/project/types";
 import { getProjectDurationFromScenes } from "@/timeline/scenes";
 import type { MediaAsset } from "@/media/types";
 import { IndexedDBAdapter } from "./indexeddb-adapter";
+import { mapWithConcurrency } from "./concurrency";
 import { OPFSAdapter } from "./opfs-adapter";
 import {
 	type StorageCapacityCheckResult,
@@ -392,16 +393,13 @@ class StorageService {
 		});
 
 		const mediaIds = await mediaMetadataAdapter.list();
-		const mediaItems: MediaAsset[] = [];
-
-		for (const id of mediaIds) {
-			const item = await this.loadMediaAsset({ projectId, id });
-			if (item) {
-				mediaItems.push(item);
-			}
-		}
-
-		return mediaItems;
+		// Load small groups concurrently instead of serially waiting for each
+		// OPFS/IndexedDB read. Keep a low cap for HDD-based Windows machines.
+		// Results preserve the original order and missing assets remain skipped.
+		const assets = await mapWithConcurrency(mediaIds, 3, (id) =>
+			this.loadMediaAsset({ projectId, id }),
+		);
+		return assets.filter((item): item is MediaAsset => item !== null);
 	}
 
 	async deleteMediaAsset({
