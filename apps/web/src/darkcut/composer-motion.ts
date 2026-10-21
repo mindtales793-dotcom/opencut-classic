@@ -1,4 +1,4 @@
-import { interpolate, spring } from "remotion";
+import { composerSpringProgress } from "./composer-spring-light";
 import type {
 	ElementAnimations,
 	ScalarAnimationChannel,
@@ -12,7 +12,7 @@ import { mediaTimeFromSeconds } from "@/wasm";
  * <Player>, so nothing it animates reaches the exported MP4. The scene's look
  * is already applied to the timeline as a text element; this module gives that
  * element the Composer's movement (spring slide-in, fade in/out and a slow
- * push-in) using the very same `spring()` / `interpolate()` math, sampled into
+ * push-in) using equivalent spring / interpolation math, sampled into
  * keyframes. The export pipeline (GPU compositor -> FFmpeg) then renders it
  * like any other animation, with no React or DOM work per frame.
  */
@@ -22,7 +22,6 @@ export type ComposerMotionIntensity = "soft" | "normal" | "strong";
 /** Same numbers as UniversalComposer in darkcut-composer.tsx. */
 const COMPOSER_FPS = 15;
 const COMPOSITION_WIDTH = 960;
-const SPRING_CONFIG = { damping: 20, stiffness: 120, mass: 0.85 };
 const SLIDE_PX = 65;
 const FADE_IN_FRAMES = 10;
 const FADE_OUT_FRAMES = 8;
@@ -131,14 +130,10 @@ export function composerTextAnimations({
 	const positionX: Point[] = [];
 	for (let step = 0; step <= steps; step++) {
 		const seconds = (step / steps) * entranceEnd;
-		const progress = spring({
-			frame: seconds * SAMPLE_FPS,
-			fps: SAMPLE_FPS,
-			config: SPRING_CONFIG,
-		});
+		const progress = composerSpringProgress(seconds * SAMPLE_FPS, SAMPLE_FPS);
 		positionX.push([
 			seconds,
-			baseX + interpolate(progress, [0, 1], [slide, 0]),
+			baseX + slide * (1 - progress),
 		]);
 	}
 	positionX.push([duration, baseX]);
