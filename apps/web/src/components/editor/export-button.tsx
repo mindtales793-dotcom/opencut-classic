@@ -42,6 +42,7 @@ import {
 } from "@/services/renderer/ffmpeg-exporter";
 import { useEditor } from "@/editor/use-editor";
 import { DEFAULT_EXPORT_OPTIONS } from "@/export/defaults";
+import { LOUDNESS_TARGETS } from "@/media/loudness";
 import { EXPORT_RESOLUTIONS, EXPORT_FPS_PRESETS, getExportDimensions, getExportFps, type ExportResolution, type ExportFpsPreset } from "@/export/presets";
 
 function isExportFormat(value: string): value is ExportFormat {
@@ -50,6 +51,12 @@ function isExportFormat(value: string): value is ExportFormat {
 
 function isExportQuality(value: string): value is ExportQuality {
 	return EXPORT_QUALITY_VALUES.some((qualityValue) => qualityValue === value);
+}
+
+/** Only offered targets are accepted; anything else keeps the timeline level. */
+function resolveLoudnessTarget({ choice }: { choice: string }): number | null {
+	const target = LOUDNESS_TARGETS.find((item) => String(item.lufs) === choice);
+	return target ? target.lufs : null;
 }
 
 function isExportEngine(value: string): value is ExportEngine {
@@ -144,6 +151,9 @@ function ExportPopover({
 	const [shouldIncludeAudio, setShouldIncludeAudio] = useState<boolean>(
 		DEFAULT_EXPORT_OPTIONS.includeAudio ?? true,
 	);
+	const [loudnessChoice, setLoudnessChoice] = useState<string>(
+		String(LOUDNESS_TARGETS[0].lufs),
+	);
 	const [engine, setEngine] = useState<ExportEngine>("auto");
 	const [resolution, setResolution] = useState<ExportResolution>("original");
 	const [fpsPreset, setFpsPreset] = useState<ExportFpsPreset>("project");
@@ -184,6 +194,7 @@ function ExportPopover({
 				fps: selectedFps,
 				canvasSize: dimensions,
 				includeAudio: shouldIncludeAudio,
+				loudnessTargetLufs: resolveLoudnessTarget({ choice: loudnessChoice }),
 				engine,
 				filename: activeProject.metadata.name,
 			},
@@ -381,6 +392,29 @@ function ExportPopover({
 												<Label htmlFor="include-audio">
 													Incluir áudio na exportação
 												</Label>
+											</div>
+											<div className="mt-3 space-y-1">
+												<Label htmlFor="loudness-target">Volume final</Label>
+												<select
+													id="loudness-target"
+													className="w-full rounded-md border bg-background p-2"
+													disabled={!shouldIncludeAudio}
+													value={loudnessChoice}
+													onChange={(event) =>
+														setLoudnessChoice(event.target.value)
+													}
+												>
+													<option value="off">Manter o volume da timeline</option>
+													{LOUDNESS_TARGETS.map((target) => (
+														<option key={target.lufs} value={String(target.lufs)}>
+															{target.label}
+														</option>
+													))}
+												</select>
+												<p className="text-xs text-muted-foreground">
+													Nivela narração baixa para o padrão do YouTube, sem
+													estourar. O aumento é limitado a +12 dB.
+												</p>
 											</div>
 										</SectionContent>
 									</Section>

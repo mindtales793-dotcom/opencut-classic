@@ -148,7 +148,8 @@ export class RendererManager {
 		onProgress?: ({ progress }: { progress: number }) => void;
 		onCancel?: () => boolean;
 	}): Promise<ExportResult> {
-		const { format, quality, fps, includeAudio, engine } = options;
+		const { format, quality, fps, includeAudio, engine, loudnessTargetLufs } =
+			options;
 		if (onCancel?.()) return { success: false, cancelled: true };
 
 		try {
@@ -180,6 +181,7 @@ export class RendererManager {
 					tracks,
 					mediaAssets,
 					duration,
+					loudnessTargetLufs: loudnessTargetLufs ?? null,
 				});
 			}
 
