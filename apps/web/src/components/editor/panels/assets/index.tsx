@@ -6,15 +6,51 @@ import {
 	useAssetsPanelStore,
 } from "@/components/editor/panels/assets/assets-panel-store";
 import { StudioWorkflow } from "@/darkcut/studio-workflow";
-import { PropertiesPanel } from "@/components/editor/panels/properties";
-import { Captions } from "@/subtitles/components/assets-view";
-import { MediaView } from "./views/assets";
-import { SettingsView } from "./views/settings";
-import { SoundsView } from "@/sounds/components/assets-view";
-import { StickersView } from "@/stickers/components/assets-view";
-import { TextView } from "@/text/components/assets-view";
-import { EffectsView } from "@/effects/components/assets-view";
-import { DarkCutProductionView } from "./views/darkcut-production";
+
+
+
+
+
+
+
+
+
+// Load this tool only when its tab is opened: keeps the initial editor bundle small.
+const Captions = dynamic(() => import("@/subtitles/components/assets-view").then((module) => module.Captions), {
+	loading: () => <div className="p-5 text-sm text-muted-foreground">Carregando ferramentas…</div>,
+});
+// Load this tool only when its tab is opened: keeps the initial editor bundle small.
+const MediaView = dynamic(() => import("./views/assets").then((module) => module.MediaView), {
+	loading: () => <div className="p-5 text-sm text-muted-foreground">Carregando ferramentas…</div>,
+});
+// Load this tool only when its tab is opened: keeps the initial editor bundle small.
+const SettingsView = dynamic(() => import("./views/settings").then((module) => module.SettingsView), {
+	loading: () => <div className="p-5 text-sm text-muted-foreground">Carregando ferramentas…</div>,
+});
+// Load this tool only when its tab is opened: keeps the initial editor bundle small.
+const SoundsView = dynamic(() => import("@/sounds/components/assets-view").then((module) => module.SoundsView), {
+	loading: () => <div className="p-5 text-sm text-muted-foreground">Carregando ferramentas…</div>,
+});
+// Load this tool only when its tab is opened: keeps the initial editor bundle small.
+const StickersView = dynamic(() => import("@/stickers/components/assets-view").then((module) => module.StickersView), {
+	loading: () => <div className="p-5 text-sm text-muted-foreground">Carregando ferramentas…</div>,
+});
+// Load this tool only when its tab is opened: keeps the initial editor bundle small.
+const TextView = dynamic(() => import("@/text/components/assets-view").then((module) => module.TextView), {
+	loading: () => <div className="p-5 text-sm text-muted-foreground">Carregando ferramentas…</div>,
+});
+// Load this tool only when its tab is opened: keeps the initial editor bundle small.
+const EffectsView = dynamic(() => import("@/effects/components/assets-view").then((module) => module.EffectsView), {
+	loading: () => <div className="p-5 text-sm text-muted-foreground">Carregando ferramentas…</div>,
+});
+// Load this tool only when its tab is opened: keeps the initial editor bundle small.
+const DarkCutProductionView = dynamic(() => import("./views/darkcut-production").then((module) => module.DarkCutProductionView), {
+	loading: () => <div className="p-5 text-sm text-muted-foreground">Carregando ferramentas…</div>,
+});
+// Load this tool only when its tab is opened: keeps the initial editor bundle small.
+const PropertiesPanel = dynamic(() => import("@/components/editor/panels/properties").then((module) => module.PropertiesPanel), {
+	loading: () => <div className="p-5 text-sm text-muted-foreground">Carregando ferramentas…</div>,
+});
 const DarkCutSyncView = dynamic(() => import("./views/darkcut-sync").then((module) => module.DarkCutSyncView), {
 	loading: () => <div className="p-5 text-sm text-muted-foreground">Carregando ferramentas…</div>,
 });

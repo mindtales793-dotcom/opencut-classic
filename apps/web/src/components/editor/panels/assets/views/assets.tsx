@@ -562,6 +562,7 @@ export function MediaView() {
 							onExport={exportSelectedMedia}
 							batchSelectedIds={batchSelectedIds}
 							onToggleBatchSelection={toggleBatchSelection}
+							revealId={highlightMediaId}
 						/>
 					</SelectableSurface>
 				)}
@@ -677,6 +678,8 @@ function MediaItemWithContextMenu({
 	);
 }
 
+const MEDIA_RENDER_BATCH_SIZE = 96;
+
 function MediaItemList({
 	items,
 	mode,
@@ -684,6 +687,7 @@ function MediaItemList({
 	onExport,
 	batchSelectedIds,
 	onToggleBatchSelection,
+	revealId,
 }: {
 	items: MediaAsset[];
 	mode: MediaViewMode;
@@ -697,8 +701,41 @@ function MediaItemList({
 	onExport: ({ ids }: { ids: string[] }) => void;
 	batchSelectedIds: string[];
 	onToggleBatchSelection: (id: string) => void;
+	revealId?: string | null;
 }) {
 	const isGrid = mode === "grid";
+	// Keep the full ordered selection model, but only mount the first chunk of
+	// draggable cards. Large folders can otherwise mount thousands of menus,
+	// images and subscriptions on every switch to the library tab.
+	const [visibleCount, setVisibleCount] = useState(MEDIA_RENDER_BATCH_SIZE);
+	const loadMoreRef = useRef<HTMLDivElement>(null);
+
+	useEffect(() => {
+		setVisibleCount(MEDIA_RENDER_BATCH_SIZE);
+	}, [items]);
+
+	// Deep links / recently imported assets must remain revealable.
+	useEffect(() => {
+		if (!revealId) return;
+		const index = items.findIndex((item) => item.id === revealId);
+		if (index >= 0) setVisibleCount((count) => Math.max(count, index + 1));
+	}, [items, revealId]);
+
+	useEffect(() => {
+		if (visibleCount >= items.length) return;
+		const marker = loadMoreRef.current;
+		if (!marker || typeof IntersectionObserver === "undefined") return;
+		const observer = new IntersectionObserver(
+			(entries) => {
+				if (entries[0]?.isIntersecting) {
+					setVisibleCount((count) => Math.min(items.length, count + MEDIA_RENDER_BATCH_SIZE));
+				}
+			},
+			{ rootMargin: "500px" },
+		);
+		observer.observe(marker);
+		return () => observer.disconnect();
+	}, [items.length, visibleCount]);
 	// Multi-select used to scan the full array for each media card (O(n²)).
 	const selectedBatchSet = useMemo(() => new Set(batchSelectedIds), [batchSelectedIds]);
 
@@ -709,7 +746,7 @@ function MediaItemList({
 				isGrid ? { gridTemplateColumns: "repeat(auto-fill, 7rem)" } : undefined
 			}
 		>
-			{items.map((item) => (
+			{items.slice(0, visibleCount).map((item) => (
 				<MediaItemWithContextMenu item={item} onRemove={onRemove} onExport={onExport} key={item.id}>
 					<SelectableItem className={cn(!isGrid && "w-full")} id={item.id}>
 						{item.type === "image" || item.type === "video" || item.type === "audio" ? (
@@ -742,6 +779,17 @@ function MediaItemList({
 					</SelectableItem>
 				</MediaItemWithContextMenu>
 			))}
+			{visibleCount < items.length && (
+				<div ref={loadMoreRef} className={cn("flex justify-center py-3", isGrid && "col-span-full")}>
+					<Button
+						variant="outline"
+						size="sm"
+						onClick={() => setVisibleCount((count) => Math.min(items.length, count + MEDIA_RENDER_BATCH_SIZE))}
+					>
+						Carregar mais mídias ({visibleCount} de {items.length})
+					</Button>
+				</div>
+			)}
 		</div>
 	);
 }

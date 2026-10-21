@@ -50,7 +50,9 @@ async function generateImageThumbnail({
 	imageFile: File;
 }): Promise<{ thumbnailUrl: string; width: number; height: number }> {
 	const makeThumbnail = (image: CanvasImageSource, width: number, height: number) => {
-		const scale = Math.min(1, 720 / width, 405 / height);
+		// Use the same small preview budget as video thumbnails to reduce
+		// base64 memory and storage overhead during large folder imports.
+		const scale = Math.min(1, 480 / width, 270 / height);
 		const thumbnailUrl = renderThumbnailDataUrl({
 			width: Math.max(1, Math.round(width * scale)),
 			height: Math.max(1, Math.round(height * scale)),

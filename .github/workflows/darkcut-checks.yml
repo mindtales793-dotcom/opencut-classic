@@ -54,6 +54,9 @@ jobs:
       - name: Test media sorting and archive behavior
         run: bun test apps/web/src/darkcut/__tests__/media-sort-controls.test.ts
 
+      - name: Verify lightweight preview sizes and aspect ratios
+        run: bun test apps/web/src/media/__tests__/thumbnail-bounds.test.ts
+
       - name: Validate optional Chrome media bridge
         run: |
           node --check extensions/darkcut-media-bridge/popup.js

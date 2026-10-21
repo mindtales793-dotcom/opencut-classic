@@ -1,5 +1,7 @@
-const THUMBNAIL_MAX_WIDTH = 1280;
-const THUMBNAIL_MAX_HEIGHT = 720;
+// Library and timeline previews do not need HD-size base64 bitmaps.
+// Original media files and final export settings remain untouched.
+const THUMBNAIL_MAX_WIDTH = 480;
+const THUMBNAIL_MAX_HEIGHT = 270;
 
 export function thumbnailSize({
 	width,
@@ -52,5 +54,5 @@ export function renderThumbnailDataUrl({
 	}
 
 	draw({ context, width: size.width, height: size.height });
-	return canvas.toDataURL("image/jpeg", 0.8);
+	return canvas.toDataURL("image/jpeg", 0.76);
 }
