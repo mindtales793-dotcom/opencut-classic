@@ -94,7 +94,6 @@ function EditorLayout() {
 	const { panels, setPanel, showProperties } = usePanelStore();
 	const activeTab = useAssetsPanelStore((state) => state.activeTab);
 	const isTimelineWorkspace = activeTab === "timeline";
-	const isMinerWorkspace = activeTab === "darkminer";
 
 	// Remain mounted while switching workspaces: the preview renderer is also
 	// used by the export pipeline. Hiding it must not destroy rendering state.
@@ -110,17 +109,6 @@ function EditorLayout() {
 			<EditorPreview active={isTimelineWorkspace} />
 		</div>
 	);
-
-	// The Dark Miner is its own full-size workspace, not a tiny side panel.
-	// It shares the original FastAPI/SQLite data source with the Chrome extension.
-	if (isMinerWorkspace) {
-		return (
-			<section className="relative size-full min-h-0 overflow-hidden" data-darkcut-workspace="darkminer">
-				{hiddenPreview}
-				<AssetsPanel />
-			</section>
-		);
-	}
 
 	return (
 		<ResizablePanelGroup
