@@ -107,7 +107,7 @@ function buildSrtFromScript({
 		.join("\n");
 }
 
-export function DarkCutSyncView() {
+export function DarkCutSyncView({ mode = "narration" }: { mode?: "narration" | "srt" } = {}) {
 	const editor = useEditor();
 	const setActiveTab = useAssetsPanelStore((state) => state.setActiveTab);
 	const {
@@ -588,13 +588,13 @@ export function DarkCutSyncView() {
 				<p className="text-xs font-medium uppercase tracking-[0.18em] text-primary">
 					DarkCut Studio
 				</p>
-				<h2 className="mt-1 text-lg font-semibold">Sincronização e Narração</h2>
+				<h2 className="mt-1 text-lg font-semibold">{mode === "srt" ? "Aplicar SRT na timeline" : "Narração"}</h2>
 				<p className="mt-1 text-xs text-muted-foreground">
-					Primeiro o roteiro. Depois a voz. Em seguida, a narração entra na
-					timeline. O modo rápido reduz esperas locais sem alterar a qualidade da voz.
+					{mode === "srt" ? "Confira os tempos e associe as cenas às mídias da timeline." : "Gere a narração, ouça e adicione o áudio à timeline."}
 				</p>
 			</div>
 
+			{mode === "narration" && (<>
 			<section className="rounded-md border bg-card p-3">
 				<div className="flex items-center justify-between gap-3">
 					<div>
@@ -810,6 +810,8 @@ export function DarkCutSyncView() {
 				)}
 			</section>
 
+			</>)}
+			{mode === "srt" && (
 			<section className="mt-3 space-y-3 rounded-md border border-primary/30 bg-primary/5 p-3">
 				<div className="flex items-start justify-between gap-3">
 					<div>
@@ -1014,6 +1016,8 @@ export function DarkCutSyncView() {
 				</p>
 			</section>
 
+			)}
+			{mode === "narration" && (<>
 			<SilencePanel />
 			<MusicPanel />
 			<section className="mt-3 rounded-md border bg-card p-3">
@@ -1029,6 +1033,7 @@ export function DarkCutSyncView() {
 					<div className="rounded-md border bg-background p-2">4. Timeline</div>
 				</div>
 			</section>
+			</>)}
 		</div>
 	);
 }
