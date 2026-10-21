@@ -145,8 +145,6 @@ jobs:
             }
           }
 
-          & (Join-Path $packagedTools "yt-dlp.exe") --version
-          & (Join-Path $packagedTools "deno.exe") --version
           & (Join-Path $packagedTools "ffmpeg.exe") -version | Select-Object -First 1
           & (Join-Path $packagedTools "ffprobe.exe") -version | Select-Object -First 1
           & (Join-Path $packagedTools "ffmpeg.exe") -hide_banner -encoders | Select-String -Pattern "h264_qsv|h264_nvenc|h264_amf|libx264 "
