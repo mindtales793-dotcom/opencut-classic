@@ -2,7 +2,7 @@ import EventEmitter from "eventemitter3";
 import type { FrameRate } from "opencut-wasm";
 import { TICKS_PER_SECOND } from "@/wasm";
 import type { ExportFormat, ExportQuality } from "@/export";
-import { audioBufferToWav } from "@/export/ffmpeg/wav";
+import { countWavParts, wavParts } from "@/export/ffmpeg/wav";
 import { toRawPixelFormat } from "@/export/ffmpeg/profiles";
 import type { RootNode } from "./nodes/root-node";
 import { CanvasRenderer } from "./canvas-renderer";
@@ -350,11 +350,20 @@ export class FfmpegSceneExporter extends EventEmitter<FfmpegExporterEvents> {
 		const jobUrl = `${API_BASE}/${jobId}`;
 
 		if (this.shouldIncludeAudio && this.audioBuffer) {
-			await this.request({
-				url: `${jobUrl}/audio`,
-				body: audioBufferToWav({ audioBuffer: this.audioBuffer }),
-				contentType: "audio/wav",
-			});
+			// Sent in small parts: the whole WAV of a long timeline (hundreds of MB)
+			// would otherwise be one ArrayBuffer and fail with "allocation failed".
+			const partCount = countWavParts({ audioBuffer: this.audioBuffer });
+			let partIndex = 0;
+			for (const part of wavParts({ audioBuffer: this.audioBuffer })) {
+				if (this.isCancelled) return null;
+				const isLast = partIndex === partCount - 1;
+				await this.request({
+					url: `${jobUrl}/audio?part=${partIndex}&last=${isLast ? 1 : 0}`,
+					body: part,
+					contentType: "audio/wav",
+				});
+				partIndex++;
+			}
 		}
 
 		const framesPerBatch = Math.max(

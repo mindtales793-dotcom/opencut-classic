@@ -10,7 +10,7 @@ import {
 	targetBitrate,
 	toRawPixelFormat,
 } from "../profiles";
-import { audioBufferToWav } from "../wav";
+import { audioBufferToWav, countWavParts, wavParts } from "../wav";
 import { checkExportContainer, checkExportStreams } from "../verify.server";
 import { getExportDimensions, getExportFps } from "../../presets";
 
@@ -137,6 +137,57 @@ describe("ffmpeg profiles", () => {
 		expect(() => checkExportStreams({ streams: [streams[0]], expected })).toThrow("Áudio incorreto");
 	});
 
+});
+
+describe("wav parts (long audio is uploaded in small pieces)", () => {
+	const makeSource = (length: number) => {
+		const left = new Float32Array(length).map((_, i) => Math.sin(i / 7));
+		const right = new Float32Array(length).map((_, i) => Math.cos(i / 11) * 1.2); // also exercises clipping
+		return {
+			numberOfChannels: 2,
+			sampleRate: 44100,
+			length,
+			getChannelData: (channel: number) => (channel === 0 ? left : right),
+		};
+	};
+	const concat = (parts: ArrayBuffer[]) => {
+		const total = parts.reduce((sum, part) => sum + part.byteLength, 0);
+		const out = new Uint8Array(total);
+		let offset = 0;
+		for (const part of parts) {
+			out.set(new Uint8Array(part), offset);
+			offset += part.byteLength;
+		}
+		return out;
+	};
+
+	test("concatenated parts are byte-identical to the one-piece WAV", () => {
+		for (const length of [1, 7, 1000, 4099]) {
+			for (const partBytes of [4, 5, 64, 1000, 1_000_000]) {
+				const audioBuffer = makeSource(length);
+				const parts = [...wavParts({ audioBuffer, partBytes })];
+				expect(parts.length).toBe(countWavParts({ audioBuffer, partBytes }));
+				expect(concat(parts)).toEqual(
+					new Uint8Array(audioBufferToWav({ audioBuffer })),
+				);
+			}
+		}
+	});
+
+	test("no part is larger than the target, so no huge buffer is allocated", () => {
+		const audioBuffer = makeSource(200_000);
+		const partBytes = 64 * 1024;
+		for (const part of wavParts({ audioBuffer, partBytes })) {
+			expect(part.byteLength).toBeLessThanOrEqual(partBytes + 44);
+		}
+	});
+
+	test("empty audio still yields one valid header-only part", () => {
+		const audioBuffer = makeSource(0);
+		const parts = [...wavParts({ audioBuffer })];
+		expect(parts.length).toBe(1);
+		expect(parts[0].byteLength).toBe(44);
+	});
 });
 
 describe("wav encoder", () => {
@@ -303,6 +354,66 @@ describe.skipIf(!hasFfmpeg)("ffmpeg job pipeline (real ffmpeg)", () => {
 
 		await jobs.cancelJob(id);
 		expect(existsSync(file.path)).toBe(false);
+	}, 60_000);
+
+	test("audio uploaded in several parts is muxed correctly and bad ordering is rejected", async () => {
+		const width = 320;
+		const height = 192;
+		const { id } = await jobs.createJob(
+			jobs.parseStartRequest({
+				format: "mp4",
+				quality: "low",
+				width,
+				height,
+				fpsNumerator: 30,
+				fpsDenominator: 1,
+				inputPixelFormat: "bgra",
+				filename: "audio-em-partes",
+			}),
+		);
+		const job = jobs.getJob(id);
+		const samples = new Float32Array(48000).map((_, i) =>
+			Math.sin((i / 48000) * 2 * Math.PI * 440),
+		);
+		const parts = [
+			...wavParts({
+				audioBuffer: {
+					numberOfChannels: 1,
+					sampleRate: 48000,
+					length: samples.length,
+					getChannelData: () => samples,
+				},
+				partBytes: 30_000,
+			}),
+		];
+		expect(parts.length).toBeGreaterThan(2);
+
+		await jobs.saveAudio({ job, data: Buffer.from(parts[0]), part: 0, last: false });
+		// Frames cannot start FFmpeg while the audio is incomplete.
+		await expect(
+			jobs.pushFrames({ job, data: frames({ width, height, count: 1 }) }),
+		).rejects.toThrow("áudio");
+		// Skipping a part is rejected.
+		await expect(
+			jobs.saveAudio({ job, data: Buffer.from(parts[2]), part: 2, last: false }),
+		).rejects.toThrow("fora de ordem");
+		for (let index = 1; index < parts.length; index++) {
+			await jobs.saveAudio({
+				job,
+				data: Buffer.from(parts[index]),
+				part: index,
+				last: index === parts.length - 1,
+			});
+		}
+
+		await jobs.pushFrames({ job, data: frames({ width, height, count: 30 }) });
+		const { verified } = await jobs.finishJob({ job });
+		expect(verified).toMatchObject({ audioCodec: "aac" });
+		const audio = probe(jobs.getFinishedFile(job).path).streams.find(
+			(stream) => stream.codec_type === "audio",
+		);
+		expect(audio?.codec_name).toBe("aac");
+		await jobs.cancelJob(id);
 	}, 60_000);
 
 	test("odd canvas sizes still produce a valid file", async () => {

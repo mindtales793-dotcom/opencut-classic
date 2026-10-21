@@ -15,7 +15,7 @@ export const dynamic = "force-dynamic";
 type RouteContext = { params: Promise<{ id: string; action: string }> };
 
 /**
- * POST /api/darkcut/export/:id/audio   body: WAV file
+ * POST /api/darkcut/export/:id/audio   body: WAV file, or one part of it (?part=N&last=0|1)
  * POST /api/darkcut/export/:id/frames  body: N raw frames, back to back
  * POST /api/darkcut/export/:id/finish  closes the stream and waits for FFmpeg
  */
@@ -27,9 +27,17 @@ export async function POST(request: Request, { params }: RouteContext) {
 		const job = getJob(id);
 
 		if (action === "audio") {
+			// Optional ?part=N&last=1: the audio is uploaded in small consecutive parts.
+			const query = new URL(request.url).searchParams;
+			const part = Number(query.get("part") ?? "0");
+			if (!Number.isInteger(part) || part < 0) {
+				throw new ExportRequestError(400, "Parte de áudio inválida.");
+			}
 			await saveAudio({
 				job,
 				data: Buffer.from(await request.arrayBuffer()),
+				part,
+				last: query.get("last") !== "0",
 			});
 			return NextResponse.json({ ok: true });
 		}
