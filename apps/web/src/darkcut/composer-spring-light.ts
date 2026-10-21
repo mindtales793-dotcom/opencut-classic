@@ -1,7 +1,6 @@
 /**
  * Lightweight analytic spring used only to sample the Composer's slide-in.
- * Keeps the Remotion runtime out of the editor's eager motion bundle.
- * The Composer Player itself continues to use Remotion.
+ * Runs without a player runtime or external animation dependencies.
  */
 export function composerSpringProgress(frame: number, fps: number): number {
   if (frame <= 0) return 0;
