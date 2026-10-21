@@ -85,8 +85,10 @@ export function DarkCutFishTts() {
         return;
       }
       if (newSignature !== signature) {
+        // Do not offer the previous project's MP3 as if it were the new narration.
         setNarrationAssetId(null);
         setSignature(null);
+        setLastCreatedUrl(null);
       }
       task("running", "Enviando roteiro ao Fish Audio…", 0);
       const response = await fetch("/api/darkcut/narration-jobs", {
