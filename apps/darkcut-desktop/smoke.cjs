@@ -18,7 +18,6 @@ async function until(win, code, label, timeout = 60000) {
   throw new Error("Smoke timeout: " + label);
 }
 async function clickAria(win, label) {
-  const code = '(()=>{const b=document.querySelector("button[aria-label="+JSON.stringify(' + JSON.stringify(label) + ')+"]");if(!b)return false;b.click();return true;})()';
   // Use a direct attribute comparison; avoid CSS escaping problems in labels.
   const safe = '(()=>{const b=Array.from(document.querySelectorAll("button")).find(x=>x.getAttribute("aria-label")===' + JSON.stringify(label) + ');if(!b)return false;b.click();return true;})()';
   if (!(await execute(win, safe))) throw new Error("Missing tab: " + label);
