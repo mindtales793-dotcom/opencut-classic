@@ -130,7 +130,7 @@ export function DarkCutTransitionsView() {
 				<h2 className="mt-1 text-base font-semibold">Biblioteca de transições</h2>
 				<p className="mt-1 text-xs text-muted-foreground">
 					Selecione clipes na timeline e aplique uma transição. As favoritas
-					alimentam o modo aleatório e o Auto Edit.
+					alimentam o modo aleatório.
 				</p>
 				<div className="mt-3 flex flex-wrap items-center gap-2">
 					<div className="rounded-md border bg-background px-3 py-2 text-xs">
