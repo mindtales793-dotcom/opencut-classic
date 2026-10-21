@@ -53,15 +53,6 @@ jobs:
         with:
           targets: wasm32-unknown-unknown
 
-      - name: Setup bundled DarkMiner Python
-        uses: actions/setup-python@v5
-        with:
-          python-version: "3.12"
-
-      - name: Build bundled DarkMiner service
-        shell: pwsh
-        run: ./apps/darkcut-desktop/scripts/build-darkminer-service.ps1 -Python python
-
       - name: Test and build local audio core
         run: |
           node rust/darkcut-audio/build.mjs
@@ -81,18 +72,11 @@ jobs:
           bun run stage
           Pop-Location
 
-      - name: Bundle automatic video tools
+      - name: Bundle FFmpeg and FFprobe for export
         shell: pwsh
         run: |
           $tools = Join-Path $PWD "apps/darkcut-desktop/tools"
           New-Item -ItemType Directory -Force -Path $tools | Out-Null
-
-          Invoke-WebRequest -Uri "https://github.com/yt-dlp/yt-dlp/releases/latest/download/yt-dlp.exe" -OutFile (Join-Path $tools "yt-dlp.exe")
-
-          $denoZip = Join-Path $env:RUNNER_TEMP "deno.zip"
-          Invoke-WebRequest -Uri "https://github.com/denoland/deno/releases/latest/download/deno-x86_64-pc-windows-msvc.zip" -OutFile $denoZip
-          Expand-Archive -Path $denoZip -DestinationPath $tools -Force
-          & (Join-Path $tools "deno.exe") --version
 
           # The export engine needs hardware encoders (Intel Quick Sync first), so
           # check the build instead of assuming it: essentials, then full.
@@ -126,7 +110,6 @@ jobs:
           Copy-Item $build.Ffmpeg.FullName (Join-Path $tools "ffmpeg.exe") -Force
           Copy-Item $build.Ffprobe.FullName (Join-Path $tools "ffprobe.exe") -Force
 
-          & (Join-Path $tools "yt-dlp.exe") --version
           & (Join-Path $tools "ffmpeg.exe") -version | Select-Object -First 1
 
       - name: Verify real MP4 export through DarkCut FFmpeg job pipeline
@@ -154,7 +137,7 @@ jobs:
           if (-not $exe) { throw "DarkCut Studio EXE was not generated." }
 
           $packagedTools = Join-Path $PWD "apps/darkcut-desktop/dist/win-unpacked/resources/tools"
-          $requiredTools = @("yt-dlp.exe", "ffmpeg.exe", "ffprobe.exe", "deno.exe")
+          $requiredTools = @("ffmpeg.exe", "ffprobe.exe")
           foreach ($tool in $requiredTools) {
             $toolPath = Join-Path $packagedTools $tool
             if (-not (Test-Path $toolPath)) {
@@ -162,8 +145,6 @@ jobs:
             }
           }
 
-          & (Join-Path $packagedTools "yt-dlp.exe") --version
-          & (Join-Path $packagedTools "deno.exe") --version
           & (Join-Path $packagedTools "ffmpeg.exe") -version | Select-Object -First 1
           & (Join-Path $packagedTools "ffprobe.exe") -version | Select-Object -First 1
           & (Join-Path $packagedTools "ffmpeg.exe") -hide_banner -encoders | Select-String -Pattern "h264_qsv|h264_nvenc|h264_amf|libx264 "
@@ -200,11 +181,4 @@ jobs:
           name: DarkCut-Studio-Windows
           path: |
             apps/darkcut-desktop/dist/*.exe
-          if-no-files-found: error
-
-      - name: Upload DarkCut Chrome media bridge
-        uses: actions/upload-artifact@v4
-        with:
-          name: DarkCut-Media-Bridge-Chrome
-          path: extensions/darkcut-media-bridge/
           if-no-files-found: error

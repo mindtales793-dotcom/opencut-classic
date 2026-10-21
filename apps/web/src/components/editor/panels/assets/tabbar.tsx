@@ -1,5 +1,5 @@
 "use client";
-import { TAB_KEYS, tabs, useAssetsPanelStore } from "./assets-panel-store";
+import { LITE_TAB_KEYS, tabs, useAssetsPanelStore } from "./assets-panel-store";
 import { useEditor } from "@/editor/use-editor";
 import { useStudioNavigation } from "@/darkcut/studio-navigation";
 export function TabBar() {
@@ -9,12 +9,10 @@ export function TabBar() {
 	return (
 		<aside className="studio-sidebar" aria-label="Ferramentas do editor">
 			<nav className="studio-navigation">
-				{TAB_KEYS.filter((key) => key !== "sync" && key !== "videos").map(
+				{LITE_TAB_KEYS.map(
 					(key) => {
 						const tab = tabs[key];
-						const active =
-							activeTab === key ||
-							(key === "production" && ["sync", "videos"].includes(activeTab));
+						const active = activeTab === key;
 						return (
 							<button
 								key={key}
@@ -46,11 +44,11 @@ export function TabBar() {
 					<p>Seu espaço de criação.</p>
 					<button
 						onClick={() => {
-							setSection("setup");
+							setSection("script");
 							setActiveTab("production");
 						}}
 					>
-						Configurar produção
+						Abrir roteiro
 					</button>
 				</div>
 			</div>

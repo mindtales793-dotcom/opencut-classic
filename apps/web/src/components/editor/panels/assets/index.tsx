@@ -8,26 +8,15 @@ import {
 // Keep every existing panel, but only load its editor bundle when opened.
 // Importing all panels eagerly made startup and every first project load heavier.
 const panelLoading = () => <div className="p-5 text-sm text-muted-foreground">Carregando ferramentas…</div>;
-const StudioWorkflow = dynamic(() => import("@/darkcut/studio-workflow").then((module) => module.StudioWorkflow), { loading: panelLoading });
 const PropertiesPanel = dynamic(() => import("@/components/editor/panels/properties").then((module) => module.PropertiesPanel), { loading: panelLoading });
 const Captions = dynamic(() => import("@/subtitles/components/assets-view").then((module) => module.Captions), { loading: panelLoading });
 const MediaView = dynamic(() => import("./views/assets").then((module) => module.MediaView), { loading: panelLoading });
 const SettingsView = dynamic(() => import("./views/settings").then((module) => module.SettingsView), { loading: panelLoading });
 const SoundsView = dynamic(() => import("@/sounds/components/assets-view").then((module) => module.SoundsView), { loading: panelLoading });
-const StickersView = dynamic(() => import("@/stickers/components/assets-view").then((module) => module.StickersView), { loading: panelLoading });
 const TextView = dynamic(() => import("@/text/components/assets-view").then((module) => module.TextView), { loading: panelLoading });
 const EffectsView = dynamic(() => import("@/effects/components/assets-view").then((module) => module.EffectsView), { loading: panelLoading });
 const DarkCutProductionView = dynamic(() => import("./views/darkcut-production").then((module) => module.DarkCutProductionView), { loading: panelLoading });
 const DarkCutSyncView = dynamic(() => import("./views/darkcut-sync").then((module) => module.DarkCutSyncView), {
-	loading: () => <div className="p-5 text-sm text-muted-foreground">Carregando ferramentas…</div>,
-});
-const DarkCutSrtStudio = dynamic(() => import("./views/darkcut-srt-studio").then((module) => module.DarkCutSrtStudio), {
-	loading: () => <div className="p-5 text-sm text-muted-foreground">Carregando ferramentas…</div>,
-});
-const DarkMinerWorkspace = dynamic(() => import("./views/darkcut-miner-workspace").then((module) => module.DarkMinerWorkspace), {
-	loading: () => <div className="p-5 text-sm text-muted-foreground">Carregando ferramentas…</div>,
-});
-const DarkCutVideosView = dynamic(() => import("./views/darkcut-videos").then((module) => module.DarkCutVideosView), {
 	loading: () => <div className="p-5 text-sm text-muted-foreground">Carregando ferramentas…</div>,
 });
 const DarkCutTemplatesView = dynamic(() => import("./views/darkcut-templates").then((module) => module.DarkCutTemplatesView), {
@@ -44,13 +33,13 @@ export function AssetsPanel() {
 		timeline: null,
 		production: <DarkCutProductionView />,
 		sync: <DarkCutSyncView />,
-		"script-srt": <DarkCutSrtStudio />,
-		darkminer: <DarkMinerWorkspace />,
-		videos: <DarkCutVideosView />,
+		"script-srt": null,
+		darkminer: null,
+		videos: null,
 		media: <MediaView />,
 		sounds: <SoundsView />,
 		text: <TextView />,
-		stickers: <StickersView />,
+		stickers: null,
 		effects: <EffectsView />,
 		templates: <DarkCutTemplatesView />,
 		transitions: <DarkCutTransitionsView />,
@@ -61,9 +50,8 @@ export function AssetsPanel() {
 
 	return (
 		<div className="studio-assets panel flex h-full flex-col overflow-hidden">
-			{activeTab !== "darkminer" && <StudioWorkflow />}
-			<div className={"studio-assets-scroll min-h-0 flex-1 " + (activeTab === "darkminer" ? "overflow-hidden" : "overflow-y-auto overscroll-contain")}>
-				<div className={activeTab === "darkminer" ? "h-full min-w-0" : "min-h-full min-w-0"}>
+			<div className="studio-assets-scroll min-h-0 flex-1 overflow-y-auto overscroll-contain">
+				<div className="min-h-full min-w-0">
 					{viewMap[activeTab]}
 				</div>
 			</div>

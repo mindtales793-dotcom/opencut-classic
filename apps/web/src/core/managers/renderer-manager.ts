@@ -175,12 +175,24 @@ export class RendererManager {
 
 			let audioBuffer: AudioBuffer | null = null;
 			if (includeAudio) {
-				onProgress?.({ progress: 0.05 });
+				// Audio preparation is the first 5% of export. Progress through
+				// decoding and mixing rather than displaying a frozen 5%.
+				onProgress?.({ progress: 0.005 });
 				audioBuffer = await createTimelineAudioBuffer({
 					tracks,
 					mediaAssets,
 					duration,
+					onProgress: (stage, completed, total) => {
+						const ratio = total > 0 ? Math.min(1, completed / total) : 1;
+						const progress = stage === "decode"
+							? 0.005 + 0.024 * ratio
+							: stage === "mix"
+								? 0.029 + 0.017 * ratio
+								: 0.046 + 0.003 * ratio;
+						onProgress?.({ progress });
+					},
 				});
+				onProgress?.({ progress: 0.05 });
 			}
 
 			if (onCancel?.()) return { success: false, cancelled: true };

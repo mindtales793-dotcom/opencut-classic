@@ -1,4 +1,17 @@
-import { interpolate, spring } from "remotion";
+import { composerSpringProgress } from "./composer-spring-light";
+
+// Native math: keep legacy graphic clips playable without the Remotion runtime.
+function interpolate(value: number, input: number[], output: number[], options: { extrapolateLeft?: string; extrapolateRight?: string } = {}): number {
+  if (input.length !== output.length || input.length < 2) return output[0] ?? 0;
+  if (value <= input[0] && options.extrapolateLeft === "clamp") return output[0];
+  const last = input.length - 1;
+  if (value >= input[last] && options.extrapolateRight === "clamp") return output[last];
+  let index = 0;
+  while (index < last - 1 && value > input[index + 1]) index++;
+  const span = input[index + 1] - input[index];
+  const ratio = span === 0 ? 0 : (value - input[index]) / span;
+  return output[index] + (output[index + 1] - output[index]) * ratio;
+}
 import type { ParamValues } from "@/params";
 import type { GraphicDefinition } from "@/graphics/types";
 import { describeTemplateScene } from "@/darkcut/template-visual-profiles";
@@ -244,7 +257,7 @@ export function drawDarkcutComposerFrame({
   ctx.scale(width / COMPOSITION_WIDTH, height / COMPOSITION_HEIGHT);
   const frame = Math.min(COMPOSITION_FRAMES, Math.max(0, input.frame));
   const motion = input.intensity === "strong" ? 1.4 : input.intensity === "soft" ? 0.6 : 1;
-  const enter = spring({frame, fps: COMPOSITION_FPS, config:{damping:20,stiffness:120,mass:0.85}});
+  const enter = composerSpringProgress(frame, COMPOSITION_FPS);
   const fade = interpolate(frame,[0,10,82,90],[0,1,1,0],{extrapolateLeft:"clamp",extrapolateRight:"clamp"});
   const slide = interpolate(enter,[0,1],[65*motion,0]);
   const zoom = interpolate(frame,[0,90],[1,1+0.045*motion],{extrapolateRight:"clamp"});
@@ -255,8 +268,8 @@ export function drawDarkcutComposerFrame({
 
 export const darkcutRemotionGraphicDefinition: GraphicDefinition = {
   id: DARKCUT_REMOTION_GRAPHIC_ID,
-  name: "Remotion Composer • Cena completa",
-  keywords: ["remotion","motion graphics","compositor","darkcut"],
+  name: "Composição Canvas • Legado",
+  keywords: ["canvas","motion graphics","compositor","darkcut"],
   params: [
     {key:"templateId",label:"Template",type:"text",default:"documentary"},
     {key:"templateTitle",label:"Nome do template",type:"text",default:"Documentário"},
@@ -270,7 +283,7 @@ export const darkcutRemotionGraphicDefinition: GraphicDefinition = {
       {value:"map",label:"Mapa"},{value:"split-screen",label:"Tela dividida"}]},
     {key:"intensity",label:"Intensidade",type:"select",default:"normal",options:[
       {value:"soft",label:"Suave"},{value:"normal",label:"Normal"},{value:"strong",label:"Forte"}]},
-    {key:"frame",label:"Progresso do Remotion",type:"number",default:0,min:0,max:COMPOSITION_FRAMES,step:1,keyframable:true},
+    {key:"frame",label:"Progresso da composição",type:"number",default:0,min:0,max:COMPOSITION_FRAMES,step:1,keyframable:true},
   ],
   render({ctx,params,width,height}){
     drawDarkcutComposerFrame({

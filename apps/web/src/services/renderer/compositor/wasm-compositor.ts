@@ -18,6 +18,7 @@ import type {
 	RenderedTextureDescriptor,
 	TextureUploadDescriptor,
 } from "./types";
+import { toWasmFrameDescriptor } from "./wasm-frame-adapter";
 
 /**
  * One slot in the derived-texture cache. The OffscreenCanvas is persistent —
@@ -88,7 +89,9 @@ class WasmCompositor {
 	}
 
 	render(frame: FrameDescriptor) {
-		renderFrame(frame);
+		// The published WASM compositor uses snake_case for scene-effect fields.
+		// Layers remain camelCase. Normalize at the boundary for both preview and export.
+		renderFrame(toWasmFrameDescriptor(frame));
 		if (isRenderPerfEnabled()) {
 			recordWasmFrameProfile(
 				getLastFrameProfile() as Array<{ name: string; durationMs: number }>,

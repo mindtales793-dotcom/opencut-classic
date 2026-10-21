@@ -193,7 +193,8 @@ function getNarrationDurationSeconds({ editor }: { editor: EditorCore }) {
 	if (audioElements.length === 0) return null;
 
 	const preferred = audioElements.filter((item) =>
-		item.element.name.toLowerCase().includes("narracao"),
+		/narra(?:ç|c)(?:ã|a)o/i.test(item.track.name) ||
+		/narra(?:ç|c)(?:ã|a)o/i.test(item.element.name),
 	);
 	const candidates = preferred.length > 0 ? preferred : audioElements;
 	const lastEnd = candidates.reduce(
