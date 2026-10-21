@@ -13,7 +13,6 @@ const Captions = dynamic(() => import("@/subtitles/components/assets-view").then
 const MediaView = dynamic(() => import("./views/assets").then((module) => module.MediaView), { loading: panelLoading });
 const SettingsView = dynamic(() => import("./views/settings").then((module) => module.SettingsView), { loading: panelLoading });
 const SoundsView = dynamic(() => import("@/sounds/components/assets-view").then((module) => module.SoundsView), { loading: panelLoading });
-const StickersView = dynamic(() => import("@/stickers/components/assets-view").then((module) => module.StickersView), { loading: panelLoading });
 const TextView = dynamic(() => import("@/text/components/assets-view").then((module) => module.TextView), { loading: panelLoading });
 const EffectsView = dynamic(() => import("@/effects/components/assets-view").then((module) => module.EffectsView), { loading: panelLoading });
 const DarkCutProductionView = dynamic(() => import("./views/darkcut-production").then((module) => module.DarkCutProductionView), { loading: panelLoading });
@@ -40,7 +39,7 @@ export function AssetsPanel() {
 		media: <MediaView />,
 		sounds: <SoundsView />,
 		text: <TextView />,
-		stickers: <StickersView />,
+		stickers: null,
 		effects: <EffectsView />,
 		templates: <DarkCutTemplatesView />,
 		transitions: <DarkCutTransitionsView />,
