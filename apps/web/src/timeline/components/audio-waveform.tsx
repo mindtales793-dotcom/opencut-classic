@@ -326,11 +326,21 @@ export function AudioWaveform({
 			return;
 		}
 
+		// Scrolling fires more often than the display refresh rate. Draw each
+		// waveform at most once per animation frame rather than on every event.
+		let frameId = 0;
 		const handleScroll = () => {
-			drawVisible();
+			if (frameId) return;
+			frameId = window.requestAnimationFrame(() => {
+				frameId = 0;
+				drawVisible();
+			});
 		};
 		scrollParent.addEventListener("scroll", handleScroll, { passive: true });
-		return () => scrollParent.removeEventListener("scroll", handleScroll);
+		return () => {
+			scrollParent.removeEventListener("scroll", handleScroll);
+			if (frameId) window.cancelAnimationFrame(frameId);
+		};
 	}, [drawVisible]);
 
 	const onResize = useCallback(

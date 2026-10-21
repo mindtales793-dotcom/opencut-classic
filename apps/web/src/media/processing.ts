@@ -110,6 +110,7 @@ export async function processMediaAssets({
 	const total = fileArray.length;
 	const processedAssets: Array<ProcessedMediaAsset | undefined> = new Array(total);
 	let completed = 0;
+	let lastReportedProgress = -1;
 	// Two concurrent image decoders give the low-power Intel/HDD computer
 	// responsiveness without thrashing memory. Complex video/audio stays serial.
 	const imageOnly = fileArray.every((file) => getMediaTypeFromFile({ file }) === "image");
@@ -213,7 +214,13 @@ export async function processMediaAssets({
 				await processOne(fileArray[index], index);
 			} finally {
 				completed += 1;
-				onProgress?.({ progress: Math.round((completed / total) * 100) });
+				// Progress UI displays whole percentages. Avoid hundreds of duplicate
+				// state updates during large folder imports (same accurate 0–100%).
+				const percentage = Math.round((completed / total) * 100);
+				if (percentage !== lastReportedProgress) {
+					lastReportedProgress = percentage;
+					onProgress?.({ progress: percentage });
+				}
 				// Let the UI render periodically during very large folder imports.
 				if (completed % 10 === 0) {
 					await new Promise<void>((resolve) => setTimeout(resolve, 0));
