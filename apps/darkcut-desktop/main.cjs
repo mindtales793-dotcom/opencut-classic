@@ -1,4 +1,4 @@
-const { app, BrowserWindow, dialog, shell, Tray, Menu, nativeImage, nativeTheme, ipcMain, safeStorage } = require("electron");
+const { app, BrowserWindow, dialog, shell, Tray, Menu, nativeImage, nativeTheme } = require("electron");
 const path = require("node:path");
 const fs = require("node:fs");
 const http = require("node:http");
@@ -12,7 +12,6 @@ app.commandLine.appendSwitch("force_high_performance_gpu");
 let serverProcess = null;
 let mainWindow = null;
 let serverFailure = null;
-let darkMinerProcess = null;
 let quitting = false;
 let taskTray = null;
 // Exports keep rendering frames in this window while it is minimized or hidden
@@ -183,126 +182,6 @@ function startServer() {
 }
 
 
-// The user chooses an existing, trusted Dark Miner EXE through a native file
-// picker. Web content NEVER supplies a process path or shell arguments.
-const minerPreferencesFile = path.join(app.getPath("userData"), "darkminer-integration.json");
-function bundledMinerPath() {
-  const root = app.isPackaged ? path.join(process.resourcesPath, "darkminer") : path.join(__dirname, "darkminer-bin");
-  const executable = path.join(root, "DarkMiner-Service.exe");
-  return fs.existsSync(executable) ? executable : null;
-}
-function preferredMinerPath() {
-  return bundledMinerPath() || localMinerPath();
-}
-function localMinerPath() {
-  try {
-    const config = JSON.parse(fs.readFileSync(minerPreferencesFile, "utf8"));
-    if (typeof config.executable !== "string" ||
-        !config.executable.toLowerCase().endsWith(".exe") ||
-        !fs.existsSync(config.executable)) return null;
-    return config.executable;
-  } catch { return null; }
-}
-function canControlMiner(event) {
-  try {
-    const origin = new URL(event.senderFrame?.url || "").origin;
-    return event.sender === mainWindow?.webContents &&
-      origin === `http://${HOST}:${PORT}`;
-  } catch { return false; }
-}
-function startMinerExe(executable) {
-  if (darkMinerProcess && darkMinerProcess.exitCode === null && !darkMinerProcess.killed) {
-    return { ok: true, alreadyRunning: true };
-  }
-  if (!executable || !fs.existsSync(executable) ||
-      path.extname(executable).toLowerCase() !== ".exe") {
-    return { ok: false, error: "Selecione um Dark Miner.exe válido no Windows." };
-  }
-  try {
-    darkMinerProcess = spawn(executable, [], {
-      cwd: path.dirname(executable), windowsHide: true,
-      stdio: ["ignore", "pipe", "pipe"],
-      env: { ...process.env, DARKMINER_EMBEDDED: "1" },
-    });
-    darkMinerProcess.stdout?.on("data", data => log("DarkMiner stdout: " + data.toString().trim().slice(0, 2000)));
-    darkMinerProcess.stderr?.on("data", data => log("DarkMiner stderr: " + data.toString().trim().slice(0, 2000)));
-    darkMinerProcess.once("error", e => {
-      log("DarkMiner launch failed: " + e.message);
-      darkMinerProcess = null;
-    });
-    darkMinerProcess.once("exit", code => {
-      log("DarkMiner stopped: " + code);
-      darkMinerProcess = null;
-    });
-    log(executable === bundledMinerPath()
-      ? "Bundled DarkMiner service started."
-      : "DarkMiner started from user-approved local executable.");
-    return { ok: true, alreadyRunning: false };
-  } catch (error) {
-    return { ok: false, error: error instanceof Error ? error.message : "Falha ao abrir o Dark Miner." };
-  }
-}
-ipcMain.handle("darkcut:darkminer:choose-and-start", async event => {
-  if (!canControlMiner(event)) return { ok: false, error: "Origem não autorizada." };
-  const selection = await dialog.showOpenDialog(mainWindow, {
-    title: "Selecione o executável do Dark Miner Desktop",
-    properties: ["openFile"],
-    filters: [{ name: "Aplicativo Windows", extensions: ["exe"] }],
-  });
-  if (selection.canceled || !selection.filePaths?.[0]) return { ok: false, cancelled: true };
-  const executable = selection.filePaths[0];
-  const result = startMinerExe(executable);
-  if (result.ok) {
-    fs.writeFileSync(minerPreferencesFile, JSON.stringify({ executable }), { mode: 0o600 });
-  }
-  return result;
-});
-ipcMain.handle("darkcut:darkminer:start-saved", event => {
-  if (!canControlMiner(event)) return { ok: false, error: "Origem não autorizada." };
-  return startMinerExe(preferredMinerPath());
-});
-ipcMain.handle("darkcut:darkminer:connection", event => {
-  if (!canControlMiner(event)) return { ok: false, error: "Origem não autorizada." };
-  return { ok: true, remembered: !!preferredMinerPath(), bundled: !!bundledMinerPath(),
-    startedByDarkCut: !!darkMinerProcess && darkMinerProcess.exitCode === null };
-});
-
-
-const groqSecretFile = path.join(app.getPath("userData"), "groq-key.dpapi");
-function groqStoreAvailable() {
-  return process.platform === "win32" && safeStorage.isEncryptionAvailable();
-}
-ipcMain.handle("darkcut:srt:key-status", event => {
-  if (!canControlMiner(event)) return {ok:false,error:"Origem não autorizada."};
-  return {ok:true,configured:fs.existsSync(groqSecretFile),secure:groqStoreAvailable()};
-});
-ipcMain.handle("darkcut:srt:key-save", (event, secret) => {
-  if (!canControlMiner(event)) return {ok:false,error:"Origem não autorizada."};
-  if (!groqStoreAvailable()) return {ok:false,error:"Proteção do Windows indisponível."};
-  if (typeof secret !== "string" || !/^gsk_[A-Za-z0-9_-]{15,300}$/.test(secret)) {
-    return {ok:false,error:"Chave Groq inválida."};
-  }
-  try {
-    const encrypted = safeStorage.encryptString(secret);
-    fs.writeFileSync(groqSecretFile+".tmp",encrypted,{mode:0o600});
-    fs.renameSync(groqSecretFile+".tmp",groqSecretFile);
-    return {ok:true,configured:true};
-  } catch {return {ok:false,error:"Não foi possível proteger sua chave no Windows."};}
-});
-ipcMain.handle("darkcut:srt:key-load", event => {
-  if (!canControlMiner(event)) return {ok:false,error:"Origem não autorizada."};
-  if (!groqStoreAvailable()) return {ok:false,error:"Proteção do Windows indisponível."};
-  try {
-    const encrypted = fs.readFileSync(groqSecretFile);
-    return {ok:true,secret:safeStorage.decryptString(encrypted)};
-  } catch {return {ok:false,error:"Chave não cadastrada ou inacessível."};}
-});
-ipcMain.handle("darkcut:srt:key-delete", event => {
-  if (!canControlMiner(event)) return {ok:false,error:"Origem não autorizada."};
-  try {fs.rmSync(groqSecretFile,{force:true});return {ok:true,configured:false};}
-  catch {return {ok:false,error:"Falha ao apagar a chave."};}
-});
-
 async function createWindow() {
   nativeTheme.themeSource = "dark";
   const win = new BrowserWindow({
@@ -318,7 +197,6 @@ async function createWindow() {
       contextIsolation: true,
       nodeIntegration: false,
       sandbox: true,
-      preload: path.join(__dirname, "preload.cjs"),
       backgroundThrottling: false,
     },
   });
@@ -388,7 +266,7 @@ async function createWindow() {
     <h1>DARK<em>CUT</em></h1><div class="studio">STUDIO</div>
     <div class="track" role="progressbar" aria-label="Iniciando o DarkCut"><div class="fill"></div></div>
     <p>Preparando seus projetos e ferramentas de edição…</p>
-  </main><small>SEU ESTÚDIO DE PRODUÇÃO INTELIGENTE</small></body></html>`;
+  </main><small>SEU ESTÚDIO DE EDIÇÃO</small></body></html>`;
   await win.loadURL("data:text/html;charset=utf-8," + encodeURIComponent(startupSplash));
   return win;
 }
@@ -400,12 +278,6 @@ if (hasLock) app.whenReady().then(async () => {
     await ensurePortAvailable();
     startServer();
     await waitForServer();
-    // The bundled FastAPI backend starts with DarkCut. Its data remains in
-    // %LOCALAPPDATA%/DarkMiner, separate from installed program files.
-    if (bundledMinerPath()) {
-      const miner = startMinerExe(bundledMinerPath());
-      if (!miner.ok) log("Bundled DarkMiner startup: " + miner.error);
-    }
     await win.loadURL(`http://${HOST}:${PORT}/projects`);
     if (smokeTest) {
       await require("./smoke.cjs").run(win);
@@ -421,7 +293,6 @@ if (hasLock) app.whenReady().then(async () => {
 function stopServer() {
   quitting = true;
   if (serverProcess && !serverProcess.killed) serverProcess.kill();
-  if (darkMinerProcess && !darkMinerProcess.killed) darkMinerProcess.kill();
 }
 app.on("window-all-closed", () => app.quit());
 app.on("before-quit", stopServer);
