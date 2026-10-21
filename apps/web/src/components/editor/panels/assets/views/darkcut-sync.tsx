@@ -810,14 +810,208 @@ export function DarkCutSyncView() {
 				)}
 			</section>
 
-			<section className="mt-3 rounded-md border bg-card p-3">
-				<div className="text-sm font-medium">Sincronização SRT</div>
-				<p className="mt-1 text-xs text-muted-foreground">
-					A sincronização agora fica centralizada na aba SRT, ligada ao roteiro, às cenas e às próximas etapas de produção.
-				</p>
-				<Button className="mt-3 w-full" variant="secondary" onClick={() => setActiveTab("script-srt")}>
-					Abrir sincronização SRT →
+			<section className="mt-3 space-y-3 rounded-md border border-primary/30 bg-primary/5 p-3">
+				<div className="flex items-start justify-between gap-3">
+					<div>
+						<div className="text-sm font-medium">Sincronização inteligente • SRT</div>
+						<p className="mt-1 text-[0.7rem] leading-relaxed text-muted-foreground">
+							O SRT define o começo e o fim de cada cena. Analise o plano
+							antes de reposicionar imagens; áudio, narração e legendas não são movidos.
+						</p>
+					</div>
+					<span className="shrink-0 rounded bg-primary/15 px-2 py-1 text-[0.62rem] font-medium text-primary">
+						SRT → CENAS
+					</span>
+				</div>
+
+				<input
+					ref={srtInputRef}
+					type="file"
+					accept=".srt,application/x-subrip,text/plain"
+					className="hidden"
+					onChange={(event) => {
+						const file = event.currentTarget.files?.[0];
+						void loadSrtForSync(file);
+						event.currentTarget.value = "";
+					}}
+				/>
+				<Button variant="secondary" className="w-full" onClick={() => srtInputRef.current?.click()}>
+					↑ Importar arquivo SRT
 				</Button>
+				<div className="grid grid-cols-3 gap-2 text-[0.68rem]">
+					<div className="rounded border bg-background p-2">
+						<div className="text-muted-foreground">Trechos SRT</div>
+						<div className="mt-1 text-base font-semibold">{srtCues.length}</div>
+					</div>
+					<div className="rounded border bg-background p-2">
+						<div className="text-muted-foreground">Mídias visuais</div>
+						<div className="mt-1 text-base font-semibold">{timelineVisualCount}</div>
+					</div>
+					<div className="rounded border bg-background p-2">
+						<div className="text-muted-foreground">Duração SRT</div>
+						<div className="mt-1 text-sm font-semibold">
+							{formatSrtTime(srtAnalysis.durationSeconds).slice(0, 8)}
+						</div>
+					</div>
+				</div>
+
+				<div className="grid gap-2 sm:grid-cols-2">
+					<label className="text-[0.68rem] text-muted-foreground">
+						Como distribuir os tempos?
+						<select
+							value={srtStrategy}
+							onChange={(event) => {
+								const value = event.target.value;
+								setSrtStrategy(
+									value === "fit-to-media" || value === "one-per-cue"
+										? value
+										: "auto",
+								);
+								setSrtOrder("timeline");
+								setConfirmSrtPlan(false);
+							}}
+							className="mt-1 h-9 w-full rounded-md border bg-background px-2 text-xs text-foreground"
+						>
+							<option value="auto">Automático (recomendado)</option>
+							<option value="one-per-cue">1 trecho = 1 imagem (exato)</option>
+							<option value="fit-to-media">Adaptar a menos imagens</option>
+						</select>
+					</label>
+					<label className="text-[0.68rem] text-muted-foreground">
+						Quais trilhas ajustar?
+						<select
+							value={srtScope}
+							onChange={(event) => {
+								setSrtScope(event.target.value === "all" ? "all" : "main");
+								setConfirmSrtPlan(false);
+							}}
+							className="mt-1 h-9 w-full rounded-md border bg-background px-2 text-xs text-foreground"
+						>
+							<option value="main">Somente trilha principal</option>
+							<option value="all">Todas as trilhas visuais</option>
+						</select>
+					</label>
+				</div>
+
+				{effectiveSrtStrategy === "one-per-cue" && (
+					<label className="block text-[0.68rem] text-muted-foreground">
+						Como identificar cada imagem?
+						<select
+							value={srtOrder}
+							onChange={(event) => {
+								setSrtOrder(event.target.value === "scene-number" ? "scene-number" : "timeline");
+								setConfirmSrtPlan(false);
+							}}
+							className="mt-1 h-9 w-full rounded-md border bg-background px-2 text-xs text-foreground"
+						>
+							<option value="timeline">Ordem atual da timeline</option>
+							<option value="scene-number">Número no nome (Cena 001, Imagem 002...)</option>
+						</select>
+						{srtOrder === "scene-number" && (
+							<span className="mt-1 block">
+								{namedVisualCount} de {timelineVisualCount} mídia(s) com número reconhecido.
+								As outras ficam intactas.
+							</span>
+						)}
+					</label>
+				)}
+
+				{syncSrtFileName && (
+					<div className="rounded-md border bg-background p-2 text-[0.68rem]">
+						<div className="flex items-center justify-between gap-2">
+							<span className="min-w-0 truncate font-medium">{syncSrtFileName}</span>
+							<Button size="sm" variant="ghost" onClick={() => {
+								setSyncSrtText("");
+								setSyncSrtFileName("");
+								setConfirmSrtPlan(false);
+							}}>Remover</Button>
+						</div>
+						<div className="mt-1 space-y-1 text-muted-foreground">
+							{srtAnalysis.nonStandardTimestamps > 0 && (
+								<p>{srtAnalysis.nonStandardTimestamps} marcação(ões) com milissegundos incomuns, interpretadas automaticamente.</p>
+							)}
+							{srtAnalysis.gaps > 0 && (
+								<p>{srtAnalysis.gaps} intervalo(s) sem fala. O DarkCut respeita esses espaços.</p>
+							)}
+							{srtAnalysis.invalidBlocks > 0 && (
+								<p className="text-destructive">{srtAnalysis.invalidBlocks} bloco(s) inválido(s) serão ignorados.</p>
+							)}
+							{srtAnalysis.overlaps > 0 && (
+								<p className="text-destructive">{srtAnalysis.overlaps} trecho(s) sobrepostos. Corrija o SRT antes de aplicar.</p>
+							)}
+						</div>
+					</div>
+				)}
+
+				{srtCues.length > 0 && (
+					<div className="rounded-md border bg-background p-2">
+						<div className="text-xs font-semibold">Prévia das primeiras cenas</div>
+						<div className="mt-2 max-h-44 space-y-1 overflow-y-auto">
+							{(srtOrder === "scene-number" && effectiveSrtStrategy === "one-per-cue"
+								? srtCues.slice(0, 6).map((cue) => ({
+									firstCue: cue.index,
+									lastCue: cue.index,
+									startSeconds: cue.startSeconds,
+									endSeconds: cue.endSeconds,
+									text: cue.text,
+								}))
+								: groupedPreview.slice(0, 6)
+							).map((group, i) => (
+								<div key={`${group.firstCue}-${group.startSeconds}`} className="rounded border p-2 text-[0.68rem]">
+									<div className="flex justify-between gap-2 font-medium">
+										<span className="truncate">
+											{group.firstCue === group.lastCue
+												? `Cena ${group.firstCue}`
+												: `Cenas ${group.firstCue}–${group.lastCue}`}
+											{srtOrder === "timeline" && visualTimeline[i] ? ` · ${visualTimeline[i].name}` : ""}
+										</span>
+										<span className="shrink-0 tabular-nums text-primary">
+											{formatSrtTime(group.startSeconds).slice(3, 11)} → {formatSrtTime(group.endSeconds).slice(3, 11)}
+										</span>
+									</div>
+									<p className="mt-1 truncate text-muted-foreground">{group.text}</p>
+								</div>
+							))}
+							{groupedPreview.length > 6 && (
+								<p className="text-center text-[0.65rem] text-muted-foreground">
+									+ {groupedPreview.length - 6} mídias no plano
+								</p>
+							)}
+						</div>
+					</div>
+				)}
+
+				{srtCues.length > 0 && (
+					<p className="text-[0.68rem] leading-relaxed text-muted-foreground">
+						{effectiveSrtStrategy === "fit-to-media" && timelineVisualCount < srtCues.length
+							? `Automático: este arquivo tem ${srtCues.length} trechos e ${timelineVisualCount} mídia(s). Os trechos consecutivos serão agrupados para cobrir o SRT inteiro.`
+							: timelineVisualCount > srtCues.length
+								? `Este SRT tem ${srtCues.length} trechos e há ${timelineVisualCount} mídias. As ${timelineVisualCount - srtCues.length} mídias sem trecho permanecerão sem alteração.`
+								: "Quantidade correspondente: cada mídia receberá o tempo de seu trecho no SRT."}
+					</p>
+				)}
+
+				{needsPlanConfirmation && srtCues.length > 0 && (
+					<label className="flex items-start gap-2 text-[0.68rem] text-muted-foreground">
+						<input
+							type="checkbox"
+							className="mt-0.5"
+							checked={confirmSrtPlan}
+							onChange={(event) => setConfirmSrtPlan(event.target.checked)}
+						/>
+						Confirmo os tempos calculados para este SRT. Mídias sem correspondência permanecerão intactas.
+					</label>
+				)}
+
+				<Button className="w-full" disabled={!canApplySrt} onClick={applySrtToTimeline}>
+					{canApplySrt ? `Aplicar SRT na timeline (${groupedPreview.length} mídias)` : "Confira o SRT e a timeline"}
+				</Button>
+				<p className="text-[0.65rem] leading-relaxed text-muted-foreground">
+					O DarkCut muda somente tempo e posição dos visuais escolhidos.
+					O conteúdo da imagem não é analisado por IA nesta etapa;
+					o pareamento é pela ordem ou pelo número explícito no nome.
+					Se algum vídeo não puder atingir a duração pedida, o editor avisa.
+				</p>
 			</section>
 
 			<SilencePanel />
