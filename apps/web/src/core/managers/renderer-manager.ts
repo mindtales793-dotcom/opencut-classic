@@ -14,6 +14,13 @@ type SnapshotResult =
 	| { success: true; blob: Blob; filename: string }
 	| { success: false; error: string };
 
+/** Browser errors raised when an ArrayBuffer/typed array cannot be allocated. */
+function isMemoryError({ message }: { message: string }): boolean {
+	return /allocation failed|out of memory|invalid array length|array buffer/i.test(
+		message,
+	);
+}
+
 export class RendererManager {
 	private renderTree: RootNode | null = null;
 	private _isDegraded = false;
@@ -358,10 +365,13 @@ export class RendererManager {
 					continue;
 				}
 				console.error("FFmpeg export failed:", error);
+				const message =
+					error instanceof Error ? error.message : "Falha desconhecida do FFmpeg.";
 				return {
 					success: false,
-					error: (error instanceof Error ? error.message : "Falha desconhecida do FFmpeg.") +
-						" Tente Renderização → Compatível (navegador), se necessário.",
+					error: isMemoryError({ message })
+						? "Faltou memória para exportar este projeto. Feche outras abas/programas e tente de novo; se continuar, exporte em resolução menor (720p) ou divida o vídeo em partes. O modo Compatível (navegador) usa ainda mais memória."
+						: `${message} Tente Renderização → Compatível (navegador), se necessário.`,
 				};
 			} finally {
 				clearInterval(cancelInterval);

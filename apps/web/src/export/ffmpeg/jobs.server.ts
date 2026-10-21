@@ -1,6 +1,6 @@
 import { spawn, type ChildProcess } from "node:child_process";
 import { randomUUID } from "node:crypto";
-import { mkdir, readdir, rm, stat, writeFile } from "node:fs/promises";
+import { appendFile, mkdir, readdir, rm, stat, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { verifyExportFile, type VerifiedExport } from "./verify.server";
 import { join } from "node:path";
@@ -68,6 +68,10 @@ interface ExportJob {
 	dir: string;
 	outputPath: string;
 	audioPath: string | null;
+	/** Next audio part expected (audio arrives in small parts to keep memory low). */
+	audioNextPart: number;
+	/** True while an audio upload has started but its last part has not arrived. */
+	audioPending: boolean;
 	filename: string;
 	format: ExportFormat;
 	quality: ExportQuality;
@@ -243,6 +247,8 @@ export async function createJob(request: StartRequest): Promise<{
 		dir,
 		outputPath: join(dir, `output.${extension}`),
 		audioPath: null,
+		audioNextPart: 0,
+		audioPending: false,
 		filename: `${request.filename}.${extension}`,
 		format: request.format,
 		quality: request.quality,
@@ -382,12 +388,22 @@ function writeToStdin({
 	return Promise.race([written, exited]);
 }
 
+/**
+ * Stores the WAV that FFmpeg muxes. A long timeline's audio is hundreds of MB,
+ * which the browser cannot hold as one ArrayBuffer, so it can arrive in
+ * consecutive parts: part 0 creates the file, later parts append, and `last`
+ * releases the job to start FFmpeg. Without `part` the whole file is one upload.
+ */
 export function saveAudio({
 	job,
 	data,
+	part = 0,
+	last = true,
 }: {
 	job: ExportJob;
 	data: Buffer;
+	part?: number;
+	last?: boolean;
 }): Promise<void> {
 	return enqueue({
 		job,
@@ -399,9 +415,18 @@ export function saveAudio({
 					"O áudio precisa ser enviado antes dos quadros.",
 				);
 			}
+			if (part !== job.audioNextPart) {
+				throw new ExportRequestError(
+					409,
+					"Partes do áudio fora de ordem. Tente exportar novamente.",
+				);
+			}
 			const audioPath = join(job.dir, "audio.wav");
-			await writeFile(audioPath, data);
+			if (part === 0) await writeFile(audioPath, data);
+			else await appendFile(audioPath, data);
 			job.audioPath = audioPath;
+			job.audioNextPart = part + 1;
+			job.audioPending = !last;
 		},
 	});
 }
@@ -426,6 +451,12 @@ export function pushFrames({
 				);
 			}
 
+			if (job.audioPending) {
+				throw new ExportRequestError(
+					409,
+					"O envio do áudio não terminou. Tente exportar novamente.",
+				);
+			}
 			if (!job.child) startProcess(job);
 
 			try {
