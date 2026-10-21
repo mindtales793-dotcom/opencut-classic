@@ -25,7 +25,8 @@ import type {
 	TextureCanvasDrawFn,
 	TextureUploadDescriptor,
 } from "./types";
-import { DEFAULT_GRAPHIC_SOURCE_SIZE } from "@/graphics";
+import { prepareColorAdjustedFrame } from "./color-pass-processing";
+import type { EffectPass } from "@/effects/types";
 
 export async function buildFrameDescriptor({
 	node,
@@ -36,6 +37,7 @@ export async function buildFrameDescriptor({
 }): Promise<{
 	frame: FrameDescriptor;
 	textures: TextureUploadDescriptor[];
+	postColorPasses: EffectPass[];
 }> {
 	const items: FrameItemDescriptor[] = [];
 	const textures = new Map<string, TextureUploadDescriptor>();
@@ -48,6 +50,7 @@ export async function buildFrameDescriptor({
 		textures,
 	});
 
+	const postColorPasses = prepareColorAdjustedFrame({ items, textures });
 	incrementCounter({ name: "frameItems", by: items.length });
 	incrementCounter({ name: "frameTextures", by: textures.size });
 
@@ -61,6 +64,7 @@ export async function buildFrameDescriptor({
 			items,
 		},
 		textures: [...textures.values()],
+		postColorPasses,
 	};
 }
 
@@ -232,11 +236,11 @@ async function collectVisualSourceNode({
 
 	const sourceWidth =
 		node instanceof GraphicNode
-			? DEFAULT_GRAPHIC_SOURCE_SIZE
+			? node.sourceSize
 			: (node.resolved as ResolvedVisualSourceNodeState).sourceWidth;
 	const sourceHeight =
 		node instanceof GraphicNode
-			? DEFAULT_GRAPHIC_SOURCE_SIZE
+			? node.sourceSize
 			: (node.resolved as ResolvedVisualSourceNodeState).sourceHeight;
 
 	const textureId = `${path}:source`;

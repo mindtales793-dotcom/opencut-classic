@@ -1,44 +1,72 @@
 "use client";
 
-import { Separator } from "@/components/ui/separator";
-import { type Tab, useAssetsPanelStore } from "@/components/editor/panels/assets/assets-panel-store";
-import { TabBar } from "./tabbar";
-import { Captions } from "@/subtitles/components/assets-view";
-import { MediaView } from "./views/assets";
-import { SettingsView } from "./views/settings";
-import { SoundsView } from "@/sounds/components/assets-view";
-import { StickersView } from "@/stickers/components/assets-view";
-import { TextView } from "@/text/components/assets-view";
-import { EffectsView } from "@/effects/components/assets-view";
+import dynamic from "next/dynamic";
+import {
+	type Tab,
+	useAssetsPanelStore,
+} from "@/components/editor/panels/assets/assets-panel-store";
+// Keep every existing panel, but only load its editor bundle when opened.
+// Importing all panels eagerly made startup and every first project load heavier.
+const panelLoading = () => <div className="p-5 text-sm text-muted-foreground">Carregando ferramentas…</div>;
+const StudioWorkflow = dynamic(() => import("@/darkcut/studio-workflow").then((module) => module.StudioWorkflow), { loading: panelLoading });
+const PropertiesPanel = dynamic(() => import("@/components/editor/panels/properties").then((module) => module.PropertiesPanel), { loading: panelLoading });
+const Captions = dynamic(() => import("@/subtitles/components/assets-view").then((module) => module.Captions), { loading: panelLoading });
+const MediaView = dynamic(() => import("./views/assets").then((module) => module.MediaView), { loading: panelLoading });
+const SettingsView = dynamic(() => import("./views/settings").then((module) => module.SettingsView), { loading: panelLoading });
+const SoundsView = dynamic(() => import("@/sounds/components/assets-view").then((module) => module.SoundsView), { loading: panelLoading });
+const StickersView = dynamic(() => import("@/stickers/components/assets-view").then((module) => module.StickersView), { loading: panelLoading });
+const TextView = dynamic(() => import("@/text/components/assets-view").then((module) => module.TextView), { loading: panelLoading });
+const EffectsView = dynamic(() => import("@/effects/components/assets-view").then((module) => module.EffectsView), { loading: panelLoading });
+const DarkCutProductionView = dynamic(() => import("./views/darkcut-production").then((module) => module.DarkCutProductionView), { loading: panelLoading });
+const DarkCutSyncView = dynamic(() => import("./views/darkcut-sync").then((module) => module.DarkCutSyncView), {
+	loading: () => <div className="p-5 text-sm text-muted-foreground">Carregando ferramentas…</div>,
+});
+const DarkCutSrtStudio = dynamic(() => import("./views/darkcut-srt-studio").then((module) => module.DarkCutSrtStudio), {
+	loading: () => <div className="p-5 text-sm text-muted-foreground">Carregando ferramentas…</div>,
+});
+const DarkMinerWorkspace = dynamic(() => import("./views/darkcut-miner-workspace").then((module) => module.DarkMinerWorkspace), {
+	loading: () => <div className="p-5 text-sm text-muted-foreground">Carregando ferramentas…</div>,
+});
+const DarkCutVideosView = dynamic(() => import("./views/darkcut-videos").then((module) => module.DarkCutVideosView), {
+	loading: () => <div className="p-5 text-sm text-muted-foreground">Carregando ferramentas…</div>,
+});
+const DarkCutTemplatesView = dynamic(() => import("./views/darkcut-templates").then((module) => module.DarkCutTemplatesView), {
+	loading: () => <div className="p-5 text-sm text-muted-foreground">Carregando ferramentas…</div>,
+});
+const DarkCutTransitionsView = dynamic(() => import("./views/darkcut-transitions").then((module) => module.DarkCutTransitionsView), {
+	loading: () => <div className="p-5 text-sm text-muted-foreground">Carregando ferramentas…</div>,
+});
 
 export function AssetsPanel() {
 	const { activeTab } = useAssetsPanelStore();
 
 	const viewMap: Record<Tab, React.ReactNode> = {
+		timeline: null,
+		production: <DarkCutProductionView />,
+		sync: <DarkCutSyncView />,
+		"script-srt": <DarkCutSrtStudio />,
+		darkminer: <DarkMinerWorkspace />,
+		videos: <DarkCutVideosView />,
 		media: <MediaView />,
 		sounds: <SoundsView />,
 		text: <TextView />,
 		stickers: <StickersView />,
 		effects: <EffectsView />,
-		transitions: (
-			<div className="text-muted-foreground p-4">
-				Transitions view coming soon...
-			</div>
-		),
+		templates: <DarkCutTemplatesView />,
+		transitions: <DarkCutTransitionsView />,
 		captions: <Captions />,
-		adjustment: (
-			<div className="text-muted-foreground p-4">
-				Adjustment view coming soon...
-			</div>
-		),
+		adjustment: <PropertiesPanel />,
 		settings: <SettingsView />,
 	};
 
 	return (
-		<div className="panel bg-background flex h-full rounded-sm border overflow-hidden">
-			<TabBar />
-			<Separator orientation="vertical" />
-			<div className="flex-1 overflow-hidden">{viewMap[activeTab]}</div>
+		<div className="studio-assets panel flex h-full flex-col overflow-hidden">
+			{activeTab !== "darkminer" && <StudioWorkflow />}
+			<div className={"studio-assets-scroll min-h-0 flex-1 " + (activeTab === "darkminer" ? "overflow-hidden" : "overflow-y-auto overscroll-contain")}>
+				<div className={activeTab === "darkminer" ? "h-full min-w-0" : "min-h-full min-w-0"}>
+					{viewMap[activeTab]}
+				</div>
+			</div>
 		</div>
 	);
 }

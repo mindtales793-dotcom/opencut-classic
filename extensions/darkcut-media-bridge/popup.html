@@ -1,0 +1,35 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>DarkCut • Ponte de mídias</title>
+  <link rel="stylesheet" href="popup.css">
+  <script src="popup.js" defer></script>
+</head>
+<body>
+  <main>
+    <header><h1>🔗 DarkCut Studio</h1><p>Conecte arquivos locais às cenas do projeto.</p></header>
+    <section>
+      <label>Código do projeto
+        <input id="project" autocomplete="off" spellcheck="false" placeholder="Cole do DarkCut → Produção" />
+      </label>
+      <label>Chave temporária de conexão
+        <input id="token" autocomplete="off" spellcheck="false" type="password" placeholder="Copie no DarkCut" />
+      </label>
+      <button id="connect">Verificar conexão local</button>
+    </section>
+    <section>
+      <label>Selecione imagens ou vídeos já baixados
+        <input id="files" type="file" multiple accept=".png,.jpg,.jpeg,.webp,.mp4,.webm,image/png,image/jpeg,image/webp,video/mp4,video/webm" />
+      </label>
+      <label>Cena manual (caso não esteja no nome)
+        <input id="scene" type="number" min="1" max="10000" placeholder="Ex.: 25" />
+      </label>
+      <p>Exemplo de arquivo: <code>cena-025.png</code>. A numeração do nome tem prioridade sobre a cena manual.</p>
+      <button id="upload">Enviar arquivos ao DarkCut</button>
+    </section>
+    <p id="status" role="status" aria-live="polite">Abra seu projeto no DarkCut Windows e copie os dois códigos da aba Produção.</p>
+    <footer>Envio iniciado por você. Não acessa páginas, contas, cookies ou senhas de outros serviços.</footer>
+  </main>
+</body></html>

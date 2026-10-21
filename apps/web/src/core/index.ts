@@ -46,25 +46,8 @@ export class EditorCore {
 		this.diagnostics = new DiagnosticsManager(this);
 		registerTranscriptionDiagnostics({ diagnostics: this.diagnostics });
 		this.playback.bindTimelineScope();
-		this.command.registerReactor(() => {
-			const activeScene = this.scenes.getActiveSceneOrNull();
-			if (!activeScene) {
-				return;
-			}
-
-			const tracks = activeScene.tracks;
-			const prunedTracks = {
-				...tracks,
-				overlay: tracks.overlay.filter((track) => track.elements.length > 0),
-				audio: tracks.audio.filter((track) => track.elements.length > 0),
-			};
-			if (
-				prunedTracks.overlay.length !== tracks.overlay.length ||
-				prunedTracks.audio.length !== tracks.audio.length
-			) {
-				this.timeline.updateTracks(prunedTracks);
-			}
-		});
+		// Empty lanes are intentional editor UI: users add and populate them later.
+		// Removing them after every command also fights the timeline lane setup.
 		this.save.start();
 	}
 

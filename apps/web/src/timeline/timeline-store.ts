@@ -6,6 +6,28 @@
 import { create } from "zustand";
 import { persist } from "zustand/middleware";
 
+export type DarkCutTransitionPreset =
+	| "fade"
+	| "zoom"
+	| "slide-left"
+	| "slide-right"
+	| "ken-burns"
+	| "pop";
+
+export type DarkCutMotionPreset =
+	| "zoom-in"
+	| "zoom-out"
+	| "pan-left-right"
+	| "pan-right-left"
+	| "pan-up-down"
+	| "pan-down-up"
+	| "ken-burns"
+	| "push-in"
+	| "pull-out"
+	| "documentary";
+
+export type DarkCutEffectIntensity = "soft" | "normal" | "strong";
+
 interface TimelineStore {
 	snappingEnabled: boolean;
 	toggleSnapping: () => void;
@@ -13,6 +35,18 @@ interface TimelineStore {
 	toggleRippleEditing: () => void;
 	expandedElementIds: Set<string>;
 	toggleElementExpanded: (elementId: string) => void;
+	darkcutDurationSeconds: number;
+	setDarkcutDurationSeconds: (seconds: number) => void;
+	darkcutTransitionPreset: DarkCutTransitionPreset;
+	setDarkcutTransitionPreset: (preset: DarkCutTransitionPreset) => void;
+	darkcutTransitionFavorites: DarkCutTransitionPreset[];
+	toggleDarkcutTransitionFavorite: (preset: DarkCutTransitionPreset) => void;
+	darkcutMotionPreset: DarkCutMotionPreset;
+	setDarkcutMotionPreset: (preset: DarkCutMotionPreset) => void;
+	darkcutMotionFavorites: DarkCutMotionPreset[];
+	toggleDarkcutMotionFavorite: (preset: DarkCutMotionPreset) => void;
+	darkcutEffectIntensity: DarkCutEffectIntensity;
+	setDarkcutEffectIntensity: (intensity: DarkCutEffectIntensity) => void;
 }
 
 export const useTimelineStore = create<TimelineStore>()(
@@ -25,6 +59,44 @@ export const useTimelineStore = create<TimelineStore>()(
 			},
 
 			rippleEditingEnabled: false,
+
+			darkcutDurationSeconds: 5,
+			setDarkcutDurationSeconds: (darkcutDurationSeconds) =>
+				set({ darkcutDurationSeconds }),
+
+			darkcutTransitionPreset: "fade",
+			setDarkcutTransitionPreset: (darkcutTransitionPreset) =>
+				set({ darkcutTransitionPreset }),
+
+			darkcutTransitionFavorites: ["fade", "zoom"],
+			toggleDarkcutTransitionFavorite: (preset) =>
+				set((state) => ({
+					darkcutTransitionFavorites: state.darkcutTransitionFavorites.includes(
+						preset,
+					)
+						? state.darkcutTransitionFavorites.filter(
+								(candidate) => candidate !== preset,
+							)
+						: [...state.darkcutTransitionFavorites, preset],
+				})),
+
+			darkcutMotionPreset: "zoom-in",
+			setDarkcutMotionPreset: (darkcutMotionPreset) =>
+				set({ darkcutMotionPreset }),
+
+			darkcutMotionFavorites: ["zoom-in", "zoom-out", "ken-burns"],
+			toggleDarkcutMotionFavorite: (preset) =>
+				set((state) => ({
+					darkcutMotionFavorites: state.darkcutMotionFavorites.includes(preset)
+						? state.darkcutMotionFavorites.filter(
+								(candidate) => candidate !== preset,
+							)
+						: [...state.darkcutMotionFavorites, preset],
+				})),
+
+			darkcutEffectIntensity: "soft",
+			setDarkcutEffectIntensity: (darkcutEffectIntensity) =>
+				set({ darkcutEffectIntensity }),
 
 			toggleRippleEditing: () => {
 				set((state) => ({
@@ -51,6 +123,12 @@ export const useTimelineStore = create<TimelineStore>()(
 			partialize: (state) => ({
 				snappingEnabled: state.snappingEnabled,
 				rippleEditingEnabled: state.rippleEditingEnabled,
+				darkcutDurationSeconds: state.darkcutDurationSeconds,
+				darkcutTransitionPreset: state.darkcutTransitionPreset,
+				darkcutTransitionFavorites: state.darkcutTransitionFavorites,
+				darkcutMotionPreset: state.darkcutMotionPreset,
+				darkcutMotionFavorites: state.darkcutMotionFavorites,
+				darkcutEffectIntensity: state.darkcutEffectIntensity,
 			}),
 		},
 	),

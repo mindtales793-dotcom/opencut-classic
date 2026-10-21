@@ -4,6 +4,9 @@ export class IndexedDBAdapter<T> implements StorageAdapter<T> {
 	private dbName: string;
 	private storeName: string;
 	private version: number;
+	// Reuse one open connection rather than reopening IndexedDB for every
+	// thumbnail, project metadata and autosave operation.
+	private dbPromise: Promise<IDBDatabase> | null = null;
 
 	constructor({
 		dbName,
@@ -19,12 +22,28 @@ export class IndexedDBAdapter<T> implements StorageAdapter<T> {
 		this.version = version;
 	}
 
-	private async getDB(): Promise<IDBDatabase> {
-		return new Promise((resolve, reject) => {
+	private getDB(): Promise<IDBDatabase> {
+		if (this.dbPromise) return this.dbPromise;
+
+		this.dbPromise = new Promise((resolve, reject) => {
 			const request = indexedDB.open(this.dbName, this.version);
 
-			request.onerror = () => reject(request.error);
-			request.onsuccess = () => resolve(request.result);
+			request.onerror = () => {
+				this.dbPromise = null;
+				reject(request.error);
+			};
+			request.onsuccess = () => {
+				const db = request.result;
+				// Let migrations, version upgrades and database deletion proceed.
+				// A closed/invalidated connection will be reopened on demand.
+				const release = () => {
+					db.close();
+					this.dbPromise = null;
+				};
+				db.addEventListener("versionchange", release, { once: true });
+				db.addEventListener("close", () => { this.dbPromise = null; }, { once: true });
+				resolve(db);
+			};
 
 			request.onupgradeneeded = (event) => {
 				const db = (event.target as IDBOpenDBRequest).result;
@@ -33,6 +52,7 @@ export class IndexedDBAdapter<T> implements StorageAdapter<T> {
 				}
 			};
 		});
+		return this.dbPromise;
 	}
 
 	async get(key: string): Promise<T | null> {

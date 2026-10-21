@@ -29,6 +29,138 @@ import { DEFAULTS } from "@/timeline/defaults";
 import { getElementFontFamilies } from "@/timeline/element-utils";
 import { getRaisedProjectFpsForImportedMedia } from "@/fps/utils";
 import type { MediaAsset } from "@/media/types";
+import { chooseProjectCover } from "@/project/cover-utils";
+import { mediaTimeFromSeconds } from "@/wasm";
+
+// Home cards are 16:9 and only need 640x360 JPEGs; avoid full-size PNGs.
+const COVER_WIDTH = 640;
+const COVER_HEIGHT = 360;
+
+function paintCover(
+	ctx: CanvasRenderingContext2D,
+	source: CanvasImageSource,
+	width: number,
+	height: number,
+) {
+	const sourceRatio = width / height;
+	const coverRatio = COVER_WIDTH / COVER_HEIGHT;
+	const sw = sourceRatio > coverRatio ? height * coverRatio : width;
+	const sh = sourceRatio > coverRatio ? height : width / coverRatio;
+	ctx.drawImage(
+		source,
+		Math.max(0, (width - sw) / 2),
+		Math.max(0, (height - sh) / 2),
+		sw, sh, 0, 0, COVER_WIDTH, COVER_HEIGHT,
+	);
+}
+
+async function decodeCoverImage(source: string): Promise<HTMLImageElement> {
+	return await new Promise((resolve, reject) => {
+		const image = new Image();
+		const timer = setTimeout(() => reject(new Error("Cover decode timeout")), 10000);
+		image.onload = () => { clearTimeout(timer); resolve(image); };
+		image.onerror = () => { clearTimeout(timer); reject(new Error("Invalid cover image")); };
+		image.src = source;
+	});
+}
+
+async function coverFromMediaAsset(asset: MediaAsset): Promise<string | null> {
+	const canvas = document.createElement("canvas");
+	canvas.width = COVER_WIDTH;
+	canvas.height = COVER_HEIGHT;
+	const ctx = canvas.getContext("2d");
+	if (!ctx) return null;
+	const isTemporaryUrl = !asset.url;
+	const url = asset.url ?? URL.createObjectURL(asset.file);
+	try {
+		if (asset.type === "image") {
+			if (typeof createImageBitmap === "function") {
+				try {
+					const bitmap = await createImageBitmap(asset.file);
+					try {
+						paintCover(ctx, bitmap, bitmap.width, bitmap.height);
+						return canvas.toDataURL("image/jpeg", 0.82);
+					} finally {
+						bitmap.close();
+					}
+				} catch { /* SVGs and uncommon image formats use HTMLImageElement. */ }
+			}
+			const image = await decodeCoverImage(url);
+			paintCover(ctx, image, image.naturalWidth, image.naturalHeight);
+			return canvas.toDataURL("image/jpeg", 0.82);
+		}
+		if (asset.type === "video") {
+			const poster = asset.thumbnailUrl;
+			if (poster?.startsWith("data:image/")) {
+				const image = await decodeCoverImage(poster);
+				paintCover(ctx, image, image.naturalWidth, image.naturalHeight);
+				return canvas.toDataURL("image/jpeg", 0.82);
+			}
+			const video = document.createElement("video");
+			video.preload = "auto";
+			video.muted = true;
+			video.playsInline = true;
+			video.src = url;
+			try {
+				await new Promise<void>((resolve, reject) => {
+					const timer = setTimeout(() => reject(new Error("Video frame timeout")), 10000);
+					const settle = (ok: boolean) => {
+						clearTimeout(timer);
+						video.removeEventListener("loadeddata", onData);
+						video.removeEventListener("error", onError);
+						if (ok) resolve();
+						else reject(new Error("Video frame unavailable"));
+					};
+					const onData = () => settle(true);
+					const onError = () => settle(false);
+					video.addEventListener("loadeddata", onData);
+					video.addEventListener("error", onError);
+					video.load();
+				});
+				if (video.videoWidth && video.videoHeight) {
+					paintCover(ctx, video, video.videoWidth, video.videoHeight);
+					return canvas.toDataURL("image/jpeg", 0.82);
+				}
+			} finally {
+				video.pause();
+				video.removeAttribute("src");
+				video.load();
+			}
+		}
+		return null;
+	} catch (error) {
+		console.warn("DarkCut could not create media cover:", error);
+		return null;
+	} finally {
+		if (isTemporaryUrl) URL.revokeObjectURL(url);
+	}
+}
+
+/** Detect legacy covers generated from an empty timeline at second zero. */
+async function isEmptyCover(thumbnail: string | undefined): Promise<boolean> {
+	if (!thumbnail) return true;
+	if (!thumbnail.startsWith("data:image/")) return false;
+	try {
+		const image = await decodeCoverImage(thumbnail);
+		const canvas = document.createElement("canvas");
+		canvas.width = 16; canvas.height = 9;
+		const ctx = canvas.getContext("2d", { willReadFrequently: true });
+		if (!ctx) return false;
+		ctx.drawImage(image, 0, 0, 16, 9);
+		const pixels = ctx.getImageData(0, 0, 16, 9).data;
+		let min = 255; let max = 0; let average = 0;
+		for (let i = 0; i < pixels.length; i += 4) {
+			const brightness = (pixels[i] + pixels[i + 1] + pixels[i + 2]) / 3;
+			min = Math.min(min, brightness);
+			max = Math.max(max, brightness);
+			average += brightness;
+		}
+		average /= pixels.length / 4;
+		return average < 26 && max - min < 14;
+	} catch {
+		return true;
+	}
+}
 
 export interface MigrationState {
 	isMigrating: boolean;
@@ -210,6 +342,9 @@ export class ProjectManager {
 	}
 
 	async export({ options }: { options: ExportOptions }): Promise<ExportResult> {
+		if (this.exportState.isExporting) {
+			return { success: false, error: "Já existe uma exportação em andamento. Aguarde ou cancele antes de iniciar outra." };
+		}
 		this.exportCancelRequested = false;
 		this.exportState = { isExporting: true, progress: 0, result: null };
 		this.notify();
@@ -238,6 +373,8 @@ export class ProjectManager {
 	}
 
 	clearExportState(): void {
+		// Keep the lock until the renderer has actually stopped.
+		if (this.exportState.isExporting) return;
 		this.exportState = { isExporting: false, progress: 0, result: null };
 		this.notify();
 	}
@@ -258,6 +395,8 @@ export class ProjectManager {
 				const metadata = await storageService.loadAllProjectsMetadata();
 				this.savedProjects = metadata;
 				this.notify();
+				// Repair old black covers in the background, without blocking Home.
+				void this.repairLegacyProjectCovers();
 			} catch (error) {
 				console.error("Failed to load projects:", error);
 			} finally {
@@ -652,9 +791,23 @@ export class ProjectManager {
 
 		const tracks = this.editor.scenes.getActiveScene().tracks;
 		const mediaAssets = this.editor.media.getAssets();
+		const cover = chooseProjectCover(
+			[this.editor.scenes.getActiveScene()],
+			mediaAssets,
+		);
+		// Never overwrite a meaningful project cover with a blank frame.
+		if (!cover) return false;
+		const media = mediaAssets.find((asset) => asset.id === cover.mediaId);
+		if (media) {
+			const coverImage = await coverFromMediaAsset(media);
+			if (coverImage) {
+				await this.updateThumbnail({ thumbnail: coverImage });
+				return true;
+			}
+		}
+
 		const duration = this.editor.timeline.getTotalDuration();
 		const { canvasSize, background } = this.active.settings;
-
 		const scene = buildScene({
 			tracks,
 			mediaAssets,
@@ -669,20 +822,73 @@ export class ProjectManager {
 			fps: this.active.settings.fps,
 		});
 
+		// Project cards only need a small cover. Avoid saving full-resolution
+		// PNG data URLs in project metadata: they slow down HDD reads and startup.
+		const scale = Math.min(1, 640 / canvasSize.width, 360 / canvasSize.height);
 		const tempCanvas = document.createElement("canvas");
-		tempCanvas.width = canvasSize.width;
-		tempCanvas.height = canvasSize.height;
+		tempCanvas.width = Math.max(1, Math.round(canvasSize.width * scale));
+		tempCanvas.height = Math.max(1, Math.round(canvasSize.height * scale));
 
 		await renderer.renderToCanvas({
 			node: scene,
-			time: 0,
+			time: mediaTimeFromSeconds({ seconds: cover.startTime + 0.15 }),
 			targetCanvas: tempCanvas,
 		});
 
-		const thumbnailDataUrl = tempCanvas.toDataURL("image/png");
+		const thumbnailDataUrl = tempCanvas.toDataURL("image/jpeg", 0.78);
 
 		await this.updateThumbnail({ thumbnail: thumbnailDataUrl });
 		return true;
+	}
+
+	/**
+	 * Existing installations may contain black JPEG metadata thumbnails.
+	 * Read only the first matching visual asset and do not touch the timeline.
+	 */
+	private async repairLegacyProjectCovers(): Promise<void> {
+		for (const metadata of this.savedProjects.slice(0, 60)) {
+			try {
+				if (!(await isEmptyCover(metadata.thumbnail))) continue;
+				const result = await storageService.loadProject({ id: metadata.id });
+				if (!result?.project) continue;
+				const { project } = result;
+				const references = project.scenes.flatMap((scene) =>
+					[scene.tracks.main, ...scene.tracks.overlay].flatMap((track) =>
+						track.type !== "video" || track.hidden ? [] :
+						track.elements.filter((el) =>
+							(el.type === "image" || el.type === "video") && !el.hidden,
+						).map((el) => ({
+							id: el.mediaId,
+							type: el.type,
+						})),
+					),
+				);
+				const candidate = chooseProjectCover(project.scenes, references);
+				if (!candidate) continue;
+				const asset = await storageService.loadMediaAsset({
+					projectId: metadata.id,
+					id: candidate.mediaId,
+				});
+				if (!asset) continue;
+				let cover: string | null = null;
+				try {
+					cover = await coverFromMediaAsset(asset);
+				} finally {
+					if (asset.url?.startsWith("blob:")) URL.revokeObjectURL(asset.url);
+				}
+				if (!cover) continue;
+				// A project could have been opened while we were repairing Home.
+				if (this.active?.metadata.id === metadata.id) continue;
+				const updated: TProject = {
+					...project,
+					metadata: { ...project.metadata, thumbnail: cover },
+				};
+				await storageService.saveProject({ project: updated });
+				this.updateMetadata(updated);
+			} catch (error) {
+				console.warn("Failed to repair an older DarkCut project cover:", error);
+			}
+		}
 	}
 
 	private updateMetadata(project: TProject): void {

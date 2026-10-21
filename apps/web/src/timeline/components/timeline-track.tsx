@@ -48,7 +48,9 @@ export function TimelineTrackContent({
 	const { isElementSelected } = useElementSelection();
 
 	return (
-		<div className="relative size-full">
+		<div
+			className={`relative size-full ${track.type === "audio" ? (track.name.startsWith("A1") ? "studio-audio-narration" : track.name.startsWith("A2") ? "studio-audio-music" : "studio-audio-effects") : ""}`}
+		>
 			<button
 				type="button"
 				className="absolute inset-0 m-0 size-full appearance-none border-0 bg-transparent p-0"

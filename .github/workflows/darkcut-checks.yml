@@ -1,0 +1,63 @@
+name: DarkCut Checks
+
+on:
+  pull_request:
+    branches: [main, darkcut-studio]
+  push:
+    branches: [darkcut-studio]
+
+jobs:
+  web:
+    runs-on: ubuntu-latest
+    env:
+      NEXT_TELEMETRY_DISABLED: "1"
+      NEXT_PUBLIC_SITE_URL: "http://127.0.0.1:3217"
+      NEXT_PUBLIC_MARBLE_API_URL: "http://127.0.0.1:3217"
+      DATABASE_URL: "postgresql://darkcut:darkcut@127.0.0.1:5432/darkcut"
+      BETTER_AUTH_SECRET: "darkcut-ci-build-secret-2026"
+      UPSTASH_REDIS_REST_URL: "http://127.0.0.1:3217"
+      UPSTASH_REDIS_REST_TOKEN: "darkcut-local-disabled"
+      MARBLE_WORKSPACE_KEY: "darkcut-local-disabled"
+      FREESOUND_CLIENT_ID: "darkcut-local-disabled"
+      FREESOUND_API_KEY: "darkcut-local-disabled"
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Bun
+        uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: 1.2.18
+
+      - name: Install dependencies
+        run: bun install
+
+      - name: Test SRT, all templates, covers and intelligent media search
+        run: bun test apps/web/src/darkcut/__tests__/srt-scene-sync.test.ts apps/web/src/darkcut/__tests__/retro-automotive.test.ts apps/web/src/darkcut/__tests__/media-search-intelligence.test.ts apps/web/src/darkcut/__tests__/youtube-candidate-ranker.test.ts apps/web/src/darkcut/__tests__/template-visual-profiles.test.ts apps/web/src/darkcut/__tests__/cris-sound-design.test.ts apps/web/src/darkcut/__tests__/light-music.test.ts apps/web/src/darkcut/__tests__/reference-editing-styles.test.ts apps/web/src/darkcut/__tests__/media-bridge.test.ts apps/web/src/darkcut/__tests__/narration-chunks.test.ts apps/web/src/darkcut/__tests__/niche-miner.test.ts apps/web/src/darkcut/__tests__/srt-word-alignment.test.ts apps/web/src/darkcut/__tests__/darkminer-legacy-adapter.test.ts apps/web/src/darkcut/__tests__/srt-v24-integrated.test.ts apps/web/src/project/__tests__/darkcut-cover-utils.test.ts
+
+      - name: Test undo/redo transactions and caption templates
+        run: bun test apps/web/src/core/managers/__tests__/commands.test.ts apps/web/src/subtitles/__tests__/caption-presets.test.ts
+
+      - name: Test karaoke captions, animated stickers, color grades and Composer motion
+        run: bun test --preload ./apps/web/scripts/test-wasm-preload.ts apps/web/src/subtitles/__tests__/karaoke.test.ts apps/web/src/stickers/__tests__/animated.test.ts apps/web/src/effects/__tests__/color-grade.test.ts apps/web/src/darkcut/__tests__/composer-motion.test.ts
+
+      - name: Verify exact export quality, FPS, format and codec
+        run: bun test apps/web/src/export/ffmpeg/__tests__/ffmpeg-export.test.ts
+
+      - name: Test browser export cleanup and cancellation
+        run: bun test apps/web/src/services/renderer/__tests__/scene-exporter.test.ts
+
+      - name: Test optional Suno local API connector
+        run: bun test apps/web/src/darkcut/__tests__/suno-local.test.ts
+
+      - name: Test media sorting, archive behavior and bounded project loading
+        run: bun test apps/web/src/darkcut/__tests__/media-sort-controls.test.ts apps/web/src/services/storage/__tests__/concurrency.test.ts
+
+      - name: Validate optional Chrome media bridge
+        run: |
+          node --check extensions/darkcut-media-bridge/popup.js
+          node -e "const fs=require('fs');const m=JSON.parse(fs.readFileSync('extensions/darkcut-media-bridge/manifest.json'));if(m.manifest_version!==3||m.content_scripts)process.exit(1)"
+
+      - name: Build DarkCut web runtime
+        run: bun run build:web

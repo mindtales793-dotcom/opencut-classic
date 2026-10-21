@@ -12,6 +12,7 @@ import { EffectLayerNode } from "./nodes/effect-layer-node";
 import type { AnyBaseNode } from "./nodes/base-node";
 import type { TBackground, TCanvasSize } from "@/project/types";
 import { DEFAULT_BACKGROUND_BLUR_INTENSITY } from "@/background/blur";
+import { DARKCUT_REMOTION_GRAPHIC_ID } from "@/darkcut/remotion-compositor-canvas";
 import {
 	buildTransformFromParams,
 	readBlendModeFromParams,
@@ -144,6 +145,9 @@ function buildTrackNodes({
 			if (element.type === "graphic") {
 				nodes.push(
 					new GraphicNode({
+						sourceSize: element.definitionId === DARKCUT_REMOTION_GRAPHIC_ID
+							? Math.min(canvasSize.width, canvasSize.height, isPreview ? 720 : 2160)
+							: undefined,
 						definitionId: element.definitionId,
 						params: element.params,
 						duration: element.duration,

@@ -56,10 +56,12 @@ function normalizeWheelDelta({
 }
 
 export function PreviewPanel({
+	active = true,
 	overlayControls,
 	overlayInstances,
 	onOverlayVisibilityChange,
 }: {
+	active?: boolean;
 	overlayControls: PreviewOverlayControl[];
 	overlayInstances: PreviewOverlayInstance[];
 	onOverlayVisibilityChange: (params: {
@@ -81,6 +83,7 @@ export function PreviewPanel({
 			className="panel bg-background relative flex size-full min-h-0 min-w-0 flex-col rounded-sm border"
 		>
 			<PreviewCanvas
+				active={active}
 				container={container}
 				onToggleFullscreen={toggleFullscreen}
 				overlayControls={overlayControls}
@@ -122,12 +125,14 @@ function RenderTreeController() {
 }
 
 function PreviewCanvas({
+	active,
 	container,
 	onToggleFullscreen,
 	overlayControls,
 	overlayInstances,
 	onOverlayVisibilityChange,
 }: {
+	active: boolean;
 	container: HTMLElement | null;
 	onToggleFullscreen: () => void;
 	overlayControls: PreviewOverlayControl[];
@@ -138,6 +143,7 @@ function PreviewCanvas({
 	}) => void;
 }) {
 	const canvasMountRef = useRef<HTMLDivElement>(null);
+	const displayCanvasRef = useRef<HTMLCanvasElement>(null);
 	const viewportRef = useRef<HTMLDivElement>(null);
 	const lastFrameRef = useRef(-1);
 	const lastSceneRef = useRef<RootNode | null>(null);
@@ -147,6 +153,7 @@ function PreviewCanvas({
 	const editor = useEditor();
 	const activeProject = useEditor((e) => e.project.getActive());
 	const renderTree = useEditor((e) => e.renderer.getRenderTree());
+	const isExporting = useEditor((e) => e.project.getExportState().isExporting);
 	const viewport = usePreviewViewportState({
 		canvasHeight: nativeHeight,
 		canvasWidth: nativeWidth,
@@ -164,26 +171,26 @@ function PreviewCanvas({
 		});
 	}, [nativeWidth, nativeHeight, activeProject.settings.fps]);
 
-	// Mount the compositor's output canvas directly into the preview. wgpu
-	// renders straight into this element, so there is no intermediate copy —
-	// the container div owns positioning/styling, the canvas itself fills it.
+	// Keep a dedicated preview canvas. The exporter uses the compositor's
+	// internal canvas while rendering; mounting that same canvas here made the
+	// preview appear to "play" export frames even after playback was paused.
 	useEffect(() => {
-		const mount = canvasMountRef.current;
-		if (!mount) return;
-		const outputCanvas = renderer.getOutputCanvas();
-		outputCanvas.style.display = "block";
-		outputCanvas.style.width = "100%";
-		outputCanvas.style.height = "100%";
-		mount.appendChild(outputCanvas);
-		return () => {
-			if (outputCanvas.parentElement === mount) {
-				mount.removeChild(outputCanvas);
-			}
-		};
-	}, [renderer]);
+		const canvas = displayCanvasRef.current;
+		if (!canvas) return;
+		canvas.width = nativeWidth;
+		canvas.height = nativeHeight;
+	}, [nativeWidth, nativeHeight]);
+
+	useEffect(() => {
+		if (!isExporting) {
+			lastFrameRef.current = -1;
+		}
+	}, [isExporting]);
 
 	const render = useCallback(() => {
-		if (!renderTree || renderingRef.current) return;
+		if (!renderTree || renderingRef.current || isExporting) return;
+		const targetCanvas = displayCanvasRef.current;
+		if (!targetCanvas) return;
 
 		const renderTime = Math.min(
 			editor.playback.getCurrentTime(),
@@ -205,13 +212,29 @@ function PreviewCanvas({
 		lastSceneRef.current = renderTree;
 		lastFrameRef.current = frame;
 		renderer
-			.render({ node: renderTree, time: renderTime })
+			.renderToCanvas({
+				node: renderTree,
+				time: renderTime,
+				targetCanvas,
+			})
 			.then(() => {
 				renderingRef.current = false;
+			})
+			.catch((error) => {
+				renderingRef.current = false;
+				console.error("Preview render failed:", error);
 			});
-	}, [renderer, renderTree, editor.playback, editor.timeline]);
+	}, [
+		renderer,
+		renderTree,
+		editor.playback,
+		editor.timeline,
+		isExporting,
+	]);
 
-	useRafLoop(render);
+	// Preserve the render tree for export, but stop GPU/CPU preview work in
+	// Produção, Mídia and DarkMiner where the monitor is hidden.
+	useRafLoop(render, active);
 
 	useEffect(() => {
 		const container = viewportRef.current;
@@ -321,7 +344,13 @@ function PreviewCanvas({
 											? "transparent"
 											: activeProject?.settings.background.color,
 								}}
-							/>
+							>
+								<canvas
+									ref={displayCanvasRef}
+									className="block size-full"
+									aria-label="Prévia do vídeo"
+								/>
+							</div>
 								<PreviewOverlayLayer
 									instances={overlayInstances}
 									plane="under-interaction"

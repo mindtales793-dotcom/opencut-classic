@@ -9,7 +9,6 @@ import { effectsRegistry, resolveEffectPasses } from "@/effects";
 import type { Effect, EffectPass } from "@/effects/types";
 import { getSourceTimeAtClipTime } from "@/retime";
 import {
-	DEFAULT_GRAPHIC_SOURCE_SIZE,
 	resolveGraphicElementParamsAtTime,
 } from "@/graphics";
 import {
@@ -296,8 +295,8 @@ function resolveGraphicNode({
 	const visualState = resolveVisualState({
 		params: node.params,
 		context,
-		sourceWidth: DEFAULT_GRAPHIC_SOURCE_SIZE,
-		sourceHeight: DEFAULT_GRAPHIC_SOURCE_SIZE,
+		sourceWidth: node.sourceSize,
+		sourceHeight: node.sourceSize,
 	});
 	if (!visualState) {
 		return null;

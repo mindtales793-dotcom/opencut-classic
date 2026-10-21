@@ -64,6 +64,29 @@ export function DraggableItem({
 
 		const handleDragOver = (e: DragEvent) => {
 			setDragPosition({ x: e.clientX, y: e.clientY });
+			// Auto-scroll the library or timeline as a media file approaches an edge.
+			const underPointer = document.elementFromPoint(e.clientX, e.clientY);
+			let target: HTMLElement | null = underPointer instanceof HTMLElement ? underPointer : null;
+			while (target) {
+				const rect = target.getBoundingClientRect();
+				const style = window.getComputedStyle(target);
+				const vertical = target.scrollHeight > target.clientHeight + 2 &&
+					/(auto|scroll)/.test(style.overflowY);
+				const horizontal = target.scrollWidth > target.clientWidth + 2 &&
+					/(auto|scroll)/.test(style.overflowX);
+				const edge = 64;
+				if (vertical && rect.height > 90) {
+					const up = Math.max(0, edge - (e.clientY - rect.top));
+					const down = Math.max(0, edge - (rect.bottom - e.clientY));
+					if (up || down) { target.scrollTop += Math.round((down - up) * 0.45); break; }
+				}
+				if (horizontal && rect.width > 90) {
+					const left = Math.max(0, edge - (e.clientX - rect.left));
+					const right = Math.max(0, edge - (rect.right - e.clientX));
+					if (left || right) { target.scrollLeft += Math.round((right - left) * 0.45); break; }
+				}
+				target = target.parentElement;
+			}
 		};
 
 		document.addEventListener("dragover", handleDragOver);

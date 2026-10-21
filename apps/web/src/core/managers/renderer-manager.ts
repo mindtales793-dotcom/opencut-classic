@@ -3,6 +3,7 @@ import type { RootNode } from "@/services/renderer/nodes/root-node";
 import type { ExportOptions, ExportResult } from "@/export";
 import { CanvasRenderer } from "@/services/renderer/canvas-renderer";
 import { SceneExporter } from "@/services/renderer/scene-exporter";
+import { FfmpegSceneExporter } from "@/services/renderer/ffmpeg-exporter";
 import { buildScene } from "@/services/renderer/scene-builder";
 import { createTimelineAudioBuffer } from "@/media/audio";
 import { formatTimecode } from "opencut-wasm";
@@ -147,7 +148,8 @@ export class RendererManager {
 		onProgress?: ({ progress }: { progress: number }) => void;
 		onCancel?: () => boolean;
 	}): Promise<ExportResult> {
-		const { format, quality, fps, includeAudio } = options;
+		const { format, quality, fps, includeAudio, engine } = options;
+		if (onCancel?.()) return { success: false, cancelled: true };
 
 		try {
 			const tracks = this.editor.scenes.getActiveScene().tracks;
@@ -165,6 +167,11 @@ export class RendererManager {
 
 			const exportFps = fps ?? activeProject.settings.fps;
 			const canvasSize = activeProject.settings.canvasSize;
+			const exportSize = options.canvasSize ?? canvasSize;
+			if (![exportSize.width, exportSize.height].every(value =>
+				Number.isInteger(value) && value >= 16 && value <= 7680)) {
+				return { success: false, error: "Escolha uma resolução válida entre 16 e 7680 pixels." };
+			}
 
 			let audioBuffer: AudioBuffer | null = null;
 			if (includeAudio) {
@@ -176,6 +183,8 @@ export class RendererManager {
 				});
 			}
 
+			if (onCancel?.()) return { success: false, cancelled: true };
+
 			const scene = buildScene({
 				tracks,
 				mediaAssets,
@@ -184,9 +193,47 @@ export class RendererManager {
 				background: activeProject.settings.background,
 			});
 
+			const reportProgress = (progress: number) => {
+				const adjustedProgress = includeAudio
+					? 0.05 + progress * 0.95
+					: progress;
+				onProgress?.({ progress: adjustedProgress });
+			};
+
+			// Preferred engine: FFmpeg + GPU encoder (desktop runtime). It streams
+			// the file to disk instead of holding the whole video in memory.
+			if (
+				engine !== "browser" &&
+				(await FfmpegSceneExporter.isSupported({ format }))
+			) {
+				const ffmpegResult = await this.exportWithFfmpeg({
+					scene,
+					width: exportSize.width,
+					height: exportSize.height,
+					sourceWidth: canvasSize.width,
+					sourceHeight: canvasSize.height,
+					fps: exportFps,
+					format,
+					quality,
+					filename: options.filename ?? activeProject.metadata.name,
+					preferSoftwareOnly: engine === "software",
+					audioBuffer,
+					onProgress: reportProgress,
+					onCancel,
+				});
+				return ffmpegResult;
+			}
+
+			if (engine === "software") {
+				return { success: false, error: "FFmpeg indisponível. Instale as ferramentas de vídeo do DarkCut para exportar no modo estável, ou selecione explicitamente o encoder do navegador." };
+			}
+
+			if (onCancel?.()) return { success: false, cancelled: true };
 			const exporter = new SceneExporter({
-				width: canvasSize.width,
-				height: canvasSize.height,
+				width: exportSize.width,
+				height: exportSize.height,
+				sourceWidth: canvasSize.width,
+				sourceHeight: canvasSize.height,
 				fps: exportFps,
 				format,
 				quality,
@@ -194,12 +241,7 @@ export class RendererManager {
 				audioBuffer: audioBuffer || undefined,
 			});
 
-			exporter.on("progress", (progress) => {
-				const adjustedProgress = includeAudio
-					? 0.05 + progress * 0.95
-					: progress;
-				onProgress?.({ progress: adjustedProgress });
-			});
+			exporter.on("progress", reportProgress);
 
 			let cancelled = false;
 			const checkCancel = () => {
@@ -209,6 +251,7 @@ export class RendererManager {
 				}
 			};
 
+			checkCancel();
 			const cancelInterval = setInterval(checkCancel, 100);
 
 			try {
@@ -226,6 +269,7 @@ export class RendererManager {
 				return {
 					success: true,
 					buffer,
+					encoderLabel: "Navegador (WebCodecs)",
 				};
 			} finally {
 				clearInterval(cancelInterval);
@@ -237,6 +281,93 @@ export class RendererManager {
 				error: error instanceof Error ? error.message : "Unknown export error",
 			};
 		}
+	}
+
+	/** Retries a failed hardware FFmpeg export using the CPU without changing quality. */
+	private async exportWithFfmpeg({
+		scene,
+		width,
+		height,
+		sourceWidth,
+		sourceHeight,
+		fps,
+		format,
+		quality,
+		filename,
+		preferSoftwareOnly = false,
+		audioBuffer,
+		onProgress,
+		onCancel,
+	}: {
+		scene: RootNode;
+		width: number;
+		height: number;
+		sourceWidth: number;
+		sourceHeight: number;
+		fps: NonNullable<ExportOptions["fps"]>;
+		format: ExportOptions["format"];
+		quality: ExportOptions["quality"];
+		filename: string;
+		preferSoftwareOnly?: boolean;
+		audioBuffer: AudioBuffer | null;
+		onProgress: (progress: number) => void;
+		onCancel?: () => boolean;
+	}): Promise<ExportResult> {
+		// Hardware encoders can pass a small capability probe but fail when an
+		// actual 4K project is fed to the driver. Retry once on the CPU with
+		// the SAME selected codec container and quality (never silently downgrade).
+		for (const preferSoftware of (preferSoftwareOnly ? [true] : [false, true])) {
+			if (onCancel?.()) return { success: false, cancelled: true };
+			const exporter = new FfmpegSceneExporter({
+				width,
+				height,
+				sourceWidth,
+				sourceHeight,
+				fps,
+				format,
+				quality,
+				filename,
+				preferSoftware,
+				shouldIncludeAudio: !!audioBuffer,
+				audioBuffer: audioBuffer ?? undefined,
+			});
+			exporter.on("progress", onProgress);
+
+			let cancelled = false;
+			const cancelInterval = setInterval(() => {
+				if (onCancel?.()) {
+					cancelled = true;
+					exporter.cancel();
+				}
+			}, 100);
+
+			try {
+				const output = await exporter.export({ rootNode: scene });
+				if (cancelled || !output) return { success: false, cancelled: true };
+				return {
+					success: true,
+					downloadUrl: output.downloadUrl,
+					encoderLabel: output.encoderLabel,
+					verified: output.verified,
+				};
+			} catch (error) {
+				if (cancelled) return { success: false, cancelled: true };
+				if (!preferSoftware && exporter.getUsedHardware() === true) {
+					console.warn("Hardware encoder failed; retrying with CPU at the same quality.", error);
+					onProgress(0);
+					continue;
+				}
+				console.error("FFmpeg export failed:", error);
+				return {
+					success: false,
+					error: (error instanceof Error ? error.message : "Falha desconhecida do FFmpeg.") +
+						" Tente Renderização → Compatível (navegador), se necessário.",
+				};
+			} finally {
+				clearInterval(cancelInterval);
+			}
+		}
+		return { success: false, error: "Nenhum encoder FFmpeg pôde concluir a exportação." };
 	}
 
 	subscribe(listener: () => void): () => void {
