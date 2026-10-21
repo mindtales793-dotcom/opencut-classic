@@ -10,6 +10,7 @@ import { syncVisualsToNarration } from "@/timeline/darkcut-tools";
 import { addNarrationAssetToTimeline } from "../darkcut-automation";
 import { useAssetsPanelStore } from "../assets-panel-store";
 import { useDarkCutProductionStore } from "../darkcut-production-store";
+import { DarkCutFishTts } from "./darkcut-fish-tts";
 
 /** Local audio import and timeline sync. No TTS, Whisper or AI worker. */
 export function DarkCutSyncView() {
@@ -81,7 +82,7 @@ export function DarkCutSyncView() {
       <header>
         <h2 className="text-lg font-semibold">Narração e sincronização</h2>
         <p className="mt-1 text-xs text-muted-foreground">
-          Importe uma narração gravada em MP3, WAV ou outro formato aceito. Sem geração por IA.
+          Gere voz online com Fish Audio ou importe um MP3/WAV pronto, depois sincronize as mídias.
         </p>
       </header>
 
@@ -92,6 +93,8 @@ export function DarkCutSyncView() {
         </p>
         <Button size="sm" variant="outline" onClick={() => setActiveTab("production")}>Editar roteiro</Button>
       </section>
+
+      <DarkCutFishTts />
 
       <section className="space-y-3 rounded-lg border bg-card p-4">
         <h3 className="text-sm font-semibold">Arquivo de narração</h3>
