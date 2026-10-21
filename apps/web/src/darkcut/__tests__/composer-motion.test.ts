@@ -1,5 +1,6 @@
 import { describe, expect, test } from "bun:test";
 import { interpolate, spring } from "remotion";
+import { composerSpringProgress } from "../composer-spring-light";
 import { buildRemotionCompositionClip } from "../remotion-timeline";
 import { parseComposerFrameInput, DARKCUT_REMOTION_GRAPHIC_ID } from "../remotion-compositor-canvas";
 import { resolveAnimationPathValueAtTime } from "@/animation/resolve";
@@ -51,6 +52,13 @@ const keyTimes = ({
 	);
 
 describe("Remotion Composer motion as timeline keyframes", () => {
+	test("lightweight spring matches Remotion at subframes over the full entrance", () => {
+		for (let frame = 0; frame <= 36; frame += 0.25) {
+			const expected = spring({ frame, fps: 30, config: { damping: 20, stiffness: 120, mass: 0.85 } });
+			expect(Math.abs(composerSpringProgress(frame, 30) - expected)).toBeLessThan(0.0001);
+		}
+	});
+
 	const base = { baseX: 0, canvasWidth: 1920 };
 
 	test("fades in, holds and fades out like the Composer", () => {
