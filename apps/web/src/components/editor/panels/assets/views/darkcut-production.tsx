@@ -379,6 +379,20 @@ export function DarkCutProductionView() {
 						>
 							↓ Fila de prompts FlowZika
 						</Button>
+						<Button
+							variant="secondary"
+							disabled={!scenes.length || !useFlowZika}
+							onClick={async () => {
+								try {
+									await navigator.clipboard.writeText(scenes.map((scene) => scene.prompt).join("\n\n"));
+									toast.success("Prompts copiados na ordem das cenas para o FlowZika.");
+								} catch {
+									toast.error("Não foi possível copiar. Use o botão de baixar a fila.");
+								}
+							}}
+						>
+							Copiar prompts FlowZika
+						</Button>
 					</div>
 				</section>
 
