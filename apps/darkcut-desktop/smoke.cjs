@@ -29,7 +29,7 @@ async function run(win) {
   await until(win, 'location.pathname.startsWith("/editor/") && !!document.querySelector(".studio-sidebar")', "editor");
   const steps = [
     ["Roteiro", "Dividir em cenas"],
-    ["Narração e sincronização", "Importar narração do computador"],
+    ["Narração e sincronização", "Gerar narração com Fish Audio"],
     ["Templates", "Aplicar template"],
     ["Legendas", "Importar SRT/ASS"],
     ["Transições", "Biblioteca de transições"],
@@ -48,7 +48,7 @@ async function run(win) {
   report({ ok: true, checks: [
     "packaged Next server started", "project created",
     "timeline opened", "script editor available",
-    "local narration import available", "native templates available",
+    "Fish Audio narration generation and local import available", "native templates available",
     "manual captions import available", "transitions and effects available",
     "legacy AI, DarkMiner and Remotion UI hidden",
   ] });
