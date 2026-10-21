@@ -503,7 +503,9 @@ function TemplatePreview({
 		return () => observer.disconnect();
 	}, []);
 	useEffect(() => {
-		if (!visible) return;
+		// Explicitly activated previews must work even when visibility observers
+		// are delayed (background tabs, automation, or offscreen selection).
+		if (!visible && !active) return;
 		const ctx = canvas.current?.getContext("2d");
 		if (!ctx) return;
 		const duration = template.durationSeconds;
