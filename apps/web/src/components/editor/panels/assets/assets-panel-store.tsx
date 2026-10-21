@@ -36,6 +36,13 @@ export const TAB_KEYS = [
 
 export type Tab = (typeof TAB_KEYS)[number];
 
+// Only the essential editor tools are exposed in the lightweight edition.
+// Legacy tab ids remain valid so old saved navigation/actions cannot crash.
+export const LITE_TAB_KEYS: readonly Tab[] = [
+	"timeline", "production", "sync", "media", "sounds", "text",
+	"effects", "templates", "transitions", "captions", "settings",
+];
+
 const createHugeiconsIcon =
 	({ icon }: { icon: IconSvgElement }) =>
 	({ className }: { className?: string }) => (
@@ -46,11 +53,11 @@ export const tabs = {
 	timeline: { icon: createHugeiconsIcon({ icon: Video01Icon }), label: "Linha do Tempo" },
 	production: {
 		icon: createHugeiconsIcon({ icon: MagicWand05Icon }),
-		label: "Produção",
+		label: "Roteiro",
 	},
 	sync: {
 		icon: createHugeiconsIcon({ icon: ArrowRightDoubleIcon }),
-		label: "Sincronização",
+		label: "Narração e sincronização",
 	},
 	"script-srt": { icon: createHugeiconsIcon({ icon: ClosedCaptionIcon }), label: "Roteiro → SRT" },
 	darkminer: { icon: createHugeiconsIcon({ icon: MagicWand05Icon }), label: "DarkMiner" },
@@ -125,8 +132,8 @@ interface AssetsPanelStore {
 export const useAssetsPanelStore = create<AssetsPanelStore>()(
 	persist(
 		(set) => ({
-			activeTab: "production",
-			setActiveTab: (tab) => set({ activeTab: tab }),
+			activeTab: "timeline",
+			setActiveTab: (tab) => set({ activeTab: LITE_TAB_KEYS.includes(tab) ? tab : "media" }),
 			highlightMediaId: null,
 			requestRevealMedia: (mediaId) =>
 				set({ activeTab: "media", highlightMediaId: mediaId }),
