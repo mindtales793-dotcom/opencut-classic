@@ -268,8 +268,8 @@ export function drawDarkcutComposerFrame({
 
 export const darkcutRemotionGraphicDefinition: GraphicDefinition = {
   id: DARKCUT_REMOTION_GRAPHIC_ID,
-  name: "Remotion Composer • Cena completa",
-  keywords: ["remotion","motion graphics","compositor","darkcut"],
+  name: "Composição Canvas • Legado",
+  keywords: ["canvas","motion graphics","compositor","darkcut"],
   params: [
     {key:"templateId",label:"Template",type:"text",default:"documentary"},
     {key:"templateTitle",label:"Nome do template",type:"text",default:"Documentário"},
@@ -283,7 +283,7 @@ export const darkcutRemotionGraphicDefinition: GraphicDefinition = {
       {value:"map",label:"Mapa"},{value:"split-screen",label:"Tela dividida"}]},
     {key:"intensity",label:"Intensidade",type:"select",default:"normal",options:[
       {value:"soft",label:"Suave"},{value:"normal",label:"Normal"},{value:"strong",label:"Forte"}]},
-    {key:"frame",label:"Progresso do Remotion",type:"number",default:0,min:0,max:COMPOSITION_FRAMES,step:1,keyframable:true},
+    {key:"frame",label:"Progresso da composição",type:"number",default:0,min:0,max:COMPOSITION_FRAMES,step:1,keyframable:true},
   ],
   render({ctx,params,width,height}){
     drawDarkcutComposerFrame({
