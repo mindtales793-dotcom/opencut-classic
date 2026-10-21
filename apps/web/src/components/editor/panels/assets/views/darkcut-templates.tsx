@@ -346,6 +346,7 @@ export function DarkCutTemplatesView({ compact = false }: { compact?: boolean })
   const scene = useEditor((e) => e.scenes.getActiveSceneOrNull());
   const [category, setCategory] = useState<TemplateCategory>("Todos");
   const [alignNarration, setAlignNarration] = useState(false);
+  const [adjustDurations, setAdjustDurations] = useState(false);
   const allRefs = useMemo(() => scene
     ? [scene.tracks.main, ...scene.tracks.overlay].flatMap((track) =>
         track.elements.filter((element) => element.type === "image" || element.type === "video")
@@ -360,7 +361,9 @@ export function DarkCutTemplatesView({ compact = false }: { compact?: boolean })
       return;
     }
     // Native keyframes, deterministic preset choice; no model inference or background service.
-    const duration = applyFixedDuration({ editor, refs, seconds: template.durationSeconds });
+    const duration = adjustDurations
+      ? applyFixedDuration({ editor, refs, seconds: template.durationSeconds })
+      : { changed: 0, clamped: 0 };
     const motion = applyMotionPreset({
       editor, refs, preset: template.motions[0], intensity: template.intensity,
     });
@@ -392,6 +395,10 @@ export function DarkCutTemplatesView({ compact = false }: { compact?: boolean })
           >
             {CATEGORIES.map((item) => <option key={item} value={item}>{item}</option>)}
           </select>
+        </label>
+        <label className="flex items-center gap-2 text-xs">
+          <input type="checkbox" checked={adjustDurations} onChange={(event) => setAdjustDurations(event.target.checked)} />
+          Aplicar duração sugerida (altera tempos)
         </label>
         <label className="flex items-center gap-2 text-xs">
           <input type="checkbox" checked={alignNarration} onChange={(event) => setAlignNarration(event.target.checked)} />
