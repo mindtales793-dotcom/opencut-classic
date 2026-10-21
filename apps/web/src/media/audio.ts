@@ -148,6 +148,31 @@ export async function collectAudioElements({
 	);
 	const pendingElements: Array<Promise<CollectedAudioElement | null>> = [];
 
+	// Many edits split one long narration into dozens of timeline clips. Decoding
+	// the same MP3 once per clip can exhaust memory and leave export at 5%.
+	// Share decoded buffers per media asset and bound simultaneous decodes.
+	const decodedAssets = new Map<string, Promise<AudioBuffer | null>>();
+	let activeDecodes = 0;
+	const decodeWaiters: Array<() => void> = [];
+	const decodeAsset = (asset: MediaAsset): Promise<AudioBuffer | null> => {
+		const cached = decodedAssets.get(asset.id);
+		if (cached) return cached;
+		const pending = (async () => {
+			if (activeDecodes >= 2) {
+				await new Promise<void>((resolve) => decodeWaiters.push(resolve));
+			}
+			activeDecodes++;
+			try {
+				return await resolveAudioBufferForAsset({ asset, audioContext });
+			} finally {
+				activeDecodes--;
+				decodeWaiters.shift()?.();
+			}
+		})();
+		decodedAssets.set(asset.id, pending);
+		return pending;
+	};
+
 	for (const { element, mediaAsset } of candidates) {
 		if (element.type === "audio") {
 			pendingElements.push(
@@ -155,6 +180,7 @@ export async function collectAudioElements({
 					element,
 					mediaMap,
 					audioContext,
+					decodeAsset,
 				}).then((audioBuffer) => {
 					if (!audioBuffer) return null;
 					return {
@@ -181,10 +207,7 @@ export async function collectAudioElements({
 			if (!mediaAsset || !mediaSupportsAudio({ media: mediaAsset })) continue;
 
 			pendingElements.push(
-				resolveAudioBufferForAsset({
-					asset: mediaAsset,
-					audioContext,
-				}).then((audioBuffer) => {
+				decodeAsset(mediaAsset).then((audioBuffer) => {
 					if (!audioBuffer) return null;
 					return {
 						timelineElement: element,
@@ -218,16 +241,18 @@ async function resolveAudioBufferForElement({
 	element,
 	mediaMap,
 	audioContext,
+	decodeAsset,
 }: {
 	element: AudioElement;
 	mediaMap: Map<string, MediaAsset>;
 	audioContext: AudioContext;
+	decodeAsset: (asset: MediaAsset) => Promise<AudioBuffer | null>;
 }): Promise<AudioBuffer | null> {
 	try {
 		if (element.sourceType === "upload") {
 			const asset = mediaMap.get(element.mediaId);
 			if (!asset) return null;
-			return await resolveAudioBufferForAsset({ asset, audioContext });
+			return await decodeAsset(asset);
 		}
 
 		if (element.buffer) return element.buffer;
