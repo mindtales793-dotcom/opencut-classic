@@ -485,7 +485,25 @@ function TemplatePreview({
 	posterUrl?: string;
 }) {
 	const canvas = useRef<HTMLCanvasElement>(null);
+	const [visible, setVisible] = useState(false);
+	// An editor can show many template cards. Avoid canvases, image decoding and
+	// animation calculations for cards far outside the scroll viewport.
 	useEffect(() => {
+		const node = canvas.current;
+		if (!node) return;
+		if (typeof IntersectionObserver === "undefined") {
+			setVisible(true);
+			return;
+		}
+		const observer = new IntersectionObserver(
+			(entries) => setVisible(entries.some((entry) => entry.isIntersecting)),
+			{ rootMargin: "200px" },
+		);
+		observer.observe(node);
+		return () => observer.disconnect();
+	}, []);
+	useEffect(() => {
+		if (!visible) return;
 		const ctx = canvas.current?.getContext("2d");
 		if (!ctx) return;
 		const duration = template.durationSeconds;
@@ -632,7 +650,7 @@ function TemplatePreview({
 			if (timer) window.clearInterval(timer);
 			if (poster) poster.onload = null;
 		};
-	}, [template, active, title, ending, posterUrl]);
+	}, [template, active, title, ending, posterUrl, visible]);
 	return (
 		<canvas
 			ref={canvas}
