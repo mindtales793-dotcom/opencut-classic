@@ -21,15 +21,6 @@ const DarkCutProductionView = dynamic(() => import("./views/darkcut-production")
 const DarkCutSyncView = dynamic(() => import("./views/darkcut-sync").then((module) => module.DarkCutSyncView), {
 	loading: () => <div className="p-5 text-sm text-muted-foreground">Carregando ferramentas…</div>,
 });
-const DarkCutSrtStudio = dynamic(() => import("./views/darkcut-srt-studio").then((module) => module.DarkCutSrtStudio), {
-	loading: () => <div className="p-5 text-sm text-muted-foreground">Carregando ferramentas…</div>,
-});
-const DarkMinerWorkspace = dynamic(() => import("./views/darkcut-miner-workspace").then((module) => module.DarkMinerWorkspace), {
-	loading: () => <div className="p-5 text-sm text-muted-foreground">Carregando ferramentas…</div>,
-});
-const DarkCutVideosView = dynamic(() => import("./views/darkcut-videos").then((module) => module.DarkCutVideosView), {
-	loading: () => <div className="p-5 text-sm text-muted-foreground">Carregando ferramentas…</div>,
-});
 const DarkCutTemplatesView = dynamic(() => import("./views/darkcut-templates").then((module) => module.DarkCutTemplatesView), {
 	loading: () => <div className="p-5 text-sm text-muted-foreground">Carregando ferramentas…</div>,
 });
@@ -44,9 +35,9 @@ export function AssetsPanel() {
 		timeline: null,
 		production: <DarkCutProductionView />,
 		sync: <DarkCutSyncView />,
-		"script-srt": <DarkCutSrtStudio />,
-		darkminer: <DarkMinerWorkspace />,
-		videos: <DarkCutVideosView />,
+		"script-srt": null,
+		darkminer: null,
+		videos: null,
 		media: <MediaView />,
 		sounds: <SoundsView />,
 		text: <TextView />,
@@ -61,9 +52,9 @@ export function AssetsPanel() {
 
 	return (
 		<div className="studio-assets panel flex h-full flex-col overflow-hidden">
-			{activeTab !== "darkminer" && <StudioWorkflow />}
-			<div className={"studio-assets-scroll min-h-0 flex-1 " + (activeTab === "darkminer" ? "overflow-hidden" : "overflow-y-auto overscroll-contain")}>
-				<div className={activeTab === "darkminer" ? "h-full min-w-0" : "min-h-full min-w-0"}>
+			<StudioWorkflow />
+			<div className="studio-assets-scroll min-h-0 flex-1 overflow-y-auto overscroll-contain">
+				<div className="min-h-full min-w-0">
 					{viewMap[activeTab]}
 				</div>
 			</div>
