@@ -14,6 +14,8 @@ import { usePropertiesStore } from "./stores/properties-store";
 import { getPropertiesConfig } from "./registry";
 import { cn } from "@/utils/ui";
 import { EmptyView } from "./empty-view";
+import { GroupAudioPanel, type GroupAudioTarget } from "./group-audio-panel";
+import { canElementHaveAudio } from "@/timeline/element-utils";
 
 export function PropertiesPanel() {
 	const editor = useEditor();
@@ -31,11 +33,30 @@ export function PropertiesPanel() {
 	}
 
 	if (selectedElements.length > 1) {
+		// A whole track (e.g. background music) or several clips: audio controls for the group.
+		const targets: GroupAudioTarget[] = editor.timeline
+			.getElementsWithTracks({ elements: selectedElements })
+			.flatMap(({ element, track }) =>
+				canElementHaveAudio(element)
+					? [{ trackId: track.id, element }]
+					: [],
+			);
+		const allAudio = targets.length === selectedElements.length;
 		return (
-			<div className="panel bg-background flex h-full flex-col items-center justify-center overflow-hidden rounded-sm border">
-				<p className="text-muted-foreground text-sm">
-					{selectedElements.length} elements selected.0
-				</p>
+			<div className="panel bg-background flex h-full flex-col overflow-hidden rounded-sm border">
+				<ScrollArea className="flex-1 scrollbar-hidden">
+					{targets.length > 0 ? (
+						<GroupAudioPanel
+							targets={targets}
+							title={allAudio ? "Áudio da seleção" : "Áudio dos clipes com som"}
+						/>
+					) : (
+						<p className="text-muted-foreground p-3 text-sm">
+							{selectedElements.length} elementos selecionados. Selecione um
+							clipe para editar suas propriedades.
+						</p>
+					)}
+				</ScrollArea>
 			</div>
 		);
 	}
