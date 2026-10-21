@@ -137,10 +137,12 @@ export async function collectAudioElements({
 	tracks,
 	mediaAssets,
 	audioContext,
+	onProgress,
 }: {
 	tracks: SceneTracks;
 	mediaAssets: MediaAsset[];
 	audioContext: AudioContext;
+	onProgress?: (completed: number, total: number) => void;
 }): Promise<CollectedAudioElement[]> {
 	const candidates = collectAudibleCandidates({ tracks, mediaAssets });
 	const mediaMap = new Map<string, MediaAsset>(
@@ -229,7 +231,11 @@ export async function collectAudioElements({
 		}
 	}
 
-	const resolvedElements = await Promise.all(pendingElements);
+	const decodeTotal = pendingElements.length;
+	let decodeCompleted = 0;
+	const resolvedElements = await Promise.all(pendingElements.map((pending) =>
+		pending.finally(() => onProgress?.(++decodeCompleted, decodeTotal)),
+	));
 	const audioElements: CollectedAudioElement[] = [];
 	for (const element of resolvedElements) {
 		if (element) audioElements.push(element);
@@ -653,12 +659,14 @@ export async function createTimelineAudioBuffer({
 	duration,
 	sampleRate = EXPORT_SAMPLE_RATE,
 	audioContext,
+	onProgress,
 }: {
 	tracks: SceneTracks;
 	mediaAssets: MediaAsset[];
 	duration: number;
 	sampleRate?: number;
 	audioContext?: AudioContext;
+	onProgress?: (stage: "decode" | "mix" | "mastering", completed: number, total: number) => void;
 }): Promise<AudioBuffer | null> {
 	const context = audioContext ?? createAudioContext({ sampleRate });
 
@@ -666,6 +674,7 @@ export async function createTimelineAudioBuffer({
 		tracks,
 		mediaAssets,
 		audioContext: context,
+		onProgress: (completed, total) => onProgress?.("decode", completed, total),
 	});
 
 	if (audioElements.length === 0) return null;
@@ -679,8 +688,12 @@ export async function createTimelineAudioBuffer({
 		sampleRate,
 	);
 
+	let mixedCount = 0;
 	for (const element of audioElements) {
-		if (element.muted) continue;
+		if (element.muted) {
+			onProgress?.("mix", ++mixedCount, audioElements.length);
+			continue;
+		}
 
 		const renderedBuffer = shouldMaintainPitch({
 			rate: element.retime?.rate ?? 1,
@@ -705,9 +718,13 @@ export async function createTimelineAudioBuffer({
 			outputLength,
 			sampleRate,
 		});
+		onProgress?.("mix", ++mixedCount, audioElements.length);
 	}
 
-	return await applyAudioMasteringToBuffer({ audioBuffer: outputBuffer });
+	onProgress?.("mastering", 0, 1);
+	const mastered = await applyAudioMasteringToBuffer({ audioBuffer: outputBuffer });
+	onProgress?.("mastering", 1, 1);
+	return mastered;
 }
 
 function collectPeakRange({
