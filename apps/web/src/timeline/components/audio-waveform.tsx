@@ -326,11 +326,21 @@ export function AudioWaveform({
 			return;
 		}
 
+		// Multiple scroll events may fire within one frame. Repaint once per
+		// animation frame to avoid canvas work blocking smooth timeline scrolling.
+		let pendingFrame: number | null = null;
 		const handleScroll = () => {
-			drawVisible();
+			if (pendingFrame !== null) return;
+			pendingFrame = window.requestAnimationFrame(() => {
+				pendingFrame = null;
+				drawVisible();
+			});
 		};
 		scrollParent.addEventListener("scroll", handleScroll, { passive: true });
-		return () => scrollParent.removeEventListener("scroll", handleScroll);
+		return () => {
+			scrollParent.removeEventListener("scroll", handleScroll);
+			if (pendingFrame !== null) window.cancelAnimationFrame(pendingFrame);
+		};
 	}, [drawVisible]);
 
 	const onResize = useCallback(
