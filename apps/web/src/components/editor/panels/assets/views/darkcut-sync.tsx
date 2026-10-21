@@ -45,6 +45,16 @@ export function DarkCutSyncView() {
   const addToTimeline = () => {
     if (!narrationId) return;
     try {
+      const scene = editor.scenes.getActiveScene();
+      const alreadyAdded = scene.tracks.audio.some((track) =>
+        /narra(?:ç|c)(?:ã|a)o/i.test(track.name) &&
+        track.elements.some((element) => element.type === "audio" && element.mediaId === narrationId),
+      );
+      if (alreadyAdded) {
+        toast.info("Esta narração já está na timeline.");
+        setActiveTab("timeline");
+        return;
+      }
       const seconds = addNarrationAssetToTimeline({ mediaId: narrationId, editor });
       toast.success("Narração adicionada (" + Math.round(seconds) + "s).");
       setActiveTab("timeline");
