@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useRef, useState } from "react";
+import { DarkCutSyncView } from "./darkcut-sync";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { useAssetsPanelStore } from "../assets-panel-store";
@@ -386,7 +387,7 @@ export function DarkCutSrtStudio(){
       {cues.invalidBlocks>0&&<p className="text-xs text-destructive">⚠ {cues.invalidBlocks} blocos inválidos detectados.</p>}
       <div className="flex flex-wrap gap-2">
         <Button size="sm" variant="secondary" disabled={!srt.trim()} onClick={()=>download(srt,"cenas.srt")}>↓ Baixar SRT</Button>
-        <Button size="sm" variant="outline" disabled={!srt.trim()} onClick={()=>{setActiveTab("sync");toast.success("Sincronização aberta com o SRT atual.");}}>Ver sincronização →</Button>
+        <Button size="sm" variant="outline" disabled={!srt.trim()} onClick={()=>document.getElementById("darkcut-srt-timeline-sync")?.scrollIntoView({behavior:"smooth",block:"start"})}>Ver sincronização →</Button>
         <Button size="sm" disabled={!cues.cues.length||!!cues.overlaps||!!cues.invalidBlocks} onClick={createScenes}>🎬 Criar {cues.cues.length} cenas na Produção</Button>
       </div>
       <details><summary className="cursor-pointer rounded-lg border px-3 py-2 text-xs">Editar SRT bruto / importar arquivo SRT</summary>
@@ -418,7 +419,8 @@ export function DarkCutSrtStudio(){
         </div>
         {filtered.length>40&&<Button size="sm" variant="outline" className="mt-2 w-full" onClick={()=>setShowAll(v=>!v)}>{showAll?"Mostrar primeiras 40":`Mostrar todas as ${filtered.length} cenas`}</Button>}
       </div>
-      <p className="text-[0.69rem] text-muted-foreground">As cenas enviadas seguem cada linha do SRT. A mídia já associada é preservada quando a fala permanece igual. O SRT define os horários; a montagem visual é confirmada na aba Sincronização.</p>
+      <p className="text-[0.69rem] text-muted-foreground">As cenas seguem cada linha do SRT e preservam as mídias associadas. Confira e aplique os tempos abaixo, sem sair desta aba.</p>
+      <div id="darkcut-srt-timeline-sync"><DarkCutSyncView mode="srt" /></div>
     </section>
   </div>;
 }

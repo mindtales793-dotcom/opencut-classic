@@ -167,6 +167,8 @@ export function assembleScenesOnTimeline({
 	let cursorSeconds = mediaTimeToSeconds({ time: editor.timeline.getTotalDuration() });
 	let inserted = 0;
 
+	// One timeline assembly = one Undo, even with hundreds of image and caption inserts.
+	editor.command.runAsSingleUndoStep(() => {
 	for (const scene of scenes) {
 		const asset = media.find((item) => item.id === scene.mediaId);
 		if (!asset || (asset.type !== "image" && asset.type !== "video")) continue;
@@ -211,6 +213,7 @@ export function assembleScenesOnTimeline({
 		cursorSeconds += durationSeconds;
 		inserted += 1;
 	}
+	});
 
 	return inserted;
 }
