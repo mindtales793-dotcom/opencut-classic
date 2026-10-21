@@ -8,6 +8,7 @@ import type {
 import { shouldMaintainPitch } from "@/retime/rate";
 import type { MediaAsset } from "@/media/types";
 import { applyAudioMasteringToBuffer } from "@/media/audio-mastering";
+import { normalizeChannelsLoudness } from "@/media/loudness";
 import type { AudioCapableElement } from "@/timeline/audio-state";
 import {
 	hasAnimatedVolume,
@@ -628,12 +629,15 @@ export async function createTimelineAudioBuffer({
 	duration,
 	sampleRate = EXPORT_SAMPLE_RATE,
 	audioContext,
+	loudnessTargetLufs = null,
 }: {
 	tracks: SceneTracks;
 	mediaAssets: MediaAsset[];
 	duration: number;
 	sampleRate?: number;
 	audioContext?: AudioContext;
+	/** Integrated loudness to reach before the master limiter. `null` keeps the mix as is. */
+	loudnessTargetLufs?: number | null;
 }): Promise<AudioBuffer | null> {
 	const context = audioContext ?? createAudioContext({ sampleRate });
 
@@ -679,6 +683,18 @@ export async function createTimelineAudioBuffer({
 			outputBuffer,
 			outputLength,
 			sampleRate,
+		});
+	}
+
+	if (loudnessTargetLufs !== null) {
+		const channels = Array.from(
+			{ length: outputBuffer.numberOfChannels },
+			(_, channel) => outputBuffer.getChannelData(channel),
+		);
+		normalizeChannelsLoudness({
+			channels,
+			sampleRate: outputBuffer.sampleRate,
+			targetLufs: loudnessTargetLufs,
 		});
 	}
 

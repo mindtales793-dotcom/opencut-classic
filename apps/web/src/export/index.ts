@@ -28,6 +28,8 @@ export interface ExportOptions {
 	/** Dimensions of the encoded file. Keeps the original project layout. */
 	canvasSize?: { width: number; height: number };
 	includeAudio?: boolean;
+	/** Target integrated loudness (LUFS) for the exported audio. `null`/absent keeps the mix level. */
+	loudnessTargetLufs?: number | null;
 	engine?: ExportEngine;
 	/** Used as the downloaded file name by the FFmpeg engine (no extension). */
 	filename?: string;

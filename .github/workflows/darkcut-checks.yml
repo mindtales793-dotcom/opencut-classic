@@ -37,7 +37,7 @@ jobs:
         run: bun test apps/web/src/darkcut/__tests__/srt-scene-sync.test.ts apps/web/src/darkcut/__tests__/retro-automotive.test.ts apps/web/src/darkcut/__tests__/media-search-intelligence.test.ts apps/web/src/darkcut/__tests__/youtube-candidate-ranker.test.ts apps/web/src/darkcut/__tests__/template-visual-profiles.test.ts apps/web/src/darkcut/__tests__/cris-sound-design.test.ts apps/web/src/darkcut/__tests__/light-music.test.ts apps/web/src/darkcut/__tests__/reference-editing-styles.test.ts apps/web/src/darkcut/__tests__/media-bridge.test.ts apps/web/src/darkcut/__tests__/narration-chunks.test.ts apps/web/src/darkcut/__tests__/niche-miner.test.ts apps/web/src/darkcut/__tests__/srt-word-alignment.test.ts apps/web/src/darkcut/__tests__/darkminer-legacy-adapter.test.ts apps/web/src/darkcut/__tests__/srt-v24-integrated.test.ts apps/web/src/project/__tests__/darkcut-cover-utils.test.ts
 
       - name: Test undo/redo transactions and caption templates
-        run: bun test apps/web/src/core/managers/__tests__/commands.test.ts apps/web/src/subtitles/__tests__/caption-presets.test.ts
+        run: bun test apps/web/src/core/managers/__tests__/commands.test.ts apps/web/src/subtitles/__tests__/caption-presets.test.ts apps/web/src/media/__tests__/loudness.test.ts
 
       - name: Test karaoke captions, animated stickers, color grades and Composer motion
         run: bun test --preload ./apps/web/scripts/test-wasm-preload.ts apps/web/src/subtitles/__tests__/karaoke.test.ts apps/web/src/stickers/__tests__/animated.test.ts apps/web/src/effects/__tests__/color-grade.test.ts apps/web/src/darkcut/__tests__/composer-motion.test.ts
